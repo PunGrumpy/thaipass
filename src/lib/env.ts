@@ -5,6 +5,9 @@ import { z } from "zod";
 export const env = createEnv({
   emptyStringAsUndefined: true,
   onValidationError: (issues) => {
+    const named = issues.map(
+      (issue) => `${issue.path?.join(".") ?? "env"}: ${issue.message}`
+    );
     for (const issue of issues) {
       log.error({
         msg: "invalid environment",
@@ -12,7 +15,7 @@ export const env = createEnv({
         variable: issue.path?.join(".") ?? "env",
       });
     }
-    process.exit(1);
+    throw new Error(`invalid environment: ${named.join("; ")}`);
   },
   runtimeEnv: process.env,
   server: {
