@@ -57,7 +57,7 @@ curl -sN localhost:3789/v1/chat/completions \
   -d '{"model":"claude-sonnet-5@default","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-Model ids are case-sensitive and Claude carries a `@provider` suffix (`claude-opus-5@azure`, `claude-sonnet-5@default`). An id outside the catalog is rejected with 400 rather than forwarded. The full list is in [`src/lib/models.ts`](src/lib/models.ts). `gemini-3.1-flash-lite` is the free default.
+Model ids are case-sensitive and Claude carries a `@provider` suffix (`claude-opus-5@azure`, `claude-sonnet-5@default`). An id outside the catalog is rejected with 400 rather than forwarded. The full list is in [`src/aipass/models.ts`](src/aipass/models.ts). `gemini-3.1-flash-lite` is the free default.
 
 ## Deploying
 
