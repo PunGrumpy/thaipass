@@ -22,6 +22,19 @@ import { toAipassMessages } from "../translate";
 
 const encoder = new TextEncoder();
 
+const asError = (cause: unknown): Error =>
+  cause instanceof Error ? cause : new Error(String(cause));
+
+const failUpstream = (
+  log: RequestLogger,
+  cause: unknown,
+  message: string
+): Response => {
+  log.set({ status: 502 });
+  log.error(asError(cause));
+  return errorResponse(message, 502);
+};
+
 interface UpstreamFacts {
   readonly credits: Promise<Credits | null>;
   readonly catalog: Promise<Catalog | null>;
@@ -125,7 +138,7 @@ const streamCompletion = (
           }
         }
       } catch (error) {
-        log.error(error instanceof Error ? error : new Error(String(error)));
+        log.error(asError(error));
         finishReason = "error";
         send(
           chatChunk(id, model, { content: `\n[proxy error: ${error}]` }, null)
@@ -180,15 +193,15 @@ const bufferedCompletion = async (
       } else if (event.kind === "finish") {
         finishReason = event.reason;
       } else {
-        log.set({ status: 502 });
-        log.error(new Error(`upstream stream: ${event.message}`));
-        return errorResponse(event.message, 502);
+        return failUpstream(
+          log,
+          `upstream stream: ${event.message}`,
+          event.message
+        );
       }
     }
   } catch (error) {
-    log.set({ status: 502 });
-    log.error(error instanceof Error ? error : new Error(String(error)));
-    return errorResponse(`stream error: ${error}`, 502);
+    return failUpstream(log, error, `stream error: ${error}`);
   } finally {
     deleteConversation(cookie, conversationId);
     log.set({
@@ -240,10 +253,8 @@ const handleChat = async (
       signal
     );
   } catch (error) {
-    log.set({ status: 502 });
-    log.error(error instanceof Error ? error : new Error(String(error)));
     await recordUpstream(facts, model, log);
-    return errorResponse(`upstream fetch failed: ${error}`, 502);
+    return failUpstream(log, error, `upstream fetch failed: ${error}`);
   }
 
   const { response: upstream, conversationId } = result;
