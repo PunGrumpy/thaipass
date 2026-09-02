@@ -29,8 +29,11 @@ const upstreamEventSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+const skippedTypeSchema = z.object({ type: z.string() });
+
 export interface SSESkips {
   count: number;
+  readonly types: Set<string>;
 }
 
 export const parseAipassSSE = async function* parseAipassSSE(
@@ -69,6 +72,10 @@ export const parseAipassSSE = async function* parseAipassSSE(
       if (!decoded.success) {
         if (skips) {
           skips.count += 1;
+          const named = skippedTypeSchema.safeParse(raw);
+          if (named.success) {
+            skips.types.add(named.data.type);
+          }
         }
         continue;
       }

@@ -112,7 +112,7 @@ const streamCompletion = (
       };
       send(chatChunk(id, model, { role: "assistant" }, null));
       let finishReason = "stop";
-      const skips: SSESkips = { count: 0 };
+      const skips: SSESkips = { count: 0, types: new Set() };
       let deltas = 0;
       let chars = 0;
       let msToFirstChunk: number | undefined;
@@ -155,6 +155,7 @@ const streamCompletion = (
         replyChars: chars,
         status: 200,
         undecodedEvents: skips.count,
+        undecodedTypes: [...skips.types].join(","),
       });
       await recordUpstream(facts, model, log);
       log.emit();
@@ -181,7 +182,7 @@ const bufferedCompletion = async (
 ): Promise<Response> => {
   let content = "";
   let finishReason = "stop";
-  const skips: SSESkips = { count: 0 };
+  const skips: SSESkips = { count: 0, types: new Set() };
   let deltas = 0;
   let msToFirstChunk: number | undefined;
   try {
@@ -210,6 +211,7 @@ const bufferedCompletion = async (
       msToFirstChunk,
       replyChars: content.length,
       undecodedEvents: skips.count,
+      undecodedTypes: [...skips.types].join(","),
     });
   }
   await recordUpstream(facts, model, log);

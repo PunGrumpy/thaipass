@@ -73,7 +73,7 @@ Two Bun-only settings do not apply on Vercel: `AIPASS_HOST` / `AIPASS_PORT`, and
 ## Notes
 
 - The cookie is short-lived. When it expires, requests fail with `upstream 3xx ... cookie is stale`. Send a fresh one; nothing on the server needs to change.
-- Prompts and cookies never reach the logs. Each request emits one wide event carrying sizes, counts and timings, plus the upstream status and a count of SSE payloads that failed to decode.
+- Prompts and cookies never reach the logs. Each request emits one wide event carrying sizes, counts and timings, plus the upstream status, a count of SSE payloads that failed to decode and the `type` of each one.
 - Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`. Fields are flat, so `model`, `msToFirstChunk` and `country` arrive as filterable properties rather than one opaque object. Startup lines are not forwarded.
 - Callers are identified by IP, user agent, Vercel's geo headers, and `clientId`, a SHA-256 prefix of the cookie that groups one session without revealing it. IPv4 redaction is off so the address survives; emails, JWTs, bearer tokens, cards, phones and IBANs are still masked.
 - `modelFree` and `modelReady` come from the upstream catalog, cached five minutes per caller. When that catalog lists a model the proxy does not serve, a warning names it, so a stale `CHAT_MODELS` shows up in the logs instead of as a 400 nobody can explain.
