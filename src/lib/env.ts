@@ -19,13 +19,7 @@ export const env = createEnv({
     AIPASS_HOST: z.string().default("127.0.0.1"),
     AIPASS_ORIGIN: z.url().default("https://de.aipass.net"),
     AIPASS_PORT: z.coerce.number().int().positive().default(3789),
-    POSTHOG_API_KEY: z
-      .string()
-      .refine((key) => !key.startsWith("phx_"), {
-        error:
-          "expected the project token (phc_...), not a personal API key (phx_...)",
-      })
-      .optional(),
+    POSTHOG_API_KEY: z.string().startsWith("phc_").optional(),
     POSTHOG_HOST: z.url().optional().default("https://us.i.posthog.com"),
   },
 });
