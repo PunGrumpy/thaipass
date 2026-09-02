@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { chatModelSchema } from "./models.ts";
+
 export type OpenAIRole = "system" | "user" | "assistant" | "tool";
 
 const contentPartSchema = z.union([
@@ -34,7 +36,7 @@ const messageSchema = z.object({
 
 export const chatRequestSchema = z.object({
   messages: z.array(messageSchema).optional(),
-  model: z.string().optional(),
+  model: chatModelSchema.optional(),
   stream: z.boolean().optional(),
 });
 

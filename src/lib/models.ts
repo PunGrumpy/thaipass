@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export const CHAT_MODELS = [
   "gpt-5.6-terra",
   "gpt-5.6-sol",
@@ -22,4 +24,10 @@ export const CHAT_MODELS = [
   "sonar-deep-research",
 ] as const;
 
-export const DEFAULT_MODEL = "gemini-3.1-flash-lite";
+export const chatModelSchema = z.enum(CHAT_MODELS, {
+  error: "unknown model, see GET /v1/models",
+});
+
+export type ChatModel = z.infer<typeof chatModelSchema>;
+
+export const DEFAULT_MODEL: ChatModel = "gemini-3.1-flash-lite";

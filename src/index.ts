@@ -27,8 +27,8 @@ new Elysia()
   .error(ParseError, ({ request, path }) =>
     reject(request, path, 400, "invalid JSON body")
   )
-  .error(ValidationError, ({ request, path }) =>
-    reject(request, path, 400, "body must be a chat completion request object")
+  .error(ValidationError, ({ request, path, error }) =>
+    reject(request, path, 400, `invalid request body: ${error.message}`)
   )
   .error(NotFound, ({ request, path }) =>
     reject(request, path, 404, "not found")
