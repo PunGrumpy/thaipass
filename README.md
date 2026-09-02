@@ -72,6 +72,7 @@ Two Bun-only settings do not apply on Vercel: `AIPASS_HOST` / `AIPASS_PORT`, and
 
 ## Notes
 
+- `usage` on a non-streaming reply is always zeros. AI Pass reports no token counts, and guessing them from character counts would be worse than saying nothing, so a client that meters spend from this field will read 0.
 - The cookie is short-lived. When it expires, requests fail with `upstream 3xx ... cookie is stale`. Send a fresh one; nothing on the server needs to change.
 - Prompts and cookies never reach the logs. Each request emits one wide event carrying sizes, counts and timings, plus the upstream status, `reasoningChars` for thinking models, and a count of the SSE payloads that failed to decode with the `type` of each one.
 - Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`. Fields are flat, so `model`, `msToFirstChunk` and `country` arrive as filterable properties rather than one opaque object. Startup lines are not forwarded.
@@ -99,6 +100,7 @@ src/lib/         env, config, logging, client info
 ## Scripts
 
 - `bun run dev`, watch mode
+- `bun run test`, Bun test suite
 - `bun run check`, Ultracite (oxlint + oxfmt) check
 - `bun run fix`, format and autofix
 - `bun run typecheck`, `tsc --noEmit`
