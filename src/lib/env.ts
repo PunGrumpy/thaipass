@@ -8,9 +8,19 @@ import { z } from "zod";
  *
  * The AI Pass cookie contains `;` and spaces, which a POSIX shell `source` would
  * split into separate commands and truncate. We split each line on the first `=`
- * and keep the rest verbatim. A real environment variable (e.g. systemd
- * `Environment=AIPASS_HOST`) always wins; the file only fills what is unset.
+ * and keep the rest verbatim, apart from one matched pair of surrounding quotes.
+ * A real environment variable (e.g. systemd `Environment=AIPASS_HOST`) always
+ * wins; the file only fills what is unset.
  */
+const unquote = (value: string): string => {
+  const quote = value.at(0);
+  const quoted =
+    value.length >= 2 &&
+    (quote === '"' || quote === "'") &&
+    value.at(-1) === quote;
+  return quoted ? value.slice(1, -1) : value;
+};
+
 const loadEnvFile = (path: string): void => {
   let contents: string;
   try {
@@ -30,7 +40,7 @@ const loadEnvFile = (path: string): void => {
     }
     const key = line.slice(0, eq).trim();
     if (process.env[key] === undefined) {
-      process.env[key] = line.slice(eq + 1);
+      process.env[key] = unquote(line.slice(eq + 1));
     }
   }
 };
