@@ -1,0 +1,28 @@
+{
+  "name": "aipass-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenAI-compatible /v1/chat/completions proxy in front of the AI Pass (de.aipass.net) chat backend.",
+  "bin": {
+    "aipass-proxy": "src/index.ts"
+  },
+  "type": "module",
+  "module": "src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "ultracite check",
+    "fix": "ultracite fix"
+  },
+  "dependencies": {
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "oxfmt": "^0.66.0",
+    "oxlint": "^1.81.0",
+    "typescript": "^7.0.2",
+    "ultracite": "7.10.7"
+  }
+}
