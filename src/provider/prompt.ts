@@ -33,7 +33,7 @@ export const convertPrompt = (
   const warnings: LanguageModelV2CallWarning[] = [];
   if (dropped.size > 0) {
     warnings.push({
-      message: `AI Pass reads text only, so ${[...dropped].toSorted().join(", ")} parts were dropped`,
+      message: `the provider dropped ${[...dropped].toSorted().join(", ")} parts because AI Pass reads text only`,
       type: "other",
     });
   }

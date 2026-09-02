@@ -56,7 +56,7 @@ test("warns once naming every part type it dropped", () => {
   ]);
   expect(warnings).toHaveLength(1);
   expect(warnings[0]).toEqual({
-    message: "AI Pass reads text only, so file parts were dropped",
+    message: "the provider dropped file parts because AI Pass reads text only",
     type: "other",
   });
 });

@@ -61,7 +61,7 @@ Model ids are case-sensitive and Claude carries a `@provider` suffix (`claude-op
 
 ## Using it as an AI SDK provider
 
-The proxy exists for OpenAI clients. If the caller is already an AI SDK app, it can skip the HTTP hop entirely and talk to AI Pass through a `LanguageModelV2` implementation instead.
+The proxy exists for OpenAI clients. An AI SDK app does not need it. `createAipass` returns models that `streamText` and `generateText` accept, and the call reaches AI Pass without an HTTP hop of its own.
 
 ```ts
 import { streamText } from "ai";
@@ -75,9 +75,9 @@ const result = streamText({
 });
 ```
 
-It shares everything below the wire format with the proxy: the same throwaway conversation, the same flattening, the same delete on the way out. A model id outside the catalog throws `NoSuchModelError`; an upstream answer that is not an event stream throws `APICallError`.
+It calls the same `src/aipass` code the route does: one throwaway conversation per call, the messages flattened into a single turn, a delete on the way out. A model id outside the catalog throws `NoSuchModelError`. An upstream answer that is not an event stream throws `APICallError`.
 
-AI Pass accepts a model id and messages and nothing else, so `temperature`, `maxOutputTokens`, `seed`, `stopSequences`, `responseFormat`, the penalties, `topP`/`topK`, tools and `toolChoice` all arrive as `unsupported-setting` or `unsupported-tool` warnings on the stream. File parts and tool results are dropped with a warning too. `usage` is undefined for the same reason it is zero over HTTP.
+AI Pass reads a model id and messages, nothing else. So `temperature`, `maxOutputTokens`, `seed`, `stopSequences`, `responseFormat`, the penalties, `topP` and `topK` come back as `unsupported-setting` warnings, and tools and `toolChoice` as `unsupported-tool`. The provider drops file parts and tool results and names the types it dropped. `usage` is undefined, for the same reason it is zero over HTTP.
 
 ## Deploying
 
@@ -92,7 +92,7 @@ Two Bun-only settings do not apply on Vercel: `AIPASS_HOST` / `AIPASS_PORT`, and
 
 ## Notes
 
-- `usage` on a non-streaming reply is always zeros. AI Pass reports no token counts, and guessing them from character counts would be worse than saying nothing, so a client that meters spend from this field will read 0.
+- `usage` on a non-streaming reply is always zeros. AI Pass reports no token counts, and a character-count estimate would look right while being wrong, so a client that meters spend from this field reads 0.
 - The cookie is short-lived. When it expires, requests fail with `upstream 3xx ... cookie is stale`. Send a fresh one; nothing on the server needs to change.
 - Prompts and cookies never reach the logs. Each request emits one wide event carrying sizes, counts and timings, plus the upstream status, `reasoningChars` for thinking models, and a count of the SSE payloads that failed to decode with the `type` of each one.
 - Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`. Fields are flat, so `model`, `msToFirstChunk` and `country` arrive as filterable properties rather than one opaque object. Startup lines are not forwarded.
