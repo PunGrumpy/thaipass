@@ -16,6 +16,8 @@
     "fix": "ultracite fix"
   },
   "dependencies": {
+    "@t3-oss/env-core": "^0.13.11",
+    "elysia": "^2.0.0-beta.11",
     "zod": "^4.5.4"
   },
   "devDependencies": {
