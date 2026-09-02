@@ -8,6 +8,9 @@
   },
   "type": "module",
   "module": "src/index.ts",
+  "exports": {
+    "./provider": "./src/provider/aipass.ts"
+  },
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --watch src/index.ts",

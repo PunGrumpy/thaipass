@@ -59,6 +59,26 @@ curl -sN localhost:3789/v1/chat/completions \
 
 Model ids are case-sensitive and Claude carries a `@provider` suffix (`claude-opus-5@azure`, `claude-sonnet-5@default`). An id outside the catalog is rejected with 400 rather than forwarded. The full list is in [`src/aipass/models.ts`](src/aipass/models.ts). `gemini-3.1-flash-lite` is the free default.
 
+## Using it as an AI SDK provider
+
+The proxy exists for OpenAI clients. If the caller is already an AI SDK app, it can skip the HTTP hop entirely and talk to AI Pass through a `LanguageModelV2` implementation instead.
+
+```ts
+import { streamText } from "ai";
+import { createAipass } from "aipass-proxy/provider";
+
+const aipass = createAipass({ cookie: process.env.AIPASS_COOKIE ?? "" });
+
+const result = streamText({
+  model: aipass("claude-sonnet-5@default"),
+  prompt: "hi",
+});
+```
+
+It shares everything below the wire format with the proxy: the same throwaway conversation, the same flattening, the same delete on the way out. A model id outside the catalog throws `NoSuchModelError`; an upstream answer that is not an event stream throws `APICallError`.
+
+AI Pass accepts a model id and messages and nothing else, so `temperature`, `maxOutputTokens`, `seed`, `stopSequences`, `responseFormat`, the penalties, `topP`/`topK`, tools and `toolChoice` all arrive as `unsupported-setting` or `unsupported-tool` warnings on the stream. File parts and tool results are dropped with a warning too. `usage` is undefined for the same reason it is zero over HTTP.
+
 ## Deploying
 
 `src/app.ts` builds the Elysia app and starts nothing, so both entry points share it.
@@ -91,8 +111,9 @@ api/index.ts     Vercel fetch handler
 src/routes/      one module per endpoint
 src/aipass/      upstream: client, session cookie, model catalog, quotas, SSE stream
 src/openai/      wire format: request schema, chunk and completion shapes, error shape
+src/provider/    LanguageModelV2 implementation, for AI SDK callers
 src/translate.ts flattens an OpenAI conversation into the single turn AI Pass reads
-src/lib/         env, config, logging, client info
+src/lib/         env, config, logging, client info, stream guards
 src/testing/     helpers shared between test files
 ```
 
