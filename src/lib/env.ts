@@ -20,6 +20,6 @@ export const env = createEnv({
     AIPASS_ORIGIN: z.url().default("https://de.aipass.net"),
     AIPASS_PORT: z.coerce.number().int().positive().default(3789),
     POSTHOG_API_KEY: z.string().optional(),
-    POSTHOG_HOST: z.url().optional().default("https://us.posthog.com"),
+    POSTHOG_HOST: z.url().optional().default("https://us.i.posthog.com"),
   },
 });
