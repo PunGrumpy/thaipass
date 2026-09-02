@@ -1,6 +1,6 @@
 import { env } from "./env.ts";
 
-/** Everything the proxy needs at runtime: validated env plus fixed constants. */
+/** The validated environment, plus the constants nobody configures. */
 export interface Config {
   readonly origin: string;
   readonly host: string;

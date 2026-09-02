@@ -21,7 +21,7 @@ cp .env.example ~/.config/aipass-proxy.env   # then chmod 600 and fill AIPASS_CO
 bun run start
 ```
 
-`AIPASS_COOKIE` is the full `Cookie:` header from a logged-in browser session, and it must include `__Secure-ai_passport_auth.session_token`. The proxy parses the env file itself, dotenv-style. Never `source` it in a shell, because the cookie contains `;` and spaces that a shell would split into separate commands.
+`AIPASS_COOKIE` is the full `Cookie:` header from a logged-in browser session, and it must include `__Secure-ai_passport_auth.session_token`. The proxy parses the env file itself, dotenv-style. Never `source` it in a shell, because the cookie contains `;` and spaces that a shell would split into separate commands. Quoting a value is fine. The loader strips one matched pair of surrounding quotes, then checks every `AIPASS_*` variable and exits naming the one that is wrong.
 
 | var | default | notes |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ Model ids are case-sensitive and Claude carries a `@provider` suffix (`claude-op
 ## Layout
 
 ```
-src/index.ts     Elysia app: error mapping, body parsing, route mounting
+src/index.ts     builds the Elysia app and starts the server
 src/routes/      one module per endpoint
 src/lib/         env, config, the AI Pass client, wire-format translation
 ```

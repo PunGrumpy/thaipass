@@ -1,7 +1,6 @@
 /**
- * OpenAI clients only know how to read `{ error: { message } }`, so every
- * failure the proxy reports, its own or one relayed from upstream, uses this
- * shape.
+ * OpenAI clients only read `{ error: { message } }`. Every failure the proxy
+ * reports uses this shape, whether it came from the proxy or from upstream.
  */
 export interface ApiError {
   readonly error: { readonly message: string };
