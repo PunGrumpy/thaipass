@@ -30,6 +30,10 @@ const chatRequest = (stream: boolean): Request =>
     method: "POST",
   });
 
+const errorSchema = z.object({
+  error: z.object({ message: z.string() }),
+});
+
 const chunkSchema = z.object({
   choices: z.array(z.object({ logprobs: z.null() })),
   created: z.number(),
@@ -53,6 +57,24 @@ test("rejects a request without the session cookie", async () => {
     })
   );
   expect(response.status).toBe(401);
+});
+
+test("tells a caller who sent only the token what to send instead", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)));
+  const response = await app.fetch(
+    new Request("https://proxy.test/v1/chat/completions", {
+      body: JSON.stringify({ messages: [] }),
+      headers: {
+        authorization: "Bearer jMgaPqgp9D0H9FErUXCpPpMf",
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+  );
+  const body = errorSchema.parse(await response.json());
+  expect(response.status).toBe(401);
+  expect(body.error.message).toContain("whole Cookie header");
+  expect(body.error.message).not.toContain("jMgaPqgp9D0H9FErUXCpPpMf");
 });
 
 test("streams the upstream deltas as openai chunks", async () => {

@@ -332,14 +332,12 @@ export const chatRoutes = new Elysia()
     "/v1/chat/completions",
     { body: chatRequestSchema },
     ({ body, request, log, deferEmit }) => {
-      const cookie = cookieFromRequest(request);
-      if (!cookie) {
-        log.set({ status: 401 });
-        return errorResponse(
-          "missing AI Pass session cookie, send it as Authorization: Bearer <cookie>",
-          401
-        );
+      const lookup = cookieFromRequest(request);
+      if (!lookup.ok) {
+        log.set({ authReason: lookup.reason, status: 401 });
+        return errorResponse(lookup.reason, 401);
       }
+      const { cookie } = lookup;
       const clientId = clientIdFromCookie(cookie);
       log.set({ clientId });
       return handleChat(clientId, cookie, body, request.signal, log, deferEmit);
