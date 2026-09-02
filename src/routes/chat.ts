@@ -8,6 +8,8 @@ import { errorResponse } from "../lib/http.ts";
 import { requestLogger } from "../lib/logger.ts";
 import type { DeferredEmit } from "../lib/logger.ts";
 import { DEFAULT_MODEL } from "../lib/models.ts";
+import { fetchCredits } from "../lib/quotas.ts";
+import type { Credits } from "../lib/quotas.ts";
 import {
   chatChunk,
   chatCompletion,
@@ -22,6 +24,16 @@ import type {
 } from "../lib/translate.ts";
 
 const encoder = new TextEncoder();
+
+const recordCredits = async (
+  credits: Promise<Credits | null>,
+  log: RequestLogger
+): Promise<void> => {
+  const snapshot = await credits;
+  if (snapshot) {
+    log.set({ ...snapshot });
+  }
+};
 const DETAIL_LIMIT = 300;
 const COMPLETION_ID_LENGTH = 16;
 
@@ -67,7 +79,8 @@ const streamCompletion = (
   conversationId: string,
   log: RequestLogger,
   deferEmit: DeferredEmit,
-  startedAt: number
+  startedAt: number,
+  credits: Promise<Credits | null>
 ): Response => {
   deferEmit.value = true;
   const stream = new ReadableStream<Uint8Array>({
@@ -123,6 +136,7 @@ const streamCompletion = (
         status: 200,
         undecodedEvents: skips.count,
       });
+      await recordCredits(credits, log);
       log.emit();
     },
   });
@@ -142,7 +156,8 @@ const bufferedCompletion = async (
   body: ReadableStream<Uint8Array>,
   conversationId: string,
   log: RequestLogger,
-  startedAt: number
+  startedAt: number,
+  credits: Promise<Credits | null>
 ): Promise<Response> => {
   let content = "";
   let finishReason = "stop";
@@ -177,6 +192,7 @@ const bufferedCompletion = async (
       undecodedEvents: skips.count,
     });
   }
+  await recordCredits(credits, log);
   return Response.json(chatCompletion(id, model, content, finishReason));
 };
 
@@ -188,6 +204,7 @@ const handleChat = async (
   deferEmit: DeferredEmit
 ): Promise<Response> => {
   const startedAt = Date.now();
+  const credits = fetchCredits(cookie, signal);
   const { messages = [], model = DEFAULT_MODEL, stream } = body;
   const wantStream = stream !== false;
   const id = `chatcmpl-${crypto
@@ -214,6 +231,7 @@ const handleChat = async (
   } catch (error) {
     log.set({ status: 502 });
     log.error(error instanceof Error ? error : new Error(String(error)));
+    await recordCredits(credits, log);
     return errorResponse(`upstream fetch failed: ${error}`, 502);
   }
 
@@ -226,6 +244,7 @@ const handleChat = async (
     upstreamStatus: upstream.status,
   });
   if (!upstreamBody || !contentType.includes("event-stream")) {
+    await recordCredits(credits, log);
     return await upstreamError(cookie, upstream, conversationId, log);
   }
 
@@ -238,7 +257,8 @@ const handleChat = async (
         conversationId,
         log,
         deferEmit,
-        startedAt
+        startedAt,
+        credits
       )
     : await bufferedCompletion(
         cookie,
@@ -247,7 +267,8 @@ const handleChat = async (
         upstreamBody,
         conversationId,
         log,
-        startedAt
+        startedAt,
+        credits
       );
 };
 
