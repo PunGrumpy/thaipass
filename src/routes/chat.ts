@@ -57,6 +57,18 @@ const recordUpstream = async (
 const DETAIL_LIMIT = 300;
 const COMPLETION_ID_LENGTH = 16;
 const CLIENT_CLOSED_STATUS = 499;
+const DONE_FRAME = "data: [DONE]\n\n";
+
+interface Completion {
+  readonly body: ReadableStream<Uint8Array>;
+  readonly conversationId: string;
+  readonly cookie: string;
+  readonly facts: UpstreamFacts;
+  readonly id: string;
+  readonly log: RequestLogger;
+  readonly model: string;
+  readonly startedAt: number;
+}
 
 const upstreamError = async (
   cookie: string,
@@ -93,16 +105,11 @@ const upstreamError = async (
 };
 
 const streamCompletion = (
-  cookie: string,
-  id: string,
-  model: string,
-  body: ReadableStream<Uint8Array>,
-  conversationId: string,
-  log: RequestLogger,
-  deferEmit: DeferredEmit,
-  startedAt: number,
-  facts: UpstreamFacts
+  completion: Completion,
+  deferEmit: DeferredEmit
 ): Response => {
+  const { body, conversationId, cookie, facts, id, log, model, startedAt } =
+    completion;
   deferEmit.value = true;
   let open = true;
   const stream = new ReadableStream<Uint8Array>({
@@ -110,18 +117,22 @@ const streamCompletion = (
       open = false;
     },
     async start(controller) {
-      const write = (frame: string): void => {
+      const attempt = (action: () => void): void => {
         if (!open) {
           return;
         }
         try {
-          controller.enqueue(encoder.encode(frame));
+          action();
         } catch {
           open = false;
         }
       };
       const send = (payload: ChatCompletionChunk): void => {
-        write(`data: ${JSON.stringify(payload)}\n\n`);
+        attempt(() =>
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
+          )
+        );
       };
       let finishReason = "stop";
       const skips: SSESkips = { count: 0, types: new Set() };
@@ -161,7 +172,7 @@ const streamCompletion = (
         );
       } finally {
         send(chatChunk(id, model, {}, finishReason));
-        write("data: [DONE]\n\n");
+        attempt(() => controller.enqueue(encoder.encode(DONE_FRAME)));
         await deleteConversation(cookie, conversationId);
         log.set({
           clientAborted: !open,
@@ -176,13 +187,7 @@ const streamCompletion = (
         });
         await recordUpstream(facts, model, log);
         log.emit();
-        if (open) {
-          try {
-            controller.close();
-          } catch {
-            open = false;
-          }
-        }
+        attempt(() => controller.close());
       }
     },
   });
@@ -196,15 +201,10 @@ const streamCompletion = (
 };
 
 const bufferedCompletion = async (
-  cookie: string,
-  id: string,
-  model: string,
-  body: ReadableStream<Uint8Array>,
-  conversationId: string,
-  log: RequestLogger,
-  startedAt: number,
-  facts: UpstreamFacts
+  completion: Completion
 ): Promise<Response> => {
+  const { body, conversationId, cookie, facts, id, log, model, startedAt } =
+    completion;
   let content = "";
   let finishReason = "stop";
   const skips: SSESkips = { count: 0, types: new Set() };
@@ -301,28 +301,19 @@ const handleChat = async (
     return await upstreamError(cookie, upstream, conversationId, log);
   }
 
+  const completion: Completion = {
+    body: upstreamBody,
+    conversationId,
+    cookie,
+    facts,
+    id,
+    log,
+    model,
+    startedAt,
+  };
   return wantStream
-    ? streamCompletion(
-        cookie,
-        id,
-        model,
-        upstreamBody,
-        conversationId,
-        log,
-        deferEmit,
-        startedAt,
-        facts
-      )
-    : await bufferedCompletion(
-        cookie,
-        id,
-        model,
-        upstreamBody,
-        conversationId,
-        log,
-        startedAt,
-        facts
-      );
+    ? streamCompletion(completion, deferEmit)
+    : await bufferedCompletion(completion);
 };
 
 export const chatRoutes = new Elysia()
