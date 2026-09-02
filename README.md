@@ -80,13 +80,20 @@ Two Bun-only settings do not apply on Vercel: `AIPASS_HOST` / `AIPASS_PORT`, and
 
 ## Layout
 
+The proxy is an adapter between two wire formats, so the two sides live apart and only meet in `src/translate.ts`.
+
 ```
 src/app.ts       the Elysia app, error mapping, body parsing, route mounting
 src/index.ts     local Bun server
 api/index.ts     Vercel fetch handler
 src/routes/      one module per endpoint
-src/lib/         env, config, auth, client info, logging, the AI Pass client, translation
+src/aipass/      upstream: client, session cookie, model catalog, quotas, SSE stream
+src/openai/      wire format: request schema, chunk and completion shapes, error shape
+src/translate.ts flattens an OpenAI conversation into the single turn AI Pass reads
+src/lib/         env, config, logging, client info
 ```
+
+`src/openai/schema.ts` is the one file that reaches across, for the model enum: the proxy only accepts models AI Pass serves.
 
 ## Scripts
 

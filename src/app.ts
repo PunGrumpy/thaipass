@@ -1,8 +1,8 @@
 import { Elysia, NotFound, ParseError, ValidationError, status } from "elysia";
 import { log } from "evlog";
 
-import { apiError } from "./lib/http.ts";
 import { requestLogger } from "./lib/logger.ts";
+import { apiError } from "./openai/errors.ts";
 import { chatRoutes } from "./routes/chat.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { modelRoutes } from "./routes/models.ts";

@@ -1,4 +1,4 @@
-import { env } from "./env.ts";
+import { env } from "./env";
 
 export interface Config {
   readonly origin: string;

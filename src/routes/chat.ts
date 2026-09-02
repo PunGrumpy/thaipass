@@ -1,27 +1,22 @@
 import { Elysia } from "elysia";
 import type { RequestLogger } from "evlog";
 
-import { deleteConversation, sendMessage } from "../lib/aipass.ts";
-import type { SendResult } from "../lib/aipass.ts";
-import { clientIdFromCookie, cookieFromRequest } from "../lib/auth.ts";
-import { errorResponse } from "../lib/http.ts";
+import { deleteConversation, sendMessage } from "../aipass/client.ts";
+import type { SendResult } from "../aipass/client.ts";
+import { DEFAULT_MODEL } from "../aipass/models.ts";
+import { fetchCredits } from "../aipass/quotas.ts";
+import type { Credits } from "../aipass/quotas.ts";
+import { clientIdFromCookie, cookieFromRequest } from "../aipass/session.ts";
+import { parseAipassSSE } from "../aipass/stream.ts";
+import type { SSESkips } from "../aipass/stream.ts";
 import { requestLogger } from "../lib/logger.ts";
 import type { DeferredEmit } from "../lib/logger.ts";
-import { DEFAULT_MODEL } from "../lib/models.ts";
-import { fetchCredits } from "../lib/quotas.ts";
-import type { Credits } from "../lib/quotas.ts";
-import {
-  chatChunk,
-  chatCompletion,
-  chatRequestSchema,
-  parseAipassSSE,
-  toAipassMessages,
-} from "../lib/translate.ts";
-import type {
-  ChatCompletionChunk,
-  ChatRequest,
-  SSESkips,
-} from "../lib/translate.ts";
+import { errorResponse } from "../openai/errors.ts";
+import { chatRequestSchema } from "../openai/schema.ts";
+import type { ChatRequest } from "../openai/schema.ts";
+import { chatChunk, chatCompletion } from "../openai/wire.ts";
+import type { ChatCompletionChunk } from "../openai/wire.ts";
+import { toAipassMessages } from "../translate.ts";
 
 const encoder = new TextEncoder();
 

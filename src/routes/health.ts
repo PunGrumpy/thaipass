@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
 
+import { CHAT_MODELS } from "../aipass/models.ts";
 import { config } from "../lib/config.ts";
-import { CHAT_MODELS } from "../lib/models.ts";
 
 const health = () => ({
   models: CHAT_MODELS.length,
