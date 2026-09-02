@@ -32,7 +32,7 @@ initLogger({
   drain: posthog ? requestsOnly : undefined,
   env: { service: "aipass-proxy" },
   redact: {
-    builtins: ["email", "creditCard", "jwt", "bearer", "phone", "iban"],
+    builtins: ["creditCard", "jwt", "bearer", "phone", "iban"],
   },
 });
 
