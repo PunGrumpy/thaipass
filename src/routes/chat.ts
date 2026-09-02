@@ -18,6 +18,7 @@ import type { DeferredEmit } from "../lib/logger";
 import { guardController } from "../lib/stream";
 import type { GuardedController } from "../lib/stream";
 import { errorResponse } from "../openai/errors";
+import type { UpstreamError } from "../openai/errors";
 import { chatRequestSchema } from "../openai/schema";
 import type { ChatRequest } from "../openai/schema";
 import { chatChunk, chatCompletion } from "../openai/wire";
@@ -104,16 +105,14 @@ const upstreamError = async (
     upstreamStatus: response.status,
   });
   log.error(new Error(`upstream ${response.status}${hint}`));
-  return Response.json(
-    {
-      error: {
-        detail: detail.slice(0, DETAIL_LIMIT),
-        location: location ?? undefined,
-        message: `upstream ${response.status} (${contentType || "no content-type"})${hint}`,
-      },
+  const body: UpstreamError = {
+    error: {
+      detail: detail.slice(0, DETAIL_LIMIT),
+      location: location ?? undefined,
+      message: `upstream ${response.status} (${contentType || "no content-type"})${hint}`,
     },
-    { status: 502 }
-  );
+  };
+  return Response.json(body, { status: 502 });
 };
 
 const streamCompletion = (

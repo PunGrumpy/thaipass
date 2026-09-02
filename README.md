@@ -49,6 +49,12 @@ A bad value fails at startup naming the variable, rather than surfacing later as
 - `POST /v1/chat/completions`, streaming and non-streaming
 - `GET /v1/models`, the chat model catalog
 - `GET /health`
+- `GET /openapi.json`, the OpenAPI 3.1 document
+- `GET /`, that document rendered by Scalar
+
+The document is built from the same Zod schemas the proxy validates with, so the model enum, the request body and every response shape come from the code rather than a copy of it. `/` used to repeat the health payload; `/health` still serves it.
+
+Anyone who can reach the deployment can read the docs, which describe how to drive the proxy. That is one more reason to keep Deployment Protection on. See [Deploying](#deploying).
 
 ```bash
 curl -sN localhost:3789/v1/chat/completions \
@@ -115,6 +121,7 @@ src/routes/      one module per endpoint
 src/aipass/      upstream: client, session cookie, model catalog, quotas, SSE stream
 src/openai/      wire format: request schema, chunk and completion shapes, error shape
 src/provider/    LanguageModelV2 implementation, for AI SDK callers
+src/openapi/     the OpenAPI document and the Scalar page
 src/translate.ts flattens an OpenAI conversation into the single turn AI Pass reads
 src/lib/         env, config, logging, client info, stream guards
 src/testing/     helpers shared between test files
