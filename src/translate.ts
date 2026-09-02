@@ -11,9 +11,7 @@ const roleLabel = (role: OpenAIRole): string => {
   return "User";
 };
 
-export const flattenConversation = (
-  messages: readonly OpenAIMessage[]
-): string => {
+const flattenConversation = (messages: readonly OpenAIMessage[]): string => {
   const system = messages
     .filter((m) => m.role === "system")
     .map((m) => m.content)

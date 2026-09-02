@@ -1,27 +1,11 @@
 import { log } from "evlog";
 
 import { config } from "../lib/config";
+import { browserPostHeaders } from "./request";
 import type { AipassMessage } from "./stream";
 
 const CONVERSATION_ID_LENGTH = 16;
 const TITLE_PREVIEW_LENGTH = 400;
-
-const browserHeaders = (
-  cookie: string,
-  referer: string,
-  contentType: string
-) => ({
-  accept: "*/*",
-  "accept-language": "th-TH,th;q=0.9,en;q=0.8",
-  "content-type": contentType,
-  cookie,
-  origin: config.origin,
-  referer,
-  "sec-fetch-dest": "empty",
-  "sec-fetch-mode": "cors",
-  "sec-fetch-site": "same-origin",
-  "user-agent": config.userAgent,
-});
 
 const postAction = async (
   cookie: string,
@@ -32,7 +16,7 @@ const postAction = async (
 ): Promise<number> => {
   const response = await fetch(`${config.origin}${path}`, {
     body: new URLSearchParams(fields).toString(),
-    headers: browserHeaders(
+    headers: browserPostHeaders(
       cookie,
       referer,
       "application/x-www-form-urlencoded;charset=UTF-8"
@@ -114,7 +98,7 @@ export const sendMessage = async (
     `${config.origin}/actions/send-message/${conversationId}`,
     {
       body: JSON.stringify({ messages, modelId }),
-      headers: browserHeaders(
+      headers: browserPostHeaders(
         cookie,
         `${config.origin}/chat/${conversationId}`,
         "application/json"

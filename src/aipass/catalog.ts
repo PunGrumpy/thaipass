@@ -1,8 +1,8 @@
 import { log } from "evlog";
 import { z } from "zod";
 
-import { config } from "../lib/config";
 import { CHAT_MODELS, MEDIA_MODELS } from "./models";
+import { loadJson } from "./request";
 
 const CATALOG_PATH = "/loaders/list-models";
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -50,34 +50,12 @@ const load = async (
   cookie: string,
   signal: AbortSignal | undefined
 ): Promise<Catalog | null> => {
-  let payload: unknown;
-  try {
-    const response = await fetch(`${config.origin}${CATALOG_PATH}`, {
-      headers: {
-        accept: "*/*",
-        cookie,
-        referer: `${config.origin}/chat`,
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        "user-agent": config.userAgent,
-      },
-      redirect: "manual",
-      signal,
-    });
-    if (!response.ok) {
-      return null;
-    }
-    payload = await response.json();
-  } catch {
-    return null;
-  }
-  const decoded = catalogSchema.safeParse(payload);
-  if (!decoded.success) {
+  const listed = await loadJson(CATALOG_PATH, catalogSchema, cookie, signal);
+  if (!listed) {
     return null;
   }
   return new Map(
-    decoded.data.data.map((entry) => [
+    listed.data.map((entry) => [
       entry.id,
       { free: entry.isFreeCredit ?? false, ready: entry.ready ?? true },
     ])

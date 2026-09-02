@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { config } from "../lib/config";
+import { loadJson } from "./request";
 
 const QUOTA_PATH = "/loaders/get-usage-quota";
 
@@ -29,33 +29,11 @@ export const fetchCredits = async (
   cookie: string,
   signal: AbortSignal | undefined
 ): Promise<Credits | null> => {
-  let payload: unknown;
-  try {
-    const response = await fetch(`${config.origin}${QUOTA_PATH}`, {
-      headers: {
-        accept: "*/*",
-        cookie,
-        referer: `${config.origin}/chat`,
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        "user-agent": config.userAgent,
-      },
-      redirect: "manual",
-      signal,
-    });
-    if (!response.ok) {
-      return null;
-    }
-    payload = await response.json();
-  } catch {
+  const quota = await loadJson(QUOTA_PATH, quotaResponseSchema, cookie, signal);
+  if (!quota) {
     return null;
   }
-  const decoded = quotaResponseSchema.safeParse(payload);
-  if (!decoded.success) {
-    return null;
-  }
-  const { credits, creditsDecimals, periodEndsAt } = decoded.data.creditStatus;
+  const { credits, creditsDecimals, periodEndsAt } = quota.creditStatus;
   const scale = 10 ** creditsDecimals;
   return {
     creditsAvailable: Number(credits.available) / scale,
