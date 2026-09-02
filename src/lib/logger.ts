@@ -9,7 +9,7 @@ import { env } from "./env";
 const posthog = env.POSTHOG_API_KEY
   ? createPostHogDrain({
       apiKey: env.POSTHOG_API_KEY,
-      distinctIdField: "clientId",
+      distinctIdField: "userId",
       eventName: "aipass_proxy_request",
       host: env.POSTHOG_HOST,
       mode: "events",

@@ -5,6 +5,8 @@ import { fetchCatalog } from "../aipass/catalog";
 import type { Catalog } from "../aipass/catalog";
 import { deleteConversation, sendMessage } from "../aipass/client";
 import type { SendResult } from "../aipass/client";
+import { fetchIdentity } from "../aipass/identity";
+import type { Identity } from "../aipass/identity";
 import { DEFAULT_MODEL } from "../aipass/models";
 import { fetchCredits } from "../aipass/quotas";
 import type { Credits } from "../aipass/quotas";
@@ -40,6 +42,7 @@ const failUpstream = (
 interface UpstreamFacts {
   readonly credits: Promise<Credits | null>;
   readonly catalog: Promise<Catalog | null>;
+  readonly identity: Promise<Identity | null>;
 }
 
 const recordUpstream = async (
@@ -47,9 +50,16 @@ const recordUpstream = async (
   model: string,
   log: RequestLogger
 ): Promise<void> => {
-  const [credits, catalog] = await Promise.all([facts.credits, facts.catalog]);
+  const [credits, catalog, identity] = await Promise.all([
+    facts.credits,
+    facts.catalog,
+    facts.identity,
+  ]);
   if (credits) {
     log.set({ ...credits });
+  }
+  if (identity) {
+    log.set({ ...identity });
   }
   const entry = catalog?.get(model);
   if (entry) {
@@ -249,6 +259,7 @@ const handleChat = async (
   const facts: UpstreamFacts = {
     catalog: fetchCatalog(clientId, cookie, signal),
     credits: fetchCredits(cookie, signal),
+    identity: fetchIdentity(clientId, cookie, signal),
   };
   const { messages = [], model = DEFAULT_MODEL, stream } = body;
   const wantStream = stream !== false;

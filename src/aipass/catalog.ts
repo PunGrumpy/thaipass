@@ -1,6 +1,7 @@
 import { log } from "evlog";
 import { z } from "zod";
 
+import { ttlCache } from "../lib/cache";
 import { CHAT_MODELS, MEDIA_MODELS } from "./models";
 import { loadJson } from "./request";
 
@@ -24,12 +25,7 @@ export interface CatalogEntry {
 
 export type Catalog = ReadonlyMap<string, CatalogEntry>;
 
-interface CacheEntry {
-  readonly expiresAt: number;
-  readonly catalog: Catalog;
-}
-
-const cache = new Map<string, CacheEntry>();
+const cache = ttlCache<Catalog>(CACHE_TTL_MS);
 
 const served: ReadonlySet<string> = new Set<string>([
   ...CHAT_MODELS,
@@ -67,21 +63,15 @@ export const fetchCatalog = async (
   cookie: string,
   signal: AbortSignal | undefined
 ): Promise<Catalog | null> => {
-  const now = Date.now();
-  for (const [key, entry] of cache) {
-    if (entry.expiresAt <= now) {
-      cache.delete(key);
-    }
-  }
   const cached = cache.get(clientId);
   if (cached) {
-    return cached.catalog;
+    return cached;
   }
   const catalog = await load(cookie, signal);
   if (!catalog) {
     return null;
   }
-  cache.set(clientId, { catalog, expiresAt: now + CACHE_TTL_MS });
+  cache.set(clientId, catalog);
   reportDrift(catalog);
   return catalog;
 };

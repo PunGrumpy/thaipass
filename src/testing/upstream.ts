@@ -23,7 +23,10 @@ const pathOf = (input: string | URL | Request): string => {
   return url.replace(config.origin, "");
 };
 
-export const stubUpstream = (respond: () => Response): Upstream => {
+export const stubUpstream = (
+  respond: () => Response,
+  extra?: (path: string) => Response | undefined
+): Upstream => {
   const realFetch = globalThis.fetch;
   const calls: string[] = [];
   const deletion = Promise.withResolvers<true>();
@@ -35,6 +38,10 @@ export const stubUpstream = (respond: () => Response): Upstream => {
     }
     if (path.startsWith(SEND_PREFIX)) {
       return Promise.resolve(respond());
+    }
+    const routed = extra?.(path);
+    if (routed) {
+      return Promise.resolve(routed);
     }
     if (path.startsWith("/loaders/")) {
       return Promise.resolve(new Response("{}", { status: 404 }));
