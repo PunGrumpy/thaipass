@@ -115,6 +115,7 @@ const streamCompletion = (
       const skips: SSESkips = { count: 0, types: new Set() };
       let deltas = 0;
       let chars = 0;
+      let reasoningChars = 0;
       let msToFirstChunk: number | undefined;
       try {
         for await (const event of parseAipassSSE(body, skips)) {
@@ -123,6 +124,8 @@ const streamCompletion = (
             deltas += 1;
             chars += event.text.length;
             send(chatChunk(id, model, { content: event.text }, null));
+          } else if (event.kind === "reasoning") {
+            reasoningChars += event.text.length;
           } else if (event.kind === "finish") {
             finishReason = event.reason;
           } else {
@@ -152,6 +155,7 @@ const streamCompletion = (
         deltas,
         finishReason,
         msToFirstChunk,
+        reasoningChars,
         replyChars: chars,
         status: 200,
         undecodedEvents: skips.count,
@@ -184,6 +188,7 @@ const bufferedCompletion = async (
   let finishReason = "stop";
   const skips: SSESkips = { count: 0, types: new Set() };
   let deltas = 0;
+  let reasoningChars = 0;
   let msToFirstChunk: number | undefined;
   try {
     for await (const event of parseAipassSSE(body, skips)) {
@@ -191,6 +196,8 @@ const bufferedCompletion = async (
         msToFirstChunk ??= Date.now() - startedAt;
         deltas += 1;
         content += event.text;
+      } else if (event.kind === "reasoning") {
+        reasoningChars += event.text.length;
       } else if (event.kind === "finish") {
         finishReason = event.reason;
       } else {
@@ -209,6 +216,7 @@ const bufferedCompletion = async (
       deltas,
       finishReason,
       msToFirstChunk,
+      reasoningChars,
       replyChars: content.length,
       undecodedEvents: skips.count,
       undecodedTypes: [...skips.types].join(","),

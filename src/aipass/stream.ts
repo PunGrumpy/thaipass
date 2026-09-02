@@ -1,3 +1,4 @@
+import { parseJsonEventStream } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
 export interface AipassMessage {
@@ -9,6 +10,7 @@ export interface AipassMessage {
 
 export type StreamEvent =
   | { readonly kind: "delta"; readonly text: string }
+  | { readonly kind: "reasoning"; readonly text: string }
   | { readonly kind: "finish"; readonly reason: string }
   | { readonly kind: "error"; readonly message: string };
 
@@ -21,6 +23,7 @@ const optionalText = z
 
 const upstreamEventSchema = z.discriminatedUnion("type", [
   z.object({ delta: z.string(), type: z.literal("text-delta") }),
+  z.object({ delta: z.string(), type: z.literal("reasoning-delta") }),
   z.object({ finishReason: optionalText, type: z.literal("finish") }),
   z.object({
     error: optionalText,
@@ -40,61 +43,40 @@ export const parseAipassSSE = async function* parseAipassSSE(
   body: ReadableStream<Uint8Array>,
   skips?: SSESkips
 ): AsyncGenerator<StreamEvent> {
-  const decoder = new TextDecoder();
-  let buffer = "";
-  for await (const value of body) {
-    buffer += decoder.decode(value, { stream: true });
-    let newline = buffer.indexOf("\n");
-    while (newline >= 0) {
-      const line = buffer.slice(0, newline).replace(/\r$/u, "");
-      buffer = buffer.slice(newline + 1);
-      newline = buffer.indexOf("\n");
-      if (!line.startsWith("data:")) {
-        continue;
-      }
-      const payload = line.slice(5).trim();
-      if (payload.length === 0) {
-        continue;
-      }
-      if (payload === "[DONE]") {
-        return;
-      }
-      let raw: unknown;
-      try {
-        raw = JSON.parse(payload);
-      } catch {
-        if (skips) {
-          skips.count += 1;
+  const chunks = parseJsonEventStream({
+    schema: upstreamEventSchema,
+    stream: body,
+  });
+  for await (const chunk of chunks) {
+    if (!chunk.success) {
+      if (skips) {
+        skips.count += 1;
+        const named = skippedTypeSchema.safeParse(chunk.rawValue);
+        if (named.success) {
+          skips.types.add(named.data.type);
         }
-        continue;
       }
-      const decoded = upstreamEventSchema.safeParse(raw);
-      if (!decoded.success) {
-        if (skips) {
-          skips.count += 1;
-          const named = skippedTypeSchema.safeParse(raw);
-          if (named.success) {
-            skips.types.add(named.data.type);
-          }
-        }
-        continue;
+      continue;
+    }
+    const event = chunk.value;
+    switch (event.type) {
+      case "text-delta": {
+        yield { kind: "delta", text: event.delta };
+        break;
       }
-      const event = decoded.data;
-      switch (event.type) {
-        case "text-delta": {
-          yield { kind: "delta", text: event.delta };
-          break;
-        }
-        case "finish": {
-          yield { kind: "finish", reason: event.finishReason ?? "stop" };
-          break;
-        }
-        default: {
-          yield {
-            kind: "error",
-            message: event.errorText ?? event.error ?? "upstream error",
-          };
-        }
+      case "reasoning-delta": {
+        yield { kind: "reasoning", text: event.delta };
+        break;
+      }
+      case "finish": {
+        yield { kind: "finish", reason: event.finishReason ?? "stop" };
+        break;
+      }
+      default: {
+        yield {
+          kind: "error",
+          message: event.errorText ?? event.error ?? "upstream error",
+        };
       }
     }
   }
