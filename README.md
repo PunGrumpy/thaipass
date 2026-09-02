@@ -34,11 +34,13 @@ bun run start
 
 Configuration is environment only. Bun loads a local `.env` on its own; every value has a default, so no file is required.
 
-| var             | default                 | notes                           |
-| --------------- | ----------------------- | ------------------------------- |
-| `AIPASS_ORIGIN` | `https://de.aipass.net` |                                 |
-| `AIPASS_HOST`   | `127.0.0.1`             | bind address, local server only |
-| `AIPASS_PORT`   | `3789`                  | local server only               |
+| var | default | notes |
+| --- | --- | --- |
+| `AIPASS_ORIGIN` | `https://de.aipass.net` |  |
+| `AIPASS_HOST` | `127.0.0.1` | bind address, local server only |
+| `AIPASS_PORT` | `3789` | local server only |
+| `POSTHOG_API_KEY` | none | optional, enables the PostHog drain |
+| `POSTHOG_HOST` | `https://us.i.posthog.com` | optional |
 
 A bad value fails at startup naming the variable, rather than surfacing later as a malformed URL.
 
@@ -71,7 +73,9 @@ Two Bun-only settings do not apply on Vercel: `AIPASS_HOST` / `AIPASS_PORT`, and
 ## Notes
 
 - The cookie is short-lived. When it expires, requests fail with `upstream 3xx ... cookie is stale`. Send a fresh one; nothing on the server needs to change.
-- Prompts and cookies never reach the logs. Each request emits one wide event carrying sizes and counts, plus the upstream status and a count of SSE payloads that failed to decode.
+- Prompts and cookies never reach the logs. Each request emits one wide event carrying sizes, counts and timings, plus the upstream status and a count of SSE payloads that failed to decode.
+- Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`. Fields are flat, so `model`, `msToFirstChunk` and `country` arrive as filterable properties rather than one opaque object. Startup lines are not forwarded.
+- Callers are identified by IP, user agent, Vercel's geo headers, and `clientId`, a SHA-256 prefix of the cookie that groups one session without revealing it. IPv4 redaction is off so the address survives; emails, JWTs, bearer tokens, cards, phones and IBANs are still masked.
 
 ## Layout
 
@@ -80,7 +84,7 @@ src/app.ts       the Elysia app, error mapping, body parsing, route mounting
 src/index.ts     local Bun server
 api/index.ts     Vercel fetch handler
 src/routes/      one module per endpoint
-src/lib/         env, config, auth, logging, the AI Pass client, translation
+src/lib/         env, config, auth, client info, logging, the AI Pass client, translation
 ```
 
 ## Scripts
