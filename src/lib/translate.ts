@@ -124,8 +124,13 @@ export const toAipassMessages = (
   },
 ];
 
+export interface SSESkips {
+  count: number;
+}
+
 export const parseAipassSSE = async function* parseAipassSSE(
-  body: ReadableStream<Uint8Array>
+  body: ReadableStream<Uint8Array>,
+  skips?: SSESkips
 ): AsyncGenerator<StreamEvent> {
   const decoder = new TextDecoder();
   let buffer = "";
@@ -150,10 +155,16 @@ export const parseAipassSSE = async function* parseAipassSSE(
       try {
         raw = JSON.parse(payload);
       } catch {
+        if (skips) {
+          skips.count += 1;
+        }
         continue;
       }
       const decoded = upstreamEventSchema.safeParse(raw);
       if (!decoded.success) {
+        if (skips) {
+          skips.count += 1;
+        }
         continue;
       }
       const event = decoded.data;

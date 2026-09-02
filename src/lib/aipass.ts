@@ -1,3 +1,5 @@
+import { log } from "evlog";
+
 import { config } from "./config.ts";
 import type { AipassMessage } from "./translate.ts";
 
@@ -22,7 +24,7 @@ const postAction = async (
   referer: string,
   fields: Record<string, string>,
   signal?: AbortSignal
-): Promise<void> => {
+): Promise<number> => {
   const response = await fetch(`${config.origin}${path}`, {
     body: new URLSearchParams(fields).toString(),
     headers: browserHeaders(
@@ -34,6 +36,7 @@ const postAction = async (
     signal,
   });
   await response.arrayBuffer().catch(() => new ArrayBuffer(0));
+  return response.status;
 };
 
 const createConversation = async (
@@ -61,12 +64,17 @@ export const deleteConversation = async (
   conversationId: string
 ): Promise<void> => {
   try {
-    await postAction(
+    const status = await postAction(
       "/actions/update-conversation.data",
       `${config.origin}/chat/${conversationId}`,
       { conversationId, intent: "delete" }
     );
-  } catch {}
+    if (status >= 400) {
+      log.warn({ conversationId, msg: "delete rejected", status });
+    }
+  } catch (error) {
+    log.warn({ conversationId, err: String(error), msg: "delete failed" });
+  }
 };
 
 export interface SendResult {

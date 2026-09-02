@@ -1,8 +1,11 @@
 import { Elysia } from "elysia";
+import type { RequestLogger } from "evlog";
 
 import { deleteConversation, sendMessage } from "../lib/aipass.ts";
 import type { SendResult } from "../lib/aipass.ts";
 import { errorResponse } from "../lib/http.ts";
+import { requestLogger } from "../lib/logger.ts";
+import type { DeferredEmit } from "../lib/logger.ts";
 import { DEFAULT_MODEL } from "../lib/models.ts";
 import {
   chatChunk,
@@ -11,7 +14,11 @@ import {
   parseAipassSSE,
   toAipassMessages,
 } from "../lib/translate.ts";
-import type { ChatCompletionChunk, ChatRequest } from "../lib/translate.ts";
+import type {
+  ChatCompletionChunk,
+  ChatRequest,
+  SSESkips,
+} from "../lib/translate.ts";
 
 const encoder = new TextEncoder();
 const DETAIL_LIMIT = 300;
@@ -19,7 +26,8 @@ const COMPLETION_ID_LENGTH = 16;
 
 const upstreamError = async (
   response: Response,
-  conversationId: string
+  conversationId: string,
+  log: RequestLogger
 ): Promise<Response> => {
   const contentType = response.headers.get("content-type") ?? "";
   const location = response.headers.get("location");
@@ -30,6 +38,11 @@ const upstreamError = async (
     response.status < 400 &&
     (location ?? "").includes("sign-in");
   const hint = staleCookie ? "; cookie is stale, re-auth needed" : "";
+  log.set({
+    status: 502,
+    upstream: { contentType, staleCookie, status: response.status },
+  });
+  log.error(new Error(`upstream ${response.status}${hint}`));
   return Response.json(
     {
       error: {
@@ -46,8 +59,11 @@ const streamCompletion = (
   id: string,
   model: string,
   body: ReadableStream<Uint8Array>,
-  conversationId: string
+  conversationId: string,
+  log: RequestLogger,
+  deferEmit: DeferredEmit
 ): Response => {
+  deferEmit.value = true;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (payload: ChatCompletionChunk): void => {
@@ -57,13 +73,19 @@ const streamCompletion = (
       };
       send(chatChunk(id, model, { role: "assistant" }, null));
       let finishReason = "stop";
+      const skips: SSESkips = { count: 0 };
+      let deltas = 0;
+      let chars = 0;
       try {
-        for await (const event of parseAipassSSE(body)) {
+        for await (const event of parseAipassSSE(body, skips)) {
           if (event.kind === "delta") {
+            deltas += 1;
+            chars += event.text.length;
             send(chatChunk(id, model, { content: event.text }, null));
           } else if (event.kind === "finish") {
             finishReason = event.reason;
           } else {
+            log.error(new Error(`upstream stream: ${event.message}`));
             send(
               chatChunk(
                 id,
@@ -75,6 +97,8 @@ const streamCompletion = (
           }
         }
       } catch (error) {
+        log.error(error instanceof Error ? error : new Error(String(error)));
+        finishReason = "error";
         send(
           chatChunk(id, model, { content: `\n[proxy error: ${error}]` }, null)
         );
@@ -83,6 +107,11 @@ const streamCompletion = (
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       controller.close();
       deleteConversation(conversationId);
+      log.set({
+        status: 200,
+        stream: { chars, deltas, finishReason, skipped: skips.count },
+      });
+      log.emit();
     },
   });
   return new Response(stream, {
@@ -98,31 +127,49 @@ const bufferedCompletion = async (
   id: string,
   model: string,
   body: ReadableStream<Uint8Array>,
-  conversationId: string
+  conversationId: string,
+  log: RequestLogger
 ): Promise<Response> => {
   let content = "";
   let finishReason = "stop";
+  const skips: SSESkips = { count: 0 };
+  let deltas = 0;
   try {
-    for await (const event of parseAipassSSE(body)) {
+    for await (const event of parseAipassSSE(body, skips)) {
       if (event.kind === "delta") {
+        deltas += 1;
         content += event.text;
       } else if (event.kind === "finish") {
         finishReason = event.reason;
       } else {
+        log.set({ status: 502 });
+        log.error(new Error(`upstream stream: ${event.message}`));
         return errorResponse(event.message, 502);
       }
     }
   } catch (error) {
+    log.set({ status: 502 });
+    log.error(error instanceof Error ? error : new Error(String(error)));
     return errorResponse(`stream error: ${error}`, 502);
   } finally {
     deleteConversation(conversationId);
+    log.set({
+      stream: {
+        chars: content.length,
+        deltas,
+        finishReason,
+        skipped: skips.count,
+      },
+    });
   }
   return Response.json(chatCompletion(id, model, content, finishReason));
 };
 
 const handleChat = async (
   body: ChatRequest,
-  signal: AbortSignal
+  signal: AbortSignal,
+  log: RequestLogger,
+  deferEmit: DeferredEmit
 ): Promise<Response> => {
   const { messages = [], model = DEFAULT_MODEL, stream } = body;
   const wantStream = stream !== false;
@@ -130,6 +177,16 @@ const handleChat = async (
     .randomUUID()
     .replaceAll("-", "")
     .slice(0, COMPLETION_ID_LENGTH)}`;
+
+  log.set({
+    chat: {
+      id,
+      messages: messages.length,
+      model,
+      promptChars: messages.reduce((sum, m) => sum + m.content.length, 0),
+      stream: wantStream,
+    },
+  });
 
   let result: SendResult;
   try {
@@ -139,23 +196,29 @@ const handleChat = async (
       signal
     );
   } catch (error) {
+    log.set({ status: 502 });
+    log.error(error instanceof Error ? error : new Error(String(error)));
     return errorResponse(`upstream fetch failed: ${error}`, 502);
   }
 
   const { response: upstream, conversationId } = result;
   const contentType = upstream.headers.get("content-type") ?? "";
   const upstreamBody = upstream.ok ? upstream.body : null;
+  log.set({ upstream: { conversationId, status: upstream.status } });
   if (!upstreamBody || !contentType.includes("event-stream")) {
-    return await upstreamError(upstream, conversationId);
+    return await upstreamError(upstream, conversationId, log);
   }
 
   return wantStream
-    ? streamCompletion(id, model, upstreamBody, conversationId)
-    : await bufferedCompletion(id, model, upstreamBody, conversationId);
+    ? streamCompletion(id, model, upstreamBody, conversationId, log, deferEmit)
+    : await bufferedCompletion(id, model, upstreamBody, conversationId, log);
 };
 
-export const chatRoutes = new Elysia().post(
-  "/v1/chat/completions",
-  { body: chatRequestSchema },
-  ({ body, request }) => handleChat(body, request.signal)
-);
+export const chatRoutes = new Elysia()
+  .use(requestLogger)
+  .post(
+    "/v1/chat/completions",
+    { body: chatRequestSchema },
+    ({ body, request, log, deferEmit }) =>
+      handleChat(body, request.signal, log, deferEmit)
+  );
