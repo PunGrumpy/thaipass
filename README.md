@@ -42,12 +42,20 @@ curl -sN localhost:3789/v1/chat/completions -H 'content-type: application/json' 
   -d '{"model":"claude-sonnet-5@default","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-Model ids are case-sensitive and Claude carries a `@provider` suffix (`claude-opus-5@azure`, `claude-sonnet-5@default`). The full list is in [`src/models.ts`](src/models.ts). `gemini-3.1-flash-lite` is the free default.
+Model ids are case-sensitive and Claude carries a `@provider` suffix (`claude-opus-5@azure`, `claude-sonnet-5@default`). The full list is in [`src/lib/models.ts`](src/lib/models.ts). `gemini-3.1-flash-lite` is the free default.
 
 ## Notes
 
 - The cookie is short-lived. When it expires, requests fail with `upstream 3xx ... cookie is stale`. Refresh the cookie in the env file and restart.
 - The proxy has no auth of its own. Bind it to a trusted interface, loopback or a private VPN address, never a public one. The cookie grants full account access.
+
+## Layout
+
+```
+src/index.ts     Elysia app: error mapping, body parsing, route mounting
+src/routes/      one module per endpoint
+src/lib/         env, config, the AI Pass client, wire-format translation
+```
 
 ## Scripts
 
