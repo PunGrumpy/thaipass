@@ -3,7 +3,7 @@ import type { RequestLogger } from "evlog";
 
 import { deleteConversation, sendMessage } from "../lib/aipass.ts";
 import type { SendResult } from "../lib/aipass.ts";
-import { cookieFromRequest } from "../lib/auth.ts";
+import { clientIdFromCookie, cookieFromRequest } from "../lib/auth.ts";
 import { errorResponse } from "../lib/http.ts";
 import { requestLogger } from "../lib/logger.ts";
 import type { DeferredEmit } from "../lib/logger.ts";
@@ -41,8 +41,10 @@ const upstreamError = async (
     (location ?? "").includes("sign-in");
   const hint = staleCookie ? "; cookie is stale, re-auth needed" : "";
   log.set({
+    staleCookie,
     status: 502,
-    upstream: { contentType, staleCookie, status: response.status },
+    upstreamContentType: contentType,
+    upstreamStatus: response.status,
   });
   log.error(new Error(`upstream ${response.status}${hint}`));
   return Response.json(
@@ -64,7 +66,8 @@ const streamCompletion = (
   body: ReadableStream<Uint8Array>,
   conversationId: string,
   log: RequestLogger,
-  deferEmit: DeferredEmit
+  deferEmit: DeferredEmit,
+  startedAt: number
 ): Response => {
   deferEmit.value = true;
   const stream = new ReadableStream<Uint8Array>({
@@ -79,9 +82,11 @@ const streamCompletion = (
       const skips: SSESkips = { count: 0 };
       let deltas = 0;
       let chars = 0;
+      let msToFirstChunk: number | undefined;
       try {
         for await (const event of parseAipassSSE(body, skips)) {
           if (event.kind === "delta") {
+            msToFirstChunk ??= Date.now() - startedAt;
             deltas += 1;
             chars += event.text.length;
             send(chatChunk(id, model, { content: event.text }, null));
@@ -111,8 +116,12 @@ const streamCompletion = (
       controller.close();
       deleteConversation(cookie, conversationId);
       log.set({
+        deltas,
+        finishReason,
+        msToFirstChunk,
+        replyChars: chars,
         status: 200,
-        stream: { chars, deltas, finishReason, skipped: skips.count },
+        undecodedEvents: skips.count,
       });
       log.emit();
     },
@@ -132,15 +141,18 @@ const bufferedCompletion = async (
   model: string,
   body: ReadableStream<Uint8Array>,
   conversationId: string,
-  log: RequestLogger
+  log: RequestLogger,
+  startedAt: number
 ): Promise<Response> => {
   let content = "";
   let finishReason = "stop";
   const skips: SSESkips = { count: 0 };
   let deltas = 0;
+  let msToFirstChunk: number | undefined;
   try {
     for await (const event of parseAipassSSE(body, skips)) {
       if (event.kind === "delta") {
+        msToFirstChunk ??= Date.now() - startedAt;
         deltas += 1;
         content += event.text;
       } else if (event.kind === "finish") {
@@ -158,12 +170,11 @@ const bufferedCompletion = async (
   } finally {
     deleteConversation(cookie, conversationId);
     log.set({
-      stream: {
-        chars: content.length,
-        deltas,
-        finishReason,
-        skipped: skips.count,
-      },
+      deltas,
+      finishReason,
+      msToFirstChunk,
+      replyChars: content.length,
+      undecodedEvents: skips.count,
     });
   }
   return Response.json(chatCompletion(id, model, content, finishReason));
@@ -176,6 +187,7 @@ const handleChat = async (
   log: RequestLogger,
   deferEmit: DeferredEmit
 ): Promise<Response> => {
+  const startedAt = Date.now();
   const { messages = [], model = DEFAULT_MODEL, stream } = body;
   const wantStream = stream !== false;
   const id = `chatcmpl-${crypto
@@ -184,13 +196,11 @@ const handleChat = async (
     .slice(0, COMPLETION_ID_LENGTH)}`;
 
   log.set({
-    chat: {
-      id,
-      messages: messages.length,
-      model,
-      promptChars: messages.reduce((sum, m) => sum + m.content.length, 0),
-      stream: wantStream,
-    },
+    completionId: id,
+    messageCount: messages.length,
+    model,
+    promptChars: messages.reduce((sum, m) => sum + m.content.length, 0),
+    streaming: wantStream,
   });
 
   let result: SendResult;
@@ -210,7 +220,11 @@ const handleChat = async (
   const { response: upstream, conversationId } = result;
   const contentType = upstream.headers.get("content-type") ?? "";
   const upstreamBody = upstream.ok ? upstream.body : null;
-  log.set({ upstream: { conversationId, status: upstream.status } });
+  log.set({
+    conversationId,
+    msToUpstream: Date.now() - startedAt,
+    upstreamStatus: upstream.status,
+  });
   if (!upstreamBody || !contentType.includes("event-stream")) {
     return await upstreamError(cookie, upstream, conversationId, log);
   }
@@ -223,7 +237,8 @@ const handleChat = async (
         upstreamBody,
         conversationId,
         log,
-        deferEmit
+        deferEmit,
+        startedAt
       )
     : await bufferedCompletion(
         cookie,
@@ -231,7 +246,8 @@ const handleChat = async (
         model,
         upstreamBody,
         conversationId,
-        log
+        log,
+        startedAt
       );
 };
 
@@ -249,6 +265,7 @@ export const chatRoutes = new Elysia()
           401
         );
       }
+      log.set({ clientId: clientIdFromCookie(cookie) });
       return handleChat(cookie, body, request.signal, log, deferEmit);
     }
   );

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 const SESSION_TOKEN = "__Secure-ai_passport_auth.session_token";
 
 export const cookieFromRequest = (request: Request): string | null => {
@@ -15,3 +17,8 @@ export const cookieFromRequest = (request: Request): string | null => {
   }
   return cookie;
 };
+
+const CLIENT_ID_LENGTH = 16;
+
+export const clientIdFromCookie = (cookie: string): string =>
+  createHash("sha256").update(cookie).digest("hex").slice(0, CLIENT_ID_LENGTH);

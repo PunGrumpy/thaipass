@@ -2,8 +2,6 @@ import { createEnv } from "@t3-oss/env-core";
 import { log } from "evlog";
 import { z } from "zod";
 
-const DEFAULT_PORT = 3789;
-
 export const env = createEnv({
   emptyStringAsUndefined: true,
   onValidationError: (issues) => {
@@ -18,8 +16,10 @@ export const env = createEnv({
   },
   runtimeEnv: process.env,
   server: {
-    AIPASS_HOST: z.string().min(1).default("127.0.0.1"),
+    AIPASS_HOST: z.string().default("127.0.0.1"),
     AIPASS_ORIGIN: z.url().default("https://de.aipass.net"),
-    AIPASS_PORT: z.coerce.number().int().positive().default(DEFAULT_PORT),
+    AIPASS_PORT: z.coerce.number().int().positive().default(3789),
+    POSTHOG_API_KEY: z.string().optional(),
+    POSTHOG_HOST: z.url().optional().default("https://us.posthog.com"),
   },
 });
