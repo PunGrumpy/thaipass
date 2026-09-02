@@ -2,7 +2,7 @@
 
 An OpenAI-compatible `/v1/chat/completions` proxy in front of the [AI Pass](https://de.aipass.net) chat backend. It lets a personal tool (t3, Codex, any OpenAI client) reach the same models the account already sees in the web UI: Claude Opus 5, GPT-5.6, Gemini 3.x, GLM 5.2, DeepSeek, Grok, and others.
 
-> **Personal use only.** This drives _your own_ AI Pass account with _your own_ session cookie, from _your own_ machine. It is not for redistribution, multiple accounts, or any kind of scale. See [Scope](#scope).
+> **Personal use only.** Every request carries the caller's own AI Pass session cookie, so the proxy stores no credential and drives no account but the caller's. It is still not for redistribution or any kind of scale. See [Scope](#scope).
 
 ## How it works
 
@@ -13,23 +13,34 @@ AI Pass is a stateful chat app that speaks the Vercel AI SDK v5 UI-message strea
 3. **Streams the reply.** The `text-delta` SSE events become OpenAI `chat.completion.chunk`s, or accumulate into one non-streaming response.
 4. **Deletes the conversation.** `POST /actions/update-conversation.data` with `intent=delete`, so the account's chat list stays clean.
 
+## Authentication
+
+The proxy holds no credential. Each request must carry the caller's own AI Pass session cookie in the `Authorization` header:
+
+```
+Authorization: Bearer <full Cookie header value>
+```
+
+The value is the whole `Cookie:` header from a logged-in browser session and must contain `__Secure-ai_passport_auth.session_token`; anything else is rejected with 401. Semicolons and spaces inside it are fine. In an OpenAI client, paste it into the API key field. A client that requires the key to look like `sk-...` will not work.
+
+`GET /v1/models` and `GET /health` need no credential.
+
 ## Setup
 
 ```bash
 bun install
-cp .env.example ~/.config/aipass-proxy.env   # then chmod 600 and fill AIPASS_COOKIE
 bun run start
 ```
 
-`AIPASS_COOKIE` is the full `Cookie:` header from a logged-in browser session, and it must include `__Secure-ai_passport_auth.session_token`. The proxy parses the env file itself, dotenv-style. Never `source` it in a shell, because the cookie contains `;` and spaces that a shell would split into separate commands. Quoting a value is fine. The loader strips one matched pair of surrounding quotes, then checks every `AIPASS_*` variable and exits naming the one that is wrong.
+Configuration is environment only. Bun loads a local `.env` on its own; every value has a default, so no file is required.
 
-| var | default | notes |
-| --- | --- | --- |
-| `AIPASS_COOKIE` | none | required; full Cookie header value |
-| `AIPASS_ORIGIN` | `https://de.aipass.net` |  |
-| `AIPASS_HOST` | `127.0.0.1` | bind address; keep off `0.0.0.0` |
-| `AIPASS_PORT` | `3789` |  |
-| `AIPASS_ENV_FILE` | `~/.config/aipass-proxy.env` |  |
+| var             | default                 | notes                           |
+| --------------- | ----------------------- | ------------------------------- |
+| `AIPASS_ORIGIN` | `https://de.aipass.net` |                                 |
+| `AIPASS_HOST`   | `127.0.0.1`             | bind address, local server only |
+| `AIPASS_PORT`   | `3789`                  | local server only               |
+
+A bad value fails at startup naming the variable, rather than surfacing later as a malformed URL.
 
 ## Endpoints
 
@@ -38,23 +49,38 @@ bun run start
 - `GET /health`
 
 ```bash
-curl -sN localhost:3789/v1/chat/completions -H 'content-type: application/json' \
+curl -sN localhost:3789/v1/chat/completions \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $COOKIE" \
   -d '{"model":"claude-sonnet-5@default","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-Model ids are case-sensitive and Claude carries a `@provider` suffix (`claude-opus-5@azure`, `claude-sonnet-5@default`). The full list is in [`src/lib/models.ts`](src/lib/models.ts). `gemini-3.1-flash-lite` is the free default.
+Model ids are case-sensitive and Claude carries a `@provider` suffix (`claude-opus-5@azure`, `claude-sonnet-5@default`). An id outside the catalog is rejected with 400 rather than forwarded. The full list is in [`src/lib/models.ts`](src/lib/models.ts). `gemini-3.1-flash-lite` is the free default.
+
+## Deploying
+
+`src/app.ts` builds the Elysia app and starts nothing, so both entry points share it.
+
+- Local: `src/index.ts` calls `.listen()`, which is what `bun run start` and `bun run dev` use.
+- Vercel: `api/index.ts` exports a fetch handler and `vercel.json` rewrites every path to it.
+
+Because the deployment stores no credential, a leaked URL leaks nothing. It is still an open relay to AI Pass for anyone holding a valid cookie, so keep Vercel's Deployment Protection on unless you want it reachable.
+
+Two Bun-only settings do not apply on Vercel: `AIPASS_HOST` / `AIPASS_PORT`, and the 240s idle timeout. A long stream is bounded by the platform's function duration instead, so a slow model can be cut off mid-reply.
 
 ## Notes
 
-- The cookie is short-lived. When it expires, requests fail with `upstream 3xx ... cookie is stale`. Refresh the cookie in the env file and restart.
-- The proxy has no auth of its own. Bind it to a trusted interface, loopback or a private VPN address, never a public one. The cookie grants full account access.
+- The cookie is short-lived. When it expires, requests fail with `upstream 3xx ... cookie is stale`. Send a fresh one; nothing on the server needs to change.
+- Prompts and cookies never reach the logs. Each request emits one wide event carrying sizes and counts, plus the upstream status and a count of SSE payloads that failed to decode.
 
 ## Layout
 
 ```
-src/index.ts     builds the Elysia app and starts the server
+src/app.ts       the Elysia app, error mapping, body parsing, route mounting
+src/index.ts     local Bun server
+api/index.ts     Vercel fetch handler
 src/routes/      one module per endpoint
-src/lib/         env, config, logging, the AI Pass client, wire-format translation
+src/lib/         env, config, auth, logging, the AI Pass client, translation
 ```
 
 ## Scripts
@@ -66,4 +92,4 @@ src/lib/         env, config, logging, the AI Pass client, wire-format translati
 
 ## Scope
 
-This is a reverse-engineered adapter over an undocumented private API. Keep it to a single account you own, for your own use. Don't publish it as a service, point it at accounts that aren't yours, or run it at a scale that would burden the shared program.
+This is a reverse-engineered adapter over an undocumented private API. Keep it to a single account you own, for your own use. Don't publish it as a service, point it at accounts that aren't yours, or run it at a scale that would burden the shared program. Asking other people for their session cookie means asking them to trust you with full access to their account, which is a good reason not to.
