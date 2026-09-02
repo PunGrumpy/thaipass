@@ -56,6 +56,7 @@ const recordUpstream = async (
 };
 const DETAIL_LIMIT = 300;
 const COMPLETION_ID_LENGTH = 16;
+const CLIENT_CLOSED_STATUS = 499;
 
 const upstreamError = async (
   cookie: string,
@@ -66,7 +67,7 @@ const upstreamError = async (
   const contentType = response.headers.get("content-type") ?? "";
   const location = response.headers.get("location");
   const detail = response.body ? await response.text().catch(() => "") : "";
-  deleteConversation(cookie, conversationId);
+  await deleteConversation(cookie, conversationId);
   const staleCookie =
     response.status >= 300 &&
     response.status < 400 &&
@@ -103,14 +104,25 @@ const streamCompletion = (
   facts: UpstreamFacts
 ): Response => {
   deferEmit.value = true;
+  let open = true;
   const stream = new ReadableStream<Uint8Array>({
+    cancel() {
+      open = false;
+    },
     async start(controller) {
-      const send = (payload: ChatCompletionChunk): void => {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
-        );
+      const write = (frame: string): void => {
+        if (!open) {
+          return;
+        }
+        try {
+          controller.enqueue(encoder.encode(frame));
+        } catch {
+          open = false;
+        }
       };
-      send(chatChunk(id, model, { role: "assistant" }, null));
+      const send = (payload: ChatCompletionChunk): void => {
+        write(`data: ${JSON.stringify(payload)}\n\n`);
+      };
       let finishReason = "stop";
       const skips: SSESkips = { count: 0, types: new Set() };
       let deltas = 0;
@@ -118,6 +130,7 @@ const streamCompletion = (
       let reasoningChars = 0;
       let msToFirstChunk: number | undefined;
       try {
+        send(chatChunk(id, model, { role: "assistant" }, null));
         for await (const event of parseAipassSSE(body, skips)) {
           if (event.kind === "delta") {
             msToFirstChunk ??= Date.now() - startedAt;
@@ -146,23 +159,31 @@ const streamCompletion = (
         send(
           chatChunk(id, model, { content: `\n[proxy error: ${error}]` }, null)
         );
+      } finally {
+        send(chatChunk(id, model, {}, finishReason));
+        write("data: [DONE]\n\n");
+        await deleteConversation(cookie, conversationId);
+        log.set({
+          clientAborted: !open,
+          deltas,
+          finishReason,
+          msToFirstChunk,
+          reasoningChars,
+          replyChars: chars,
+          status: open ? 200 : CLIENT_CLOSED_STATUS,
+          undecodedEvents: skips.count,
+          undecodedTypes: [...skips.types].join(","),
+        });
+        await recordUpstream(facts, model, log);
+        log.emit();
+        if (open) {
+          try {
+            controller.close();
+          } catch {
+            open = false;
+          }
+        }
       }
-      send(chatChunk(id, model, {}, finishReason));
-      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-      controller.close();
-      deleteConversation(cookie, conversationId);
-      log.set({
-        deltas,
-        finishReason,
-        msToFirstChunk,
-        reasoningChars,
-        replyChars: chars,
-        status: 200,
-        undecodedEvents: skips.count,
-        undecodedTypes: [...skips.types].join(","),
-      });
-      await recordUpstream(facts, model, log);
-      log.emit();
     },
   });
   return new Response(stream, {
@@ -211,7 +232,7 @@ const bufferedCompletion = async (
   } catch (error) {
     return failUpstream(log, error, `stream error: ${error}`);
   } finally {
-    deleteConversation(cookie, conversationId);
+    await deleteConversation(cookie, conversationId);
     log.set({
       deltas,
       finishReason,
