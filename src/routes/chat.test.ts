@@ -13,6 +13,7 @@ import type { Upstream } from "../testing/upstream";
 
 const COOKIE = "__Secure-ai_passport_auth.session_token=abc.def";
 const FRAME_GAP_MS = 1;
+const SECOND_CROSSING_MS = 700;
 
 let upstream: Upstream;
 
@@ -28,6 +29,11 @@ const chatRequest = (stream: boolean): Request =>
     },
     method: "POST",
   });
+
+const chunkSchema = z.object({
+  choices: z.array(z.object({ logprobs: z.null() })),
+  created: z.number(),
+});
 
 const completionSchema = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string() }) })),
@@ -58,6 +64,31 @@ test("streams the upstream deltas as openai chunks", async () => {
   expect(text).toContain('"content":"chunk1"');
   expect(text).toContain("data: [DONE]");
   expect(await upstream.deleted()).toBe(true);
+});
+
+test("stamps every chunk of one stream with the same created", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(2), { pauseMs: SECOND_CROSSING_MS })
+  );
+  const response = await app.fetch(chatRequest(true));
+  const text = await response.text();
+  const stamps = new Set(
+    text
+      .split("\n")
+      .filter((line) => line.startsWith("data: {"))
+      .map((line) => chunkSchema.parse(JSON.parse(line.slice(6))).created)
+  );
+  expect(stamps.size).toBe(1);
+});
+
+test("carries the null logprobs openai sends", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)));
+  const response = await app.fetch(chatRequest(true));
+  const body = await response.text();
+  const first = body.split("\n").find((line) => line.startsWith("data: {"));
+  expect(
+    chunkSchema.parse(JSON.parse(first?.slice(6) ?? "{}")).choices[0]
+  ).toHaveProperty("logprobs", null);
 });
 
 test("deletes the conversation when the client cancels mid-stream", async () => {

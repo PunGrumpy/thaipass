@@ -21,7 +21,7 @@ import { errorResponse } from "../openai/errors";
 import type { UpstreamError } from "../openai/errors";
 import { chatRequestSchema } from "../openai/schema";
 import type { ChatRequest } from "../openai/schema";
-import { chatChunk, chatCompletion } from "../openai/wire";
+import { chatChunk, chatCompletion, createdAt } from "../openai/wire";
 import type { ChatCompletionChunk } from "../openai/wire";
 import { toAipassMessages } from "../translate";
 
@@ -122,6 +122,7 @@ const streamCompletion = (
   const { body, conversationId, cookie, facts, id, log, model, startedAt } =
     completion;
   deferEmit.value = true;
+  const created = createdAt(startedAt);
   let guarded: GuardedController<Uint8Array> | undefined;
   const stream = new ReadableStream<Uint8Array>({
     cancel() {
@@ -140,13 +141,13 @@ const streamCompletion = (
       let reasoningChars = 0;
       let msToFirstChunk: number | undefined;
       try {
-        send(chatChunk(id, model, { role: "assistant" }, null));
+        send(chatChunk(id, model, created, { role: "assistant" }, null));
         for await (const event of parseAipassSSE(body, skips)) {
           if (event.kind === "delta") {
             msToFirstChunk ??= Date.now() - startedAt;
             deltas += 1;
             chars += event.text.length;
-            send(chatChunk(id, model, { content: event.text }, null));
+            send(chatChunk(id, model, created, { content: event.text }, null));
           } else if (event.kind === "reasoning") {
             reasoningChars += event.text.length;
           } else if (event.kind === "finish") {
@@ -157,6 +158,7 @@ const streamCompletion = (
               chatChunk(
                 id,
                 model,
+                created,
                 { content: `\n[proxy: ${event.message}]` },
                 null
               )
@@ -167,10 +169,16 @@ const streamCompletion = (
         log.error(asError(error));
         finishReason = "error";
         send(
-          chatChunk(id, model, { content: `\n[proxy error: ${error}]` }, null)
+          chatChunk(
+            id,
+            model,
+            created,
+            { content: `\n[proxy error: ${error}]` },
+            null
+          )
         );
       } finally {
-        send(chatChunk(id, model, {}, finishReason));
+        send(chatChunk(id, model, created, {}, finishReason));
         out.enqueue(encoder.encode(DONE_FRAME));
         await deleteConversation(cookie, conversationId);
         log.set({
@@ -243,7 +251,9 @@ const bufferedCompletion = async (
     });
   }
   await recordUpstream(facts, model, log);
-  return Response.json(chatCompletion(id, model, content, finishReason));
+  return Response.json(
+    chatCompletion(id, model, createdAt(startedAt), content, finishReason)
+  );
 };
 
 const handleChat = async (
