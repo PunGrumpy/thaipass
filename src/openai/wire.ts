@@ -11,6 +11,7 @@ export const chatCompletionChunkSchema = z.object({
       delta: chatDeltaSchema,
       finish_reason: z.string().nullable(),
       index: z.number().int(),
+      logprobs: z.null(),
     })
   ),
   created: z.number().int(),
@@ -24,6 +25,7 @@ export const chatCompletionSchema = z.object({
     z.object({
       finish_reason: z.string(),
       index: z.number().int(),
+      logprobs: z.null(),
       message: z.object({
         content: z.string(),
         role: z.literal("assistant"),
@@ -45,16 +47,18 @@ export type ChatDelta = z.infer<typeof chatDeltaSchema>;
 export type ChatCompletionChunk = z.infer<typeof chatCompletionChunkSchema>;
 export type ChatCompletion = z.infer<typeof chatCompletionSchema>;
 
-const nowSeconds = (): number => Math.floor(Date.now() / 1000);
+export const createdAt = (startedAt: number): number =>
+  Math.floor(startedAt / 1000);
 
 export const chatChunk = (
   id: string,
   model: string,
+  created: number,
   delta: ChatDelta,
   finishReason: string | null
 ): ChatCompletionChunk => ({
-  choices: [{ delta, finish_reason: finishReason, index: 0 }],
-  created: nowSeconds(),
+  choices: [{ delta, finish_reason: finishReason, index: 0, logprobs: null }],
+  created,
   id,
   model,
   object: "chat.completion.chunk",
@@ -63,6 +67,7 @@ export const chatChunk = (
 export const chatCompletion = (
   id: string,
   model: string,
+  created: number,
   content: string,
   finishReason: string
 ): ChatCompletion => ({
@@ -70,10 +75,11 @@ export const chatCompletion = (
     {
       finish_reason: finishReason,
       index: 0,
+      logprobs: null,
       message: { content, role: "assistant" },
     },
   ],
-  created: nowSeconds(),
+  created,
   id,
   model,
   object: "chat.completion",
