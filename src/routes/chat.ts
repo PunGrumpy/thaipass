@@ -17,10 +17,6 @@ const encoder = new TextEncoder();
 const DETAIL_LIMIT = 300;
 const COMPLETION_ID_LENGTH = 16;
 
-/**
- * Turn an unusable upstream response (auth redirect, JSON error, wrong
- * content-type) into a 502 with a helpful message, cleaning up the conversation.
- */
 const upstreamError = async (
   response: Response,
   conversationId: string
@@ -124,10 +120,6 @@ const bufferedCompletion = async (
   return Response.json(chatCompletion(id, model, content, finishReason));
 };
 
-/**
- * The route schema has already decoded the body, so this only has to reach the
- * upstream and pick a response shape.
- */
 const handleChat = async (
   body: ChatRequest,
   signal: AbortSignal

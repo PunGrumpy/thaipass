@@ -17,11 +17,6 @@ const browserHeaders = (referer: string, contentType: string) => ({
   "user-agent": config.userAgent,
 });
 
-/**
- * POST a form-encoded React Router action and drain the response. These actions
- * are called for their side effect only, so the body is read and discarded to
- * free the connection.
- */
 const postAction = async (
   path: string,
   referer: string,
@@ -41,10 +36,6 @@ const postAction = async (
   await response.arrayBuffer().catch(() => new ArrayBuffer(0));
 };
 
-/**
- * Create a fresh conversation via `intent=create-conversation`. The conversation
- * id is the first 16 hex chars of the client-generated UUID.
- */
 const createConversation = async (
   reqUuid: string,
   modelId: string,
@@ -66,10 +57,6 @@ const createConversation = async (
   return reqUuid.replaceAll("-", "").slice(0, CONVERSATION_ID_LENGTH);
 };
 
-/**
- * Delete a throwaway conversation so the account's chat list does not fill with
- * one entry per request. Fire-and-forget: failures are swallowed.
- */
 export const deleteConversation = async (
   conversationId: string
 ): Promise<void> => {
@@ -79,9 +66,7 @@ export const deleteConversation = async (
       `${config.origin}/chat/${conversationId}`,
       { conversationId, intent: "delete" }
     );
-  } catch {
-    // best effort
-  }
+  } catch {}
 };
 
 export interface SendResult {
@@ -89,10 +74,6 @@ export interface SendResult {
   readonly conversationId: string;
 }
 
-/**
- * Create a fresh conversation, then stream the assistant's reply for the given
- * (already flattened) messages. The caller owns cleanup via `deleteConversation`.
- */
 export const sendMessage = async (
   modelId: string,
   messages: readonly AipassMessage[],
@@ -118,7 +99,7 @@ export const sendMessage = async (
         "application/json"
       ),
       method: "POST",
-      // a 302 -> /sign-in means the cookie is stale
+
       redirect: "manual",
       signal,
     }

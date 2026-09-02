@@ -1,6 +1,5 @@
 import { env } from "./env.ts";
 
-/** The validated environment, plus the constants nobody configures. */
 export interface Config {
   readonly origin: string;
   readonly host: string;
@@ -13,7 +12,7 @@ export interface Config {
 export const config: Config = {
   cookie: env.AIPASS_COOKIE,
   host: env.AIPASS_HOST,
-  // a slow model can take minutes to emit its first token
+
   idleTimeout: 240,
   origin: env.AIPASS_ORIGIN,
   port: env.AIPASS_PORT,

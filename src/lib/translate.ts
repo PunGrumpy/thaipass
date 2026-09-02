@@ -1,15 +1,7 @@
-// Translation between the OpenAI chat-completions shape and the AI Pass
-// (Vercel AI SDK v5 UI-message) shape. Both sides arrive as untrusted JSON, so
-// the schemas below decode every inbound payload before domain code sees it.
-
 import { z } from "zod";
 
 export type OpenAIRole = "system" | "user" | "assistant" | "tool";
 
-/**
- * A content part is either a bare string or an object carrying `text`. Both
- * decode to a string, so the rest of the proxy never sees the two forms.
- */
 const contentPartSchema = z.union([
   z.string(),
   z
@@ -17,12 +9,6 @@ const contentPartSchema = z.union([
     .transform((part) => part.text ?? ""),
 ]);
 
-/**
- * OpenAI allows content to be a string or a list of parts. Both decode to the
- * flat string AI Pass wants. The trailing `unknown` member absorbs null and any
- * other unexpected value, and `.optional()` absorbs a missing key, so content
- * the proxy cannot read decodes to "" instead of rejecting the whole request.
- */
 const contentSchema = z
   .union([
     z.string(),
@@ -35,7 +21,7 @@ const contentSchema = z
 const roleSchema = z
   .union([
     z.enum(["system", "user", "assistant", "tool"]),
-    // OpenAI keeps adding roles, so an unrecognized one reads as a user turn.
+
     z.unknown().transform((): OpenAIRole => "user"),
   ])
   .optional()
@@ -62,16 +48,11 @@ export interface AipassMessage {
   readonly parts: readonly { readonly type: "text"; readonly text: string }[];
 }
 
-/** A parsed, meaningful event out of the AI Pass SSE stream. */
 export type StreamEvent =
   | { readonly kind: "delta"; readonly text: string }
   | { readonly kind: "finish"; readonly reason: string }
   | { readonly kind: "error"; readonly message: string };
 
-/**
- * The upstream `data:` payloads this proxy acts on. Any other event type, or a
- * payload whose fields do not decode, is skipped by `parseAipassSSE`.
- */
 const optionalText = z
   .union([
     z.string(),
@@ -99,14 +80,6 @@ const roleLabel = (role: OpenAIRole): string => {
   return "User";
 };
 
-/**
- * The AI Pass chat backend is stateful. It answers from server-stored history
- * plus the latest turn, and ignores prior assistant/user entries sent together
- * in one request. So each request mints a fresh conversation with empty history
- * and flattens the whole OpenAI conversation into one user message, a
- * role-labelled transcript, putting all the context in the single turn the
- * backend reads.
- */
 export const flattenConversation = (
   messages: readonly OpenAIMessage[]
 ): string => {
@@ -117,7 +90,6 @@ export const flattenConversation = (
     .join("\n\n");
   const convo = messages.filter((m) => m.role !== "system");
 
-  // A single user turn with no system prompt: send it verbatim, no wrapping.
   if (system.length === 0 && convo.length === 1 && convo[0]?.role === "user") {
     return convo[0].content;
   }
@@ -152,12 +124,6 @@ export const toAipassMessages = (
   },
 ];
 
-/**
- * Parse the AI Pass `data: {...}` SSE stream, yielding only the events that
- * matter: text deltas, the terminal finish, and upstream errors.
- *
- * @yields {StreamEvent} the next meaningful event from the stream.
- */
 export const parseAipassSSE = async function* parseAipassSSE(
   body: ReadableStream<Uint8Array>
 ): AsyncGenerator<StreamEvent> {
@@ -210,8 +176,6 @@ export const parseAipassSSE = async function* parseAipassSSE(
     }
   }
 };
-
-// OpenAI wire-format helpers.
 
 export interface ChatDelta {
   role?: "assistant";

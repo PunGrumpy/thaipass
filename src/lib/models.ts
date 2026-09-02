@@ -1,10 +1,3 @@
-/**
- * Canonical AI Pass chat model ids, taken from the SPA's `/chat.data` loader.
- *
- * These are case-sensitive, and Claude carries a `@provider` routing suffix.
- * Image, video, and audio models are left out because this proxy only speaks
- * chat completions.
- */
 export const CHAT_MODELS = [
   "gpt-5.6-terra",
   "gpt-5.6-sol",
@@ -29,5 +22,4 @@ export const CHAT_MODELS = [
   "sonar-deep-research",
 ] as const;
 
-/** The one model that costs no credits, so it is the default. */
 export const DEFAULT_MODEL = "gemini-3.1-flash-lite";
