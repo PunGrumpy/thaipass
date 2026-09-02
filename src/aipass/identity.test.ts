@@ -13,8 +13,11 @@ interface SessionMember {
 }
 
 interface SessionUser {
-  readonly email?: string;
+  readonly email?: string | null;
+  readonly familyName?: string | null;
+  readonly givenName?: string | null;
   readonly id?: string;
+  readonly middleName?: string | null;
   readonly name?: string | null;
 }
 
@@ -66,10 +69,11 @@ afterEach(() => {
   upstream.restore();
 });
 
-test("reads the id, name and tier off the session", async () => {
+test("reads the id, name, email and tier off the session", async () => {
   upstream = stubIdentity(FULL);
   const identity = await fetchIdentity(nextClient(), COOKIE);
   expect(identity).toEqual({
+    userEmail: "someone@example.com",
     userId: "216048737100554638",
     userName: "Grumpy",
     userTier: "ผู้สร้างสรรค์",
@@ -77,21 +81,56 @@ test("reads the id, name and tier off the session", async () => {
   });
 });
 
-test("never carries the email through", async () => {
-  upstream = stubIdentity(FULL);
+test("joins the given, middle and family names", async () => {
+  upstream = stubIdentity(
+    envelope({
+      user: {
+        familyName: "Lovelace",
+        givenName: "Ada",
+        id: "42",
+        middleName: "Byron",
+        name: "Grumpy",
+      },
+    })
+  );
   const identity = await fetchIdentity(nextClient(), COOKIE);
-  expect(JSON.stringify(identity)).not.toContain("example.com");
+  expect(identity?.userName).toBe("Ada Byron Lovelace");
+});
+
+test("skips a null middle name", async () => {
+  upstream = stubIdentity(
+    envelope({
+      user: {
+        familyName: "Lovelace",
+        givenName: "Ada",
+        id: "42",
+        middleName: null,
+      },
+    })
+  );
+  const identity = await fetchIdentity(nextClient(), COOKIE);
+  expect(identity?.userName).toBe("Ada Lovelace");
 });
 
 test("keeps the id when the membership block is absent", async () => {
   upstream = stubIdentity(envelope({ user: { id: "42" } }));
   const identity = await fetchIdentity(nextClient(), COOKIE);
   expect(identity).toEqual({
+    userEmail: undefined,
     userId: "42",
     userName: undefined,
     userTier: undefined,
     userTierExp: undefined,
   });
+});
+
+test("treats a blank name and email as absent", async () => {
+  upstream = stubIdentity(
+    envelope({ user: { email: "  ", id: "42", name: "" } })
+  );
+  const identity = await fetchIdentity(nextClient(), COOKIE);
+  expect(identity?.userName).toBeUndefined();
+  expect(identity?.userEmail).toBeUndefined();
 });
 
 test("leaves the tier balance undefined when it is not a number", async () => {

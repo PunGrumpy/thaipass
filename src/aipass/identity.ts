@@ -15,18 +15,42 @@ const identityResponseSchema = z.object({
       })
       .nullish(),
     user: z.object({
+      email: z.string().nullish(),
+      familyName: z.string().nullish(),
+      givenName: z.string().nullish(),
       id: z.string(),
+      middleName: z.string().nullish(),
       name: z.string().nullish(),
     }),
   }),
 });
 
+type SessionUser = z.infer<typeof identityResponseSchema>["data"]["user"];
+
 export interface Identity {
+  readonly userEmail?: string;
   readonly userId: string;
   readonly userName?: string;
   readonly userTier?: string;
   readonly userTierExp?: number;
 }
+
+const isPresent = (value: string | null | undefined): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const text = (value: string | null | undefined): string | undefined =>
+  isPresent(value) ? value : undefined;
+
+/** AI Pass sends `name` as a display handle, separate from the split fields. */
+const displayName = (user: SessionUser): string | undefined => {
+  const parts = [user.givenName, user.middleName, user.familyName].filter(
+    isPresent
+  );
+  if (parts.length > 0) {
+    return parts.join(" ");
+  }
+  return text(user.name);
+};
 
 const cache = ttlCache<Identity>(CACHE_TTL_MS);
 
@@ -46,9 +70,10 @@ const load = async (
   const { member, user } = payload.data;
   const exp = Number(member?.currentTierExp);
   return {
+    userEmail: text(user.email),
     userId: user.id,
-    userName: user.name ?? undefined,
-    userTier: member?.tierName ?? undefined,
+    userName: displayName(user),
+    userTier: text(member?.tierName),
     userTierExp: Number.isFinite(exp) ? exp : undefined,
   };
 };
