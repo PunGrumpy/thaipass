@@ -2,6 +2,7 @@ import { NoSuchModelError } from "@ai-sdk/provider";
 import type { LanguageModelV2 } from "@ai-sdk/provider";
 
 import { chatModelSchema, DEFAULT_MODEL } from "../aipass/models";
+import type { ChatModel } from "../aipass/models";
 import { aipassModel } from "./model";
 
 export interface AipassProviderSettings {
@@ -9,7 +10,7 @@ export interface AipassProviderSettings {
 }
 
 export interface AipassProvider {
-  (modelId?: string): LanguageModelV2;
+  (modelId?: ChatModel): LanguageModelV2;
   readonly languageModel: (modelId?: string) => LanguageModelV2;
 }
 

@@ -53,7 +53,7 @@ test("exposes the v2 language model contract", () => {
 
 test("rejects a model outside the catalog", () => {
   upstream = stubUpstream(sseResponse([]));
-  expect(() => aipass("gpt-4o")).toThrow(NoSuchModelError);
+  expect(() => aipass.languageModel("gpt-4o")).toThrow(NoSuchModelError);
 });
 
 test("falls back to the free default when no model is named", () => {

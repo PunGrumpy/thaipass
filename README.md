@@ -75,7 +75,9 @@ const result = streamText({
 });
 ```
 
-It calls the same `src/aipass` code the route does: one throwaway conversation per call, the messages flattened into a single turn, a delete on the way out. A model id outside the catalog throws `NoSuchModelError`. An upstream answer that is not an event stream throws `APICallError`.
+`aipass(id)` takes an id from the catalog and autocompletes it. `aipass.languageModel(id)` takes any string, which is what `ProviderV2` asks for and what a model id read from config looks like; an id outside the catalog throws `NoSuchModelError` there.
+
+It calls the same `src/aipass` code the route does: one throwaway conversation per call, the messages flattened into a single turn, a delete on the way out. An upstream answer that is not an event stream throws `APICallError`.
 
 AI Pass reads a model id and messages, nothing else. So `temperature`, `maxOutputTokens`, `seed`, `stopSequences`, `responseFormat`, the penalties, `topP` and `topK` come back as `unsupported-setting` warnings, and tools and `toolChoice` as `unsupported-tool`. The provider drops file parts and tool results and names the types it dropped. `usage` is undefined, for the same reason it is zero over HTTP.
 
