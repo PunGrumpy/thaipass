@@ -42,3 +42,5 @@ export const app = new Elysia()
   .use(chatRoutes)
   .use(modelRoutes)
   .use(healthRoutes);
+
+export default app;

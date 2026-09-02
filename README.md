@@ -85,8 +85,8 @@ AI Pass reads a model id and messages, nothing else. So `temperature`, `maxOutpu
 
 `src/app.ts` builds the Elysia app and starts nothing, so both entry points share it.
 
-- Local: `src/index.ts` calls `.listen()`, which is what `bun run start` and `bun run dev` use.
-- Vercel: `api/index.ts` exports a fetch handler and `vercel.json` rewrites every path to it.
+- Local: `src/server.ts` calls `.listen()`, which is what `bun run start` and `bun run dev` use.
+- Vercel: `src/index.ts` default-exports the app, the entry Vercel's Elysia preset looks for, and `vercel.json` sets `bunVersion` so functions run on Bun. There is no `api/` directory and nothing to rewrite.
 
 Because the deployment stores no credential, a leaked URL leaks nothing. It is still an open relay to AI Pass for anyone holding a valid cookie, so keep Vercel's Deployment Protection on unless you want it reachable.
 
@@ -109,8 +109,8 @@ The proxy is an adapter between two wire formats, so the two sides live apart an
 
 ```
 src/app.ts       the Elysia app, error mapping, body parsing, route mounting
-src/index.ts     local Bun server
-api/index.ts     Vercel fetch handler
+src/index.ts     Vercel entry, default-exports the app
+src/server.ts    local Bun server
 src/routes/      one module per endpoint
 src/aipass/      upstream: client, session cookie, model catalog, quotas, SSE stream
 src/openai/      wire format: request schema, chunk and completion shapes, error shape
