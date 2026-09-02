@@ -4,6 +4,7 @@ import { log } from "evlog";
 import { requestLogger } from "./lib/logger";
 import { apiError } from "./openai/errors";
 import { chatRoutes } from "./routes/chat";
+import { docsRoutes } from "./routes/docs";
 import { healthRoutes } from "./routes/health";
 import { modelRoutes } from "./routes/models";
 
@@ -41,6 +42,7 @@ export const app = new Elysia()
   .use(requestLogger)
   .use(chatRoutes)
   .use(modelRoutes)
-  .use(healthRoutes);
+  .use(healthRoutes)
+  .use(docsRoutes);
 
 export default app;

@@ -1,36 +1,49 @@
-export interface ChatDelta {
-  role?: "assistant";
-  content?: string;
-}
+import { z } from "zod";
 
-export interface ChatCompletionChunk {
-  readonly choices: readonly {
-    readonly delta: ChatDelta;
-    readonly finish_reason: string | null;
-    readonly index: number;
-  }[];
-  readonly created: number;
-  readonly id: string;
-  readonly model: string;
-  readonly object: "chat.completion.chunk";
-}
+export const chatDeltaSchema = z.object({
+  content: z.string().optional(),
+  role: z.literal("assistant").optional(),
+});
 
-export interface ChatCompletion {
-  readonly choices: readonly {
-    readonly finish_reason: string;
-    readonly index: number;
-    readonly message: { readonly content: string; readonly role: "assistant" };
-  }[];
-  readonly created: number;
-  readonly id: string;
-  readonly model: string;
-  readonly object: "chat.completion";
-  readonly usage: {
-    readonly completion_tokens: number;
-    readonly prompt_tokens: number;
-    readonly total_tokens: number;
-  };
-}
+export const chatCompletionChunkSchema = z.object({
+  choices: z.array(
+    z.object({
+      delta: chatDeltaSchema,
+      finish_reason: z.string().nullable(),
+      index: z.number().int(),
+    })
+  ),
+  created: z.number().int(),
+  id: z.string(),
+  model: z.string(),
+  object: z.literal("chat.completion.chunk"),
+});
+
+export const chatCompletionSchema = z.object({
+  choices: z.array(
+    z.object({
+      finish_reason: z.string(),
+      index: z.number().int(),
+      message: z.object({
+        content: z.string(),
+        role: z.literal("assistant"),
+      }),
+    })
+  ),
+  created: z.number().int(),
+  id: z.string(),
+  model: z.string(),
+  object: z.literal("chat.completion"),
+  usage: z.object({
+    completion_tokens: z.number().int(),
+    prompt_tokens: z.number().int(),
+    total_tokens: z.number().int(),
+  }),
+});
+
+export type ChatDelta = z.infer<typeof chatDeltaSchema>;
+export type ChatCompletionChunk = z.infer<typeof chatCompletionChunkSchema>;
+export type ChatCompletion = z.infer<typeof chatCompletionSchema>;
 
 const nowSeconds = (): number => Math.floor(Date.now() / 1000);
 
