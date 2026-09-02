@@ -53,10 +53,12 @@ test("exposes the v2 language model contract", () => {
 
 test("rejects a model outside the catalog", () => {
   upstream = stubUpstream(sseResponse([]));
-  // SAFETY: the runtime guard is the behaviour under test, so the bad id has
-  // to bypass the compile-time model union.
-  const unknown = "gpt-4o" as never;
-  expect(() => aipass(unknown)).toThrow(NoSuchModelError);
+  expect(() => aipass("gpt-4o")).toThrow(NoSuchModelError);
+});
+
+test("falls back to the free default when no model is named", () => {
+  upstream = stubUpstream(sseResponse([]));
+  expect(aipass().modelId).toBe("gemini-3.1-flash-lite");
 });
 
 test("frames text deltas between a start and an end", async () => {
