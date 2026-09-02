@@ -76,6 +76,7 @@ Two Bun-only settings do not apply on Vercel: `AIPASS_HOST` / `AIPASS_PORT`, and
 - Prompts and cookies never reach the logs. Each request emits one wide event carrying sizes, counts and timings, plus the upstream status and a count of SSE payloads that failed to decode.
 - Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`. Fields are flat, so `model`, `msToFirstChunk` and `country` arrive as filterable properties rather than one opaque object. Startup lines are not forwarded.
 - Callers are identified by IP, user agent, Vercel's geo headers, and `clientId`, a SHA-256 prefix of the cookie that groups one session without revealing it. IPv4 redaction is off so the address survives; emails, JWTs, bearer tokens, cards, phones and IBANs are still masked.
+- `modelFree` and `modelReady` come from the upstream catalog, cached five minutes per caller. When that catalog lists a model the proxy does not serve, a warning names it, so a stale `CHAT_MODELS` shows up in the logs instead of as a 400 nobody can explain.
 - Every event also carries the caller's AI Pass credit balance: `creditsUsed`, `creditsAvailable`, `creditsLimit` and `creditsResetAt`. The daily allowance is 10000 and resets at `creditsResetAt`, so a burn-down chart falls out of `creditsAvailable` over time. That costs one extra `GET /loaders/get-usage-quota`, started in parallel with the chat request and awaited only before the event is written, so it never delays a reply.
 
 ## Layout

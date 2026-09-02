@@ -19,9 +19,25 @@ export const CHAT_MODELS = [
   "Llama-4-Scout-17B-16E-Instruct-1",
   "Llama-4-Maverick-17B-128E-Instruct-FP8-1",
   "pathumma-thaillm-8b",
+  "openai-deep-research",
+  "openthai2.0-legal@jts",
   "sonar",
   "sonar-reasoning-pro",
   "sonar-deep-research",
+] as const;
+
+export const MEDIA_MODELS = [
+  "gpt-image-2",
+  "gemini-3-pro-image",
+  "gemini-2.5-flash-image",
+  "seedream-4.0",
+  "seedream-5.0-lite",
+  "seedance-2.0",
+  "seedance-2.0-fast",
+  "seedance-2.0-mini",
+  "veo-3.1-fast-generate-001",
+  "lyria-3-pro-preview",
+  "lyria-3-clip-preview",
 ] as const;
 
 export const chatModelSchema = z.enum(CHAT_MODELS, {

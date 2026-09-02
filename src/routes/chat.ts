@@ -1,6 +1,8 @@
 import { Elysia } from "elysia";
 import type { RequestLogger } from "evlog";
 
+import { fetchCatalog } from "../aipass/catalog";
+import type { Catalog } from "../aipass/catalog";
 import { deleteConversation, sendMessage } from "../aipass/client";
 import type { SendResult } from "../aipass/client";
 import { DEFAULT_MODEL } from "../aipass/models";
@@ -20,13 +22,23 @@ import { toAipassMessages } from "../translate";
 
 const encoder = new TextEncoder();
 
-const recordCredits = async (
-  credits: Promise<Credits | null>,
+interface UpstreamFacts {
+  readonly credits: Promise<Credits | null>;
+  readonly catalog: Promise<Catalog | null>;
+}
+
+const recordUpstream = async (
+  facts: UpstreamFacts,
+  model: string,
   log: RequestLogger
 ): Promise<void> => {
-  const snapshot = await credits;
-  if (snapshot) {
-    log.set({ ...snapshot });
+  const [credits, catalog] = await Promise.all([facts.credits, facts.catalog]);
+  if (credits) {
+    log.set({ ...credits });
+  }
+  const entry = catalog?.get(model);
+  if (entry) {
+    log.set({ modelFree: entry.free, modelReady: entry.ready });
   }
 };
 const DETAIL_LIMIT = 300;
@@ -75,7 +87,7 @@ const streamCompletion = (
   log: RequestLogger,
   deferEmit: DeferredEmit,
   startedAt: number,
-  credits: Promise<Credits | null>
+  facts: UpstreamFacts
 ): Response => {
   deferEmit.value = true;
   const stream = new ReadableStream<Uint8Array>({
@@ -131,7 +143,7 @@ const streamCompletion = (
         status: 200,
         undecodedEvents: skips.count,
       });
-      await recordCredits(credits, log);
+      await recordUpstream(facts, model, log);
       log.emit();
     },
   });
@@ -152,7 +164,7 @@ const bufferedCompletion = async (
   conversationId: string,
   log: RequestLogger,
   startedAt: number,
-  credits: Promise<Credits | null>
+  facts: UpstreamFacts
 ): Promise<Response> => {
   let content = "";
   let finishReason = "stop";
@@ -187,11 +199,12 @@ const bufferedCompletion = async (
       undecodedEvents: skips.count,
     });
   }
-  await recordCredits(credits, log);
+  await recordUpstream(facts, model, log);
   return Response.json(chatCompletion(id, model, content, finishReason));
 };
 
 const handleChat = async (
+  clientId: string,
   cookie: string,
   body: ChatRequest,
   signal: AbortSignal,
@@ -199,7 +212,10 @@ const handleChat = async (
   deferEmit: DeferredEmit
 ): Promise<Response> => {
   const startedAt = Date.now();
-  const credits = fetchCredits(cookie, signal);
+  const facts: UpstreamFacts = {
+    catalog: fetchCatalog(clientId, cookie, signal),
+    credits: fetchCredits(cookie, signal),
+  };
   const { messages = [], model = DEFAULT_MODEL, stream } = body;
   const wantStream = stream !== false;
   const id = `chatcmpl-${crypto
@@ -226,7 +242,7 @@ const handleChat = async (
   } catch (error) {
     log.set({ status: 502 });
     log.error(error instanceof Error ? error : new Error(String(error)));
-    await recordCredits(credits, log);
+    await recordUpstream(facts, model, log);
     return errorResponse(`upstream fetch failed: ${error}`, 502);
   }
 
@@ -239,7 +255,7 @@ const handleChat = async (
     upstreamStatus: upstream.status,
   });
   if (!upstreamBody || !contentType.includes("event-stream")) {
-    await recordCredits(credits, log);
+    await recordUpstream(facts, model, log);
     return await upstreamError(cookie, upstream, conversationId, log);
   }
 
@@ -253,7 +269,7 @@ const handleChat = async (
         log,
         deferEmit,
         startedAt,
-        credits
+        facts
       )
     : await bufferedCompletion(
         cookie,
@@ -263,7 +279,7 @@ const handleChat = async (
         conversationId,
         log,
         startedAt,
-        credits
+        facts
       );
 };
 
@@ -281,7 +297,8 @@ export const chatRoutes = new Elysia()
           401
         );
       }
-      log.set({ clientId: clientIdFromCookie(cookie) });
-      return handleChat(cookie, body, request.signal, log, deferEmit);
+      const clientId = clientIdFromCookie(cookie);
+      log.set({ clientId });
+      return handleChat(clientId, cookie, body, request.signal, log, deferEmit);
     }
   );
