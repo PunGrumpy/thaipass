@@ -13,6 +13,8 @@ import { parseAipassSSE } from "../aipass/stream";
 import type { SSESkips } from "../aipass/stream";
 import { requestLogger } from "../lib/logger";
 import type { DeferredEmit } from "../lib/logger";
+import { guardController } from "../lib/stream";
+import type { GuardedController } from "../lib/stream";
 import { errorResponse } from "../openai/errors";
 import { chatRequestSchema } from "../openai/schema";
 import type { ChatRequest } from "../openai/schema";
@@ -111,28 +113,16 @@ const streamCompletion = (
   const { body, conversationId, cookie, facts, id, log, model, startedAt } =
     completion;
   deferEmit.value = true;
-  let open = true;
+  let guarded: GuardedController<Uint8Array> | undefined;
   const stream = new ReadableStream<Uint8Array>({
     cancel() {
-      open = false;
+      guarded?.abandon();
     },
     async start(controller) {
-      const attempt = (action: () => void): void => {
-        if (!open) {
-          return;
-        }
-        try {
-          action();
-        } catch {
-          open = false;
-        }
-      };
+      const out = guardController(controller);
+      guarded = out;
       const send = (payload: ChatCompletionChunk): void => {
-        attempt(() =>
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
-          )
-        );
+        out.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
       };
       let finishReason = "stop";
       const skips: SSESkips = { count: 0, types: new Set() };
@@ -172,22 +162,22 @@ const streamCompletion = (
         );
       } finally {
         send(chatChunk(id, model, {}, finishReason));
-        attempt(() => controller.enqueue(encoder.encode(DONE_FRAME)));
+        out.enqueue(encoder.encode(DONE_FRAME));
         await deleteConversation(cookie, conversationId);
         log.set({
-          clientAborted: !open,
+          clientAborted: !out.isOpen(),
           deltas,
           finishReason,
           msToFirstChunk,
           reasoningChars,
           replyChars: chars,
-          status: open ? 200 : CLIENT_CLOSED_STATUS,
+          status: out.isOpen() ? 200 : CLIENT_CLOSED_STATUS,
           undecodedEvents: skips.count,
           undecodedTypes: [...skips.types].join(","),
         });
         await recordUpstream(facts, model, log);
         log.emit();
-        attempt(() => controller.close());
+        out.close();
       }
     },
   });
