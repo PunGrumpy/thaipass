@@ -21,7 +21,9 @@ The proxy holds no credential. Each request must carry the caller's own AI Pass 
 Authorization: Bearer <full Cookie header value>
 ```
 
-The value is the whole `Cookie:` header from a logged-in browser session and must contain `__Secure-ai_passport_auth.session_token`; anything else is rejected with 401. Semicolons and spaces inside it are fine. In an OpenAI client, paste it into the API key field. A client that requires the key to look like `sk-...` will not work.
+The value is the whole `Cookie:` header from a logged-in browser session and must contain `__Secure-ai_passport_auth.session_token`. Semicolons and spaces inside it are fine, and the percent-encoding the browser applies must survive the copy: a `%2B` decoded back to `+` reaches AI Pass as a different token. In an OpenAI client, paste it into the API key field. A client that requires the key to look like `sk-...` will not work.
+
+A 401 says which of the three things went wrong: no `Authorization` header, a scheme other than Bearer, or a bearer value carrying no session token, which is what sending the token on its own looks like. The message never repeats what the caller sent.
 
 `GET /v1/models` and `GET /health` need no credential.
 
@@ -95,6 +97,8 @@ AI Pass reads a model id and messages, nothing else. So `temperature`, `maxOutpu
 - Vercel: `src/index.ts` default-exports the app, the entry Vercel's Elysia preset looks for, and `vercel.json` sets `bunVersion` so functions run on Bun. There is no `api/` directory and nothing to rewrite.
 
 Because the deployment stores no credential, a leaked URL leaks nothing. It is still an open relay to AI Pass for anyone holding a valid cookie, so keep Vercel's Deployment Protection on unless you want it reachable.
+
+Dependencies are pinned to exact versions rather than ranges. Vercel builds on a Bun old enough to reject the lockfile this repo writes, and it says so before carrying on without it, so ranges would resolve fresh on every build and ship a tree no one had run. Pinning is what makes the deployed tree the tested one until the lockfile can be read again.
 
 Two Bun-only settings do not apply on Vercel: `AIPASS_HOST` / `AIPASS_PORT`, and the 240s idle timeout. A long stream is bounded by the platform's function duration instead, so a slow model can be cut off mid-reply.
 
