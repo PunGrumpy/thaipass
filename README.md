@@ -54,7 +54,7 @@ Model ids are case-sensitive and Claude carries a `@provider` suffix (`claude-op
 ```
 src/index.ts     builds the Elysia app and starts the server
 src/routes/      one module per endpoint
-src/lib/         env, config, the AI Pass client, wire-format translation
+src/lib/         env, config, logging, the AI Pass client, wire-format translation
 ```
 
 ## Scripts
