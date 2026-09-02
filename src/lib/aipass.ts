@@ -6,11 +6,15 @@ import type { AipassMessage } from "./translate.ts";
 const CONVERSATION_ID_LENGTH = 16;
 const TITLE_PREVIEW_LENGTH = 400;
 
-const browserHeaders = (referer: string, contentType: string) => ({
+const browserHeaders = (
+  cookie: string,
+  referer: string,
+  contentType: string
+) => ({
   accept: "*/*",
   "accept-language": "th-TH,th;q=0.9,en;q=0.8",
   "content-type": contentType,
-  cookie: config.cookie,
+  cookie,
   origin: config.origin,
   referer,
   "sec-fetch-dest": "empty",
@@ -20,6 +24,7 @@ const browserHeaders = (referer: string, contentType: string) => ({
 });
 
 const postAction = async (
+  cookie: string,
   path: string,
   referer: string,
   fields: Record<string, string>,
@@ -28,6 +33,7 @@ const postAction = async (
   const response = await fetch(`${config.origin}${path}`, {
     body: new URLSearchParams(fields).toString(),
     headers: browserHeaders(
+      cookie,
       referer,
       "application/x-www-form-urlencoded;charset=UTF-8"
     ),
@@ -40,12 +46,14 @@ const postAction = async (
 };
 
 const createConversation = async (
+  cookie: string,
   reqUuid: string,
   modelId: string,
   title: string,
   signal: AbortSignal | undefined
 ): Promise<string> => {
   await postAction(
+    cookie,
     "/chat.data",
     `${config.origin}/chat`,
     {
@@ -61,10 +69,12 @@ const createConversation = async (
 };
 
 export const deleteConversation = async (
+  cookie: string,
   conversationId: string
 ): Promise<void> => {
   try {
     const status = await postAction(
+      cookie,
       "/actions/update-conversation.data",
       `${config.origin}/chat/${conversationId}`,
       { conversationId, intent: "delete" }
@@ -83,6 +93,7 @@ export interface SendResult {
 }
 
 export const sendMessage = async (
+  cookie: string,
   modelId: string,
   messages: readonly AipassMessage[],
   signal: AbortSignal | undefined
@@ -93,6 +104,7 @@ export const sendMessage = async (
     TITLE_PREVIEW_LENGTH
   );
   const conversationId = await createConversation(
+    cookie,
     reqUuid,
     modelId,
     preview.length > 0 ? preview : "hi",
@@ -103,11 +115,11 @@ export const sendMessage = async (
     {
       body: JSON.stringify({ messages, modelId }),
       headers: browserHeaders(
+        cookie,
         `${config.origin}/chat/${conversationId}`,
         "application/json"
       ),
       method: "POST",
-
       redirect: "manual",
       signal,
     }

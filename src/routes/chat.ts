@@ -3,6 +3,7 @@ import type { RequestLogger } from "evlog";
 
 import { deleteConversation, sendMessage } from "../lib/aipass.ts";
 import type { SendResult } from "../lib/aipass.ts";
+import { cookieFromRequest } from "../lib/auth.ts";
 import { errorResponse } from "../lib/http.ts";
 import { requestLogger } from "../lib/logger.ts";
 import type { DeferredEmit } from "../lib/logger.ts";
@@ -25,6 +26,7 @@ const DETAIL_LIMIT = 300;
 const COMPLETION_ID_LENGTH = 16;
 
 const upstreamError = async (
+  cookie: string,
   response: Response,
   conversationId: string,
   log: RequestLogger
@@ -32,7 +34,7 @@ const upstreamError = async (
   const contentType = response.headers.get("content-type") ?? "";
   const location = response.headers.get("location");
   const detail = response.body ? await response.text().catch(() => "") : "";
-  deleteConversation(conversationId);
+  deleteConversation(cookie, conversationId);
   const staleCookie =
     response.status >= 300 &&
     response.status < 400 &&
@@ -56,6 +58,7 @@ const upstreamError = async (
 };
 
 const streamCompletion = (
+  cookie: string,
   id: string,
   model: string,
   body: ReadableStream<Uint8Array>,
@@ -106,7 +109,7 @@ const streamCompletion = (
       send(chatChunk(id, model, {}, finishReason));
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       controller.close();
-      deleteConversation(conversationId);
+      deleteConversation(cookie, conversationId);
       log.set({
         status: 200,
         stream: { chars, deltas, finishReason, skipped: skips.count },
@@ -124,6 +127,7 @@ const streamCompletion = (
 };
 
 const bufferedCompletion = async (
+  cookie: string,
   id: string,
   model: string,
   body: ReadableStream<Uint8Array>,
@@ -152,7 +156,7 @@ const bufferedCompletion = async (
     log.error(error instanceof Error ? error : new Error(String(error)));
     return errorResponse(`stream error: ${error}`, 502);
   } finally {
-    deleteConversation(conversationId);
+    deleteConversation(cookie, conversationId);
     log.set({
       stream: {
         chars: content.length,
@@ -166,6 +170,7 @@ const bufferedCompletion = async (
 };
 
 const handleChat = async (
+  cookie: string,
   body: ChatRequest,
   signal: AbortSignal,
   log: RequestLogger,
@@ -191,6 +196,7 @@ const handleChat = async (
   let result: SendResult;
   try {
     result = await sendMessage(
+      cookie,
       model,
       toAipassMessages(messages, model),
       signal
@@ -206,12 +212,27 @@ const handleChat = async (
   const upstreamBody = upstream.ok ? upstream.body : null;
   log.set({ upstream: { conversationId, status: upstream.status } });
   if (!upstreamBody || !contentType.includes("event-stream")) {
-    return await upstreamError(upstream, conversationId, log);
+    return await upstreamError(cookie, upstream, conversationId, log);
   }
 
   return wantStream
-    ? streamCompletion(id, model, upstreamBody, conversationId, log, deferEmit)
-    : await bufferedCompletion(id, model, upstreamBody, conversationId, log);
+    ? streamCompletion(
+        cookie,
+        id,
+        model,
+        upstreamBody,
+        conversationId,
+        log,
+        deferEmit
+      )
+    : await bufferedCompletion(
+        cookie,
+        id,
+        model,
+        upstreamBody,
+        conversationId,
+        log
+      );
 };
 
 export const chatRoutes = new Elysia()
@@ -219,6 +240,15 @@ export const chatRoutes = new Elysia()
   .post(
     "/v1/chat/completions",
     { body: chatRequestSchema },
-    ({ body, request, log, deferEmit }) =>
-      handleChat(body, request.signal, log, deferEmit)
+    ({ body, request, log, deferEmit }) => {
+      const cookie = cookieFromRequest(request);
+      if (!cookie) {
+        log.set({ status: 401 });
+        return errorResponse(
+          "missing AI Pass session cookie, send it as Authorization: Bearer <cookie>",
+          401
+        );
+      }
+      return handleChat(cookie, body, request.signal, log, deferEmit);
+    }
   );

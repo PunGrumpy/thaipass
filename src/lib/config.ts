@@ -4,15 +4,12 @@ export interface Config {
   readonly origin: string;
   readonly host: string;
   readonly port: number;
-  readonly cookie: string;
   readonly userAgent: string;
   readonly idleTimeout: number;
 }
 
 export const config: Config = {
-  cookie: env.AIPASS_COOKIE,
   host: env.AIPASS_HOST,
-
   idleTimeout: 240,
   origin: env.AIPASS_ORIGIN,
   port: env.AIPASS_PORT,
