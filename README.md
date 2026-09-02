@@ -93,6 +93,7 @@ src/aipass/      upstream: client, session cookie, model catalog, quotas, SSE st
 src/openai/      wire format: request schema, chunk and completion shapes, error shape
 src/translate.ts flattens an OpenAI conversation into the single turn AI Pass reads
 src/lib/         env, config, logging, client info
+src/testing/     helpers shared between test files
 ```
 
 `src/openai/schema.ts` is the one file that reaches across, for the model enum: the proxy only accepts models AI Pass serves.

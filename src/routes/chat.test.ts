@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { app } from "../app";
 import { config } from "../lib/config";
+import { sseStream } from "../testing/sse";
 
 const COOKIE = "__Secure-ai_passport_auth.session_token=abc.def";
 const DELETE_PATH = "/actions/update-conversation.data";
@@ -15,28 +16,6 @@ const realFetch = globalThis.fetch;
 
 let calls: string[] = [];
 let deletion: PromiseWithResolvers<true>;
-
-const sseBody = (
-  frames: readonly string[],
-  hold: boolean
-): ReadableStream<Uint8Array> => {
-  const encoder = new TextEncoder();
-  let index = 0;
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      const frame = frames[index];
-      if (frame === undefined) {
-        controller.close();
-        return;
-      }
-      if (hold) {
-        await Bun.sleep(FRAME_GAP_MS);
-      }
-      controller.enqueue(encoder.encode(`data: ${frame}\n\n`));
-      index += 1;
-    },
-  });
-};
 
 const deltas = (count: number): string[] =>
   Array.from(
@@ -69,10 +48,13 @@ const installFetch = (respond: () => Response): void => {
   });
 };
 
-const streamOf = (count: number, hold: boolean) => (): Response =>
-  new Response(sseBody(deltas(count), hold), {
-    headers: { "content-type": "text/event-stream" },
-  });
+const streamOf =
+  (count: number, slow = false) =>
+  (): Response =>
+    new Response(
+      sseStream(deltas(count), slow ? { pauseMs: FRAME_GAP_MS } : {}),
+      { headers: { "content-type": "text/event-stream" } }
+    );
 
 const chatRequest = (stream: boolean): Request =>
   new Request("https://proxy.test/v1/chat/completions", {
@@ -107,7 +89,7 @@ afterEach(() => {
 });
 
 test("rejects a request without the session cookie", async () => {
-  installFetch(streamOf(1, false));
+  installFetch(streamOf(1));
   const response = await app.fetch(
     new Request("https://proxy.test/v1/chat/completions", {
       body: JSON.stringify({ messages: [] }),
@@ -119,7 +101,7 @@ test("rejects a request without the session cookie", async () => {
 });
 
 test("streams the upstream deltas as openai chunks", async () => {
-  installFetch(streamOf(2, false));
+  installFetch(streamOf(2));
   const response = await app.fetch(chatRequest(true));
   const text = await response.text();
   expect(response.headers.get("content-type")).toContain("text/event-stream");
@@ -140,7 +122,7 @@ test("deletes the conversation when the client cancels mid-stream", async () => 
 });
 
 test("deletes the conversation after a buffered completion", async () => {
-  installFetch(streamOf(2, false));
+  installFetch(streamOf(2));
   const response = await app.fetch(chatRequest(false));
   const body = completionSchema.parse(await response.json());
   expect(body.choices[0]?.message.content).toBe("chunk0chunk1");
