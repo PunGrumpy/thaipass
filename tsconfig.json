@@ -12,6 +12,5 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true
   },
-  "include": ["src", "api"],
-  "exclude": ["**/*.test.ts", "src/testing"]
+  "include": ["src"]
 }
