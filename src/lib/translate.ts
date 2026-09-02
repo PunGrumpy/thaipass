@@ -53,6 +53,7 @@ export const chatRequestSchema = z.object({
 });
 
 export type OpenAIMessage = z.infer<typeof messageSchema>;
+export type ChatRequest = z.infer<typeof chatRequestSchema>;
 
 export interface AipassMessage {
   readonly id: string;

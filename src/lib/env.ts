@@ -1,5 +1,8 @@
 import { readFileSync } from "node:fs";
 
+import { createEnv } from "@t3-oss/env-core";
+import { z } from "zod";
+
 /**
  * Load a dotenv-style file into `process.env` WITHOUT going through a shell.
  *
@@ -37,27 +40,28 @@ const envFile =
   `${process.env.HOME ?? "."}/.config/aipass-proxy.env`;
 loadEnvFile(envFile);
 
-export interface Config {
-  readonly origin: string;
-  readonly host: string;
-  readonly port: number;
-  readonly cookie: string;
-  readonly userAgent: string;
-  readonly idleTimeout: number;
-}
+const DEFAULT_PORT = 3789;
 
-export const config: Config = {
-  cookie: process.env.AIPASS_COOKIE ?? "",
-  host: process.env.AIPASS_HOST ?? "127.0.0.1",
-  idleTimeout: 240,
-  origin: process.env.AIPASS_ORIGIN ?? "https://de.aipass.net",
-  port: Number(process.env.AIPASS_PORT ?? "3789"),
-  userAgent:
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-    "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
-};
-
-if (config.cookie.length === 0) {
-  console.error(`FATAL: AIPASS_COOKIE is empty (set it in ${envFile})`);
-  process.exit(1);
-}
+/**
+ * Validated environment. The template ships `AIPASS_COOKIE=""`, so
+ * `emptyStringAsUndefined` makes an unfilled template fail the same way a
+ * missing variable does, instead of starting a proxy that 401s on every call.
+ */
+export const env = createEnv({
+  emptyStringAsUndefined: true,
+  onValidationError: (issues) => {
+    for (const issue of issues) {
+      const name = issue.path?.join(".") ?? "env";
+      console.error(`FATAL: ${name}: ${issue.message}`);
+    }
+    console.error(`Set the above in ${envFile} (or the process environment).`);
+    process.exit(1);
+  },
+  runtimeEnv: process.env,
+  server: {
+    AIPASS_COOKIE: z.string().min(1),
+    AIPASS_HOST: z.string().min(1).default("127.0.0.1"),
+    AIPASS_ORIGIN: z.url().default("https://de.aipass.net"),
+    AIPASS_PORT: z.coerce.number().int().positive().default(DEFAULT_PORT),
+  },
+});
