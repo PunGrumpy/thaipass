@@ -39,7 +39,7 @@ Configuration is environment only. Bun loads a local `.env` on its own; every va
 | `AIPASS_ORIGIN` | `https://de.aipass.net` |  |
 | `AIPASS_HOST` | `127.0.0.1` | bind address, local server only |
 | `AIPASS_PORT` | `3789` | local server only |
-| `POSTHOG_API_KEY` | none | optional, enables the PostHog drain |
+| `POSTHOG_API_KEY` | none | optional, enables the PostHog drain. The project token, `phc_...` |
 | `POSTHOG_HOST` | `https://us.i.posthog.com` | optional |
 
 A bad value fails at startup naming the variable, rather than surfacing later as a malformed URL.
@@ -97,7 +97,7 @@ Two Bun-only settings do not apply on Vercel: `AIPASS_HOST` / `AIPASS_PORT`, and
 - `usage` on a non-streaming reply is always zeros. AI Pass reports no token counts, and a character-count estimate would look right while being wrong, so a client that meters spend from this field reads 0.
 - The cookie is short-lived. When it expires, requests fail with `upstream 3xx ... cookie is stale`. Send a fresh one; nothing on the server needs to change.
 - Prompts and cookies never reach the logs. Each request emits one wide event carrying sizes, counts and timings, plus the upstream status, `reasoningChars` for thinking models, and a count of the SSE payloads that failed to decode with the `type` of each one.
-- Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`. Fields are flat, so `model`, `msToFirstChunk` and `country` arrive as filterable properties rather than one opaque object. Startup lines are not forwarded.
+- Set `POSTHOG_API_KEY` to the project token from Project Settings, `phc_...`, to forward those events to PostHog as `aipass_proxy_request`. Ingestion authenticates on that token alone, so there is no project id to set; a personal key, `phx_...`, is for reading data back and is rejected at startup. Fields are flat, so `model`, `msToFirstChunk` and `country` arrive as filterable properties rather than one opaque object. Startup lines are not forwarded.
 - Callers are identified by IP, user agent, Vercel's geo headers, and `clientId`, a SHA-256 prefix of the cookie that groups one session without revealing it. IPv4 redaction is off so the address survives; emails, JWTs, bearer tokens, cards, phones and IBANs are still masked.
 - `userId`, `userName`, `userTier` and `userTierExp` come from `GET /lms/api/v1/session/session-tier`, cached five minutes per caller. `userId` is the PostHog distinct id, because `clientId` changes every time the cookie rotates and would split one person into a new profile each time. The account email is read and thrown away rather than logged, and the cookie itself never leaves the process. When the lookup fails the fields are absent and evlog marks the event `$process_person_profile: false`, so a failed lookup produces an anonymous event instead of a wrong person.
 - `modelFree` and `modelReady` come from the upstream catalog, cached five minutes per caller. When that catalog lists a model the proxy does not serve, a warning names it, so a stale `CHAT_MODELS` shows up in the logs instead of as a 400 nobody can explain.
