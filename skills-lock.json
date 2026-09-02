@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "skills": {
+    "analyze-logs": {
+      "source": "evlog.dev",
+      "sourceUrl": "https://www.evlog.dev",
+      "sourceType": "well-known",
+      "computedHash": "7e3f8c8a12808ec1a833cdab090e211d8a8b6e27ae69449b0be89f69f96b9e46",
+      "wellKnownDigest": "sha256:de73b0164c1e9623ef097d45cc1c5eda0c2f1e8badb024e8460f9be74190d9c0"
+    },
+    "build-audit-logs": {
+      "source": "evlog.dev",
+      "sourceUrl": "https://www.evlog.dev",
+      "sourceType": "well-known",
+      "computedHash": "34be4d1320b6de64dd98999b253960cb8bbd6921a0854ebd361d1506dfa6f506",
+      "wellKnownDigest": "sha256:1602c48107604d925c3338071ca539d72f9af1df21ba5b6e8f1977c1668e32c5"
+    },
+    "review-logging-patterns": {
+      "source": "evlog.dev",
+      "sourceUrl": "https://www.evlog.dev",
+      "sourceType": "well-known",
+      "computedHash": "cfaf8a5fe8b8751854afdbf8fc81f864c99f57dac2896251eb3a93ffe3eee564",
+      "wellKnownDigest": "sha256:ecded78fbf0708a43d4a833bf0e90e3b9b1cdb6ffb1e13a02b59db036b9bafc7"
+    }
+  }
+}

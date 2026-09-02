@@ -1,36 +1,23 @@
-import { config } from "./config.ts";
-import type { AipassMessage } from "./translate.ts";
+import { log } from "evlog";
+
+import { config } from "../lib/config";
+import { browserPostHeaders } from "./request";
+import type { AipassMessage } from "./stream";
 
 const CONVERSATION_ID_LENGTH = 16;
 const TITLE_PREVIEW_LENGTH = 400;
 
-const browserHeaders = (referer: string, contentType: string) => ({
-  accept: "*/*",
-  "accept-language": "th-TH,th;q=0.9,en;q=0.8",
-  "content-type": contentType,
-  cookie: config.cookie,
-  origin: config.origin,
-  referer,
-  "sec-fetch-dest": "empty",
-  "sec-fetch-mode": "cors",
-  "sec-fetch-site": "same-origin",
-  "user-agent": config.userAgent,
-});
-
-/**
- * POST a form-encoded React Router action and drain the response. These actions
- * are called for their side effect only, so the body is read and discarded to
- * free the connection.
- */
 const postAction = async (
+  cookie: string,
   path: string,
   referer: string,
   fields: Record<string, string>,
   signal?: AbortSignal
-): Promise<void> => {
+): Promise<number> => {
   const response = await fetch(`${config.origin}${path}`, {
     body: new URLSearchParams(fields).toString(),
-    headers: browserHeaders(
+    headers: browserPostHeaders(
+      cookie,
       referer,
       "application/x-www-form-urlencoded;charset=UTF-8"
     ),
@@ -39,19 +26,18 @@ const postAction = async (
     signal,
   });
   await response.arrayBuffer().catch(() => new ArrayBuffer(0));
+  return response.status;
 };
 
-/**
- * Create a fresh conversation via `intent=create-conversation`. The conversation
- * id is the first 16 hex chars of the client-generated UUID.
- */
 const createConversation = async (
+  cookie: string,
   reqUuid: string,
   modelId: string,
   title: string,
   signal: AbortSignal | undefined
 ): Promise<string> => {
   await postAction(
+    cookie,
     "/chat.data",
     `${config.origin}/chat`,
     {
@@ -66,21 +52,22 @@ const createConversation = async (
   return reqUuid.replaceAll("-", "").slice(0, CONVERSATION_ID_LENGTH);
 };
 
-/**
- * Delete a throwaway conversation so the account's chat list does not fill with
- * one entry per request. Fire-and-forget: failures are swallowed.
- */
 export const deleteConversation = async (
+  cookie: string,
   conversationId: string
 ): Promise<void> => {
   try {
-    await postAction(
+    const status = await postAction(
+      cookie,
       "/actions/update-conversation.data",
       `${config.origin}/chat/${conversationId}`,
       { conversationId, intent: "delete" }
     );
-  } catch {
-    // best effort
+    if (status >= 400) {
+      log.warn({ conversationId, msg: "delete rejected", status });
+    }
+  } catch (error) {
+    log.warn({ conversationId, err: String(error), msg: "delete failed" });
   }
 };
 
@@ -89,11 +76,8 @@ export interface SendResult {
   readonly conversationId: string;
 }
 
-/**
- * Create a fresh conversation, then stream the assistant's reply for the given
- * (already flattened) messages. The caller owns cleanup via `deleteConversation`.
- */
 export const sendMessage = async (
+  cookie: string,
   modelId: string,
   messages: readonly AipassMessage[],
   signal: AbortSignal | undefined
@@ -104,6 +88,7 @@ export const sendMessage = async (
     TITLE_PREVIEW_LENGTH
   );
   const conversationId = await createConversation(
+    cookie,
     reqUuid,
     modelId,
     preview.length > 0 ? preview : "hi",
@@ -113,12 +98,12 @@ export const sendMessage = async (
     `${config.origin}/actions/send-message/${conversationId}`,
     {
       body: JSON.stringify({ messages, modelId }),
-      headers: browserHeaders(
+      headers: browserPostHeaders(
+        cookie,
         `${config.origin}/chat/${conversationId}`,
         "application/json"
       ),
       method: "POST",
-      // a 302 -> /sign-in means the cookie is stale
       redirect: "manual",
       signal,
     }
