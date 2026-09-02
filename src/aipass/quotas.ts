@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { config } from "../lib/config.ts";
+import { config } from "../lib/config";
 
 const QUOTA_PATH = "/loaders/get-usage-quota";
 

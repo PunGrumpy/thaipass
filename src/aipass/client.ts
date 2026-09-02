@@ -1,7 +1,7 @@
 import { log } from "evlog";
 
-import { config } from "../lib/config.ts";
-import type { AipassMessage } from "./stream.ts";
+import { config } from "../lib/config";
+import type { AipassMessage } from "./stream";
 
 const CONVERSATION_ID_LENGTH = 16;
 const TITLE_PREVIEW_LENGTH = 400;

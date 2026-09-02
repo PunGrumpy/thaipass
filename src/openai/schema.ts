@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { chatModelSchema } from "../aipass/models.ts";
+import { chatModelSchema } from "../aipass/models";
 
 export type OpenAIRole = "system" | "user" | "assistant" | "tool";
 

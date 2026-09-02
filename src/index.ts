@@ -1,7 +1,7 @@
 import { log } from "evlog";
 
-import { app } from "./app.ts";
-import { config } from "./lib/config.ts";
+import { app } from "./app";
+import { config } from "./lib/config";
 
 app.listen({
   hostname: config.host,

@@ -1,5 +1,5 @@
-import type { AipassMessage } from "./aipass/stream.ts";
-import type { OpenAIMessage, OpenAIRole } from "./openai/schema.ts";
+import type { AipassMessage } from "./aipass/stream";
+import type { OpenAIMessage, OpenAIRole } from "./openai/schema";
 
 const roleLabel = (role: OpenAIRole): string => {
   if (role === "assistant") {

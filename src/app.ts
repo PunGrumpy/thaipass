@@ -1,11 +1,11 @@
 import { Elysia, NotFound, ParseError, ValidationError, status } from "elysia";
 import { log } from "evlog";
 
-import { requestLogger } from "./lib/logger.ts";
-import { apiError } from "./openai/errors.ts";
-import { chatRoutes } from "./routes/chat.ts";
-import { healthRoutes } from "./routes/health.ts";
-import { modelRoutes } from "./routes/models.ts";
+import { requestLogger } from "./lib/logger";
+import { apiError } from "./openai/errors";
+import { chatRoutes } from "./routes/chat";
+import { healthRoutes } from "./routes/health";
+import { modelRoutes } from "./routes/models";
 
 const reject = (
   request: Request,

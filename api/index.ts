@@ -1,4 +1,4 @@
-import { app } from "../src/app.ts";
+import { app } from "../src/app";
 
 const handler = (request: Request): Response | Promise<Response> =>
   app.fetch(request);

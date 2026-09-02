@@ -3,8 +3,8 @@ import { createRequestLogger, initLogger } from "evlog";
 import type { DrainContext } from "evlog";
 import { createPostHogDrain } from "evlog/posthog";
 
-import { clientFields } from "./client.ts";
-import { env } from "./env.ts";
+import { clientFields } from "./client";
+import { env } from "./env";
 
 const posthog = env.POSTHOG_API_KEY
   ? createPostHogDrain({
