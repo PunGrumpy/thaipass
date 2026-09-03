@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { randomHex } from "../lib/id";
 import type { ToolCall } from "../tools";
 import type { Reply, StreamWire, Wire } from "../turn";
 import { anthropicFailure } from "./errors";
@@ -179,10 +180,7 @@ const reply = (id: string, model: string, value: Reply): Message => {
 };
 
 export const anthropicWire = (model: string): Wire => {
-  const id = `msg_${crypto
-    .randomUUID()
-    .replaceAll("-", "")
-    .slice(0, MESSAGE_ID_LENGTH)}`;
+  const id = `msg_${randomHex(MESSAGE_ID_LENGTH)}`;
   return {
     fail: anthropicFailure,
     id,

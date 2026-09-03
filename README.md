@@ -163,7 +163,7 @@ src/provider/    LanguageModelV2 implementation, for AI SDK callers
 src/translate.ts flattens a conversation into the single turn AI Pass reads
 src/tools.ts     the text protocol tool calls travel in, both directions
 src/turn.ts      one turn against AI Pass, rendered through a protocol's Wire
-src/lib/         env, config, logging, client info, stream guards, OpenAPI response helpers
+src/lib/         env, config, logging, client info, stream guards, ids, OpenAPI response helpers
 src/testing/     helpers shared between test files
 ```
 

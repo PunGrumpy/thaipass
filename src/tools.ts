@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { randomHex } from "./lib/id";
+
 /**
  * The text protocol tool calls travel in.
  *
@@ -50,8 +52,7 @@ const callBodySchema = z.object({
 const text = (value: string): ReplyPart[] =>
   value.length > 0 ? [{ text: value, type: "text" }] : [];
 
-export const newCallId = (): string =>
-  crypto.randomUUID().replaceAll("-", "").slice(0, CALL_ID_LENGTH);
+export const newCallId = (): string => randomHex(CALL_ID_LENGTH);
 
 export const renderCall = (call: ToolCall): string =>
   `${FENCE_OPEN}${JSON.stringify({ input: call.input, name: call.name })}${FENCE_CLOSE}`;

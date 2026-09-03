@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { randomHex } from "../lib/id";
 import type { ToolCall } from "../tools";
 import type { Reply, StreamWire, Wire } from "../turn";
 import { openaiFailure } from "./errors";
@@ -131,10 +132,7 @@ const chatCompletion = (
 
 /** Every chunk of one stream carries the same id and `created` second. */
 export const openaiWire = (model: string): Wire => {
-  const id = `chatcmpl-${crypto
-    .randomUUID()
-    .replaceAll("-", "")
-    .slice(0, COMPLETION_ID_LENGTH)}`;
+  const id = `chatcmpl-${randomHex(COMPLETION_ID_LENGTH)}`;
   const created = Math.floor(Date.now() / MS_PER_SECOND);
   const chunk = (delta: ChatDelta, finishReason: string | null): string =>
     `data: ${JSON.stringify(chatChunk(id, model, created, delta, finishReason))}\n\n`;
