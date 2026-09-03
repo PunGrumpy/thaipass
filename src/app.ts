@@ -43,12 +43,6 @@ export const app = new Elysia()
   .error(NotFound, ({ request, path }) =>
     reject(request, path, 404, "not found")
   )
-  .parse(async ({ request, contentType }) => {
-    if (contentType) {
-      return;
-    }
-    return await request.json();
-  })
   .use(requestLogger)
   .use(chatRoutes)
   .use(messageRoutes)
