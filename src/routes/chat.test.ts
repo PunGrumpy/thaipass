@@ -10,6 +10,7 @@ import {
   textDeltas,
 } from "../testing/upstream";
 import type { Upstream } from "../testing/upstream";
+import { FENCE_CLOSE, FENCE_OPEN } from "../tools";
 
 const COOKIE = "__Secure-ai_passport_auth.session_token=abc.def";
 const FRAME_GAP_MS = 1;
@@ -144,4 +145,128 @@ test("returns 502 and deletes the conversation when upstream is not a stream", a
   const response = await app.fetch(chatRequest(true));
   expect(response.status).toBe(502);
   expect(upstream.calls).toContain(DELETE_PATH);
+});
+
+const WEATHER_TOOL = {
+  function: {
+    description: "Reads the weather.",
+    name: "get_weather",
+    parameters: { type: "object" },
+  },
+  type: "function",
+};
+
+const CALL_BLOCK = `${FENCE_OPEN}{"name":"get_weather","input":{"city":"Bangkok"}}${FENCE_CLOSE}`;
+
+const toolRequest = (stream: boolean): Request =>
+  new Request("https://proxy.test/v1/chat/completions", {
+    body: JSON.stringify({
+      messages: [{ content: "weather?", role: "user" }],
+      stream,
+      tools: [WEATHER_TOOL],
+    }),
+    headers: {
+      authorization: `Bearer ${COOKIE}`,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+
+const toolCompletionSchema = z.object({
+  choices: z.array(
+    z.object({
+      finish_reason: z.string(),
+      message: z.object({
+        content: z.string().nullable(),
+        tool_calls: z
+          .array(
+            z.object({
+              function: z.object({ arguments: z.string(), name: z.string() }),
+              id: z.string(),
+              type: z.literal("function"),
+            })
+          )
+          .optional(),
+      }),
+    })
+  ),
+});
+
+test("returns a tool call as tool_calls on a buffered completion", async () => {
+  upstream = stubUpstream(
+    sseResponse([`{"type":"text-delta","delta":${JSON.stringify(CALL_BLOCK)}}`])
+  );
+  const response = await app.fetch(toolRequest(false));
+  const body = toolCompletionSchema.parse(await response.json());
+  const [choice] = body.choices;
+  expect(choice?.finish_reason).toBe("tool_calls");
+  expect(choice?.message.content).toBeNull();
+  expect(choice?.message.tool_calls?.[0]?.function).toEqual({
+    arguments: '{"city":"Bangkok"}',
+    name: "get_weather",
+  });
+  expect(choice?.message.tool_calls?.[0]?.id.startsWith("call_")).toBe(true);
+});
+
+test("streams a tool call as a tool_calls delta", async () => {
+  upstream = stubUpstream(
+    sseResponse([`{"type":"text-delta","delta":${JSON.stringify(CALL_BLOCK)}}`])
+  );
+  const response = await app.fetch(toolRequest(true));
+  const text = await response.text();
+  expect(text).toContain(
+    '"tool_calls":[{"function":{"arguments":"{\\"city\\":\\"Bangkok\\"}","name":"get_weather"},"id":"call_'
+  );
+  expect(text).toContain('"finish_reason":"tool_calls"');
+  expect(text).toContain("data: [DONE]");
+});
+
+test("renders past tool calls and results into the prompt", async () => {
+  let sent = "";
+  upstream = stubUpstream(sseResponse(textDeltas(1)));
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = Object.assign(
+    (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes("/actions/send-message/")) {
+        sent = String(init?.body ?? "");
+      }
+      return realFetch(input, init);
+    },
+    { preconnect: realFetch.preconnect }
+  );
+  const response = await app.fetch(
+    new Request("https://proxy.test/v1/chat/completions", {
+      body: JSON.stringify({
+        messages: [
+          { content: "weather?", role: "user" },
+          {
+            content: null,
+            role: "assistant",
+            tool_calls: [
+              {
+                function: {
+                  arguments: '{"city":"Bangkok"}',
+                  name: "get_weather",
+                },
+                id: "call_1",
+                type: "function",
+              },
+            ],
+          },
+          { content: "sunny", role: "tool", tool_call_id: "call_1" },
+        ],
+        stream: false,
+        tools: [WEATHER_TOOL],
+      }),
+      headers: {
+        authorization: `Bearer ${COOKIE}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+  );
+  globalThis.fetch = realFetch;
+  expect(response.status).toBe(200);
+  expect(sent).toContain("You can call tools.");
+  expect(sent).toContain("Tool (get_weather): sunny");
 });

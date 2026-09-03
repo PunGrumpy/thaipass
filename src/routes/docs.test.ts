@@ -49,6 +49,7 @@ test("documents every route the app serves", () => {
     "/health",
     "/openapi.json",
     "/v1/chat/completions",
+    "/v1/messages",
     "/v1/models",
   ]);
 });
@@ -90,9 +91,18 @@ test("offers both the buffered and the streamed reply", () => {
   ]);
 });
 
-test("marks only the chat route as needing the cookie", () => {
+test("marks only the two model routes as needing the cookie", () => {
   const secured = Object.entries(openapiDocument.paths)
     .filter(([, item]) => JSON.stringify(item).includes("aipassCookie"))
     .map(([path]) => path);
-  expect(secured).toEqual(["/v1/chat/completions"]);
+  expect(secured).toEqual(["/v1/chat/completions", "/v1/messages"]);
+});
+
+test("lists every served model in the messages request schema too", () => {
+  const request = z
+    .object({
+      properties: z.object({ model: z.object({ enum: z.array(z.string()) }) }),
+    })
+    .parse(openapiDocument.components.schemas.MessagesRequest);
+  expect(request.properties.model.enum).toHaveLength(23);
 });

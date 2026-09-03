@@ -13,6 +13,7 @@ import {
   textDeltas,
 } from "../testing/upstream";
 import type { Upstream } from "../testing/upstream";
+import { FENCE_CLOSE, FENCE_OPEN } from "../tools";
 import { createAipass } from "./aipass";
 
 const COOKIE = "__Secure-ai_passport_auth.session_token=abc.def";
@@ -172,4 +173,59 @@ test("surfaces an upstream error event as an error part", async () => {
   const parts = await drain(stream);
   expect(parts.some((part) => part.type === "error")).toBe(true);
   expect(parts.at(-1)).toMatchObject({ finishReason: "error" });
+});
+
+const WEATHER = {
+  description: "Reads the weather.",
+  inputSchema: { type: "object" },
+  name: "get_weather",
+  type: "function",
+} as const;
+
+const CALL_BLOCK = `${FENCE_OPEN}{"name":"get_weather","input":{"city":"Bangkok"}}${FENCE_CLOSE}`;
+
+test("streams a tool call as a tool-call part and finishes as tool-calls", async () => {
+  upstream = stubUpstream(
+    sseResponse([
+      '{"type":"text-delta","delta":"Checking."}',
+      `{"type":"text-delta","delta":${JSON.stringify(`\n${CALL_BLOCK}`)}}`,
+    ])
+  );
+  const { stream } = await aipass(MODEL).doStream(call({ tools: [WEATHER] }));
+  const parts = await drain(stream);
+  expect(parts.map((part) => part.type)).toEqual([
+    "stream-start",
+    "text-start",
+    "text-delta",
+    "text-delta",
+    "text-end",
+    "tool-call",
+    "finish",
+  ]);
+  expect(parts[5]).toMatchObject({
+    input: '{"city":"Bangkok"}',
+    toolName: "get_weather",
+  });
+  expect(parts.at(-1)).toMatchObject({ finishReason: "tool-calls" });
+});
+
+test("returns a tool call as content on a non-streaming call", async () => {
+  upstream = stubUpstream(
+    sseResponse([`{"type":"text-delta","delta":${JSON.stringify(CALL_BLOCK)}}`])
+  );
+  const result = await aipass(MODEL).doGenerate(call({ tools: [WEATHER] }));
+  expect(result.content).toHaveLength(1);
+  expect(result.content[0]).toMatchObject({
+    input: '{"city":"Bangkok"}',
+    toolName: "get_weather",
+    type: "tool-call",
+  });
+  expect(result.finishReason).toBe("tool-calls");
+});
+
+test("no longer warns about function tools", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)));
+  const { stream } = await aipass(MODEL).doStream(call({ tools: [WEATHER] }));
+  const [first] = await drain(stream);
+  expect(first).toEqual({ type: "stream-start", warnings: [] });
 });

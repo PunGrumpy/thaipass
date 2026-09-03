@@ -14,11 +14,12 @@ import type { ChatModel } from "../aipass/models";
 import { parseAipassSSE } from "../aipass/stream";
 import { config } from "../lib/config";
 import { guardController } from "../lib/stream";
+import { splitReply } from "../tools";
+import type { ReplyPart, ToolCall, ToolDefinition } from "../tools";
 import { toAipassMessages } from "../translate";
-import { convertPrompt } from "./prompt";
+import { convertPrompt, convertTools } from "./prompt";
 
 const PROVIDER = "aipass";
-const TEXT_ID = "text";
 const REASONING_ID = "reasoning";
 const DETAIL_LIMIT = 300;
 
@@ -54,7 +55,7 @@ const UNSUPPORTED_SETTINGS = [
 const toFinishReason = (reason: string): LanguageModelV2FinishReason =>
   FINISH_REASONS.get(reason) ?? "unknown";
 
-const callWarnings = (
+const settingWarnings = (
   options: LanguageModelV2CallOptions
 ): LanguageModelV2CallWarning[] => {
   const warnings: LanguageModelV2CallWarning[] = [];
@@ -63,15 +64,20 @@ const callWarnings = (
       warnings.push({ setting, type: "unsupported-setting" });
     }
   }
-  for (const tool of options.tools ?? []) {
-    warnings.push({ tool, type: "unsupported-tool" });
-  }
   return warnings;
 };
+
+const toolCallPart = (call: ToolCall): LanguageModelV2StreamPart => ({
+  input: JSON.stringify(call.input),
+  toolCallId: call.id,
+  toolName: call.name,
+  type: "tool-call",
+});
 
 interface Turn {
   readonly body: ReadableStream<Uint8Array>;
   readonly conversationId: string;
+  readonly tools: readonly ToolDefinition[];
   readonly warnings: LanguageModelV2CallWarning[];
 }
 
@@ -80,8 +86,10 @@ const startTurn = async (
   modelId: ChatModel,
   options: LanguageModelV2CallOptions
 ): Promise<Turn> => {
-  const { messages, warnings } = convertPrompt(options.prompt);
-  const body = toAipassMessages(messages, modelId);
+  const prompt = convertPrompt(options.prompt);
+  const offered = convertTools(options);
+  const { tools } = offered;
+  const body = toAipassMessages({ tools, turns: prompt.turns }, modelId);
   const { conversationId, response } = await sendMessage(
     cookie,
     modelId,
@@ -93,7 +101,12 @@ const startTurn = async (
     return {
       body: response.body,
       conversationId,
-      warnings: [...warnings, ...callWarnings(options)],
+      tools,
+      warnings: [
+        ...prompt.warnings,
+        ...offered.warnings,
+        ...settingWarnings(options),
+      ],
     };
   }
   const detail = response.body ? await response.text().catch(() => "") : "";
@@ -107,6 +120,13 @@ const startTurn = async (
   });
 };
 
+/** A reply with calls finishes as tool-calls unless upstream said otherwise. */
+const settle = (
+  finishReason: LanguageModelV2FinishReason,
+  calls: number
+): LanguageModelV2FinishReason =>
+  calls > 0 && finishReason === "stop" ? "tool-calls" : finishReason;
+
 const streamTurn = (
   cookie: string,
   turn: Turn
@@ -116,16 +136,37 @@ const streamTurn = (
       const out = guardController(raw);
       out.enqueue({ type: "stream-start", warnings: turn.warnings });
       let finishReason: LanguageModelV2FinishReason = "stop";
-      let textOpen = false;
+      let textId: string | undefined;
+      let textBlocks = 0;
+      let calls = 0;
       let reasoningOpen = false;
+      const closeText = (): void => {
+        if (textId !== undefined) {
+          out.enqueue({ id: textId, type: "text-end" });
+          textId = undefined;
+        }
+      };
+      const emit = (parts: readonly ReplyPart[]): void => {
+        for (const part of parts) {
+          if (part.type === "call") {
+            closeText();
+            calls += 1;
+            out.enqueue(toolCallPart(part.call));
+            continue;
+          }
+          if (textId === undefined) {
+            textId = `text-${textBlocks}`;
+            textBlocks += 1;
+            out.enqueue({ id: textId, type: "text-start" });
+          }
+          out.enqueue({ delta: part.text, id: textId, type: "text-delta" });
+        }
+      };
+      const splitter = splitReply(turn.tools);
       try {
         for await (const event of parseAipassSSE(turn.body)) {
           if (event.kind === "delta") {
-            if (!textOpen) {
-              out.enqueue({ id: TEXT_ID, type: "text-start" });
-              textOpen = true;
-            }
-            out.enqueue({ delta: event.text, id: TEXT_ID, type: "text-delta" });
+            emit(splitter.push(event.text));
           } else if (event.kind === "reasoning") {
             if (!reasoningOpen) {
               out.enqueue({ id: REASONING_ID, type: "reasoning-start" });
@@ -143,6 +184,7 @@ const streamTurn = (
             out.enqueue({ error: new Error(event.message), type: "error" });
           }
         }
+        emit(splitter.flush());
       } catch (error) {
         finishReason = "error";
         out.enqueue({ error, type: "error" });
@@ -150,10 +192,12 @@ const streamTurn = (
         if (reasoningOpen) {
           out.enqueue({ id: REASONING_ID, type: "reasoning-end" });
         }
-        if (textOpen) {
-          out.enqueue({ id: TEXT_ID, type: "text-end" });
-        }
-        out.enqueue({ finishReason, type: "finish", usage: NO_USAGE });
+        closeText();
+        out.enqueue({
+          finishReason: settle(finishReason, calls),
+          type: "finish",
+          usage: NO_USAGE,
+        });
         await deleteConversation(cookie, turn.conversationId);
         out.close();
       }
@@ -166,13 +210,24 @@ export const aipassModel = (
 ): LanguageModelV2 => ({
   doGenerate: async (options) => {
     const turn = await startTurn(cookie, modelId, options);
+    const calls: ToolCall[] = [];
     let text = "";
     let reasoning = "";
     let finishReason: LanguageModelV2FinishReason = "stop";
+    const collect = (parts: readonly ReplyPart[]): void => {
+      for (const part of parts) {
+        if (part.type === "text") {
+          text += part.text;
+        } else {
+          calls.push(part.call);
+        }
+      }
+    };
+    const splitter = splitReply(turn.tools);
     try {
       for await (const event of parseAipassSSE(turn.body)) {
         if (event.kind === "delta") {
-          text += event.text;
+          collect(splitter.push(event.text));
         } else if (event.kind === "reasoning") {
           reasoning += event.text;
         } else if (event.kind === "finish") {
@@ -181,6 +236,7 @@ export const aipassModel = (
           finishReason = "error";
         }
       }
+      collect(splitter.flush());
     } finally {
       await deleteConversation(cookie, turn.conversationId);
     }
@@ -191,9 +247,17 @@ export const aipassModel = (
     if (text.length > 0) {
       content.push({ text, type: "text" });
     }
+    for (const call of calls) {
+      content.push({
+        input: JSON.stringify(call.input),
+        toolCallId: call.id,
+        toolName: call.name,
+        type: "tool-call",
+      });
+    }
     return {
       content,
-      finishReason,
+      finishReason: settle(finishReason, calls.length),
       usage: NO_USAGE,
       warnings: turn.warnings,
     };
