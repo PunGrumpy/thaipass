@@ -24,7 +24,6 @@ const contentSchema = z
 const roleSchema = z
   .union([
     z.enum(["system", "user", "assistant", "tool"]),
-
     z.unknown().transform((): TurnRole => "user"),
   ])
   .optional()
