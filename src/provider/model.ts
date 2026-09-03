@@ -6,6 +6,7 @@ import type {
   LanguageModelV2Content,
   LanguageModelV2FinishReason,
   LanguageModelV2StreamPart,
+  LanguageModelV2ToolCall,
   LanguageModelV2Usage,
 } from "@ai-sdk/provider";
 
@@ -67,7 +68,7 @@ const settingWarnings = (
   return warnings;
 };
 
-const toolCallPart = (call: ToolCall): LanguageModelV2StreamPart => ({
+const toolCallPart = (call: ToolCall): LanguageModelV2ToolCall => ({
   input: JSON.stringify(call.input),
   toolCallId: call.id,
   toolName: call.name,
@@ -247,14 +248,7 @@ export const aipassModel = (
     if (text.length > 0) {
       content.push({ text, type: "text" });
     }
-    for (const call of calls) {
-      content.push({
-        input: JSON.stringify(call.input),
-        toolCallId: call.id,
-        toolName: call.name,
-        type: "tool-call",
-      });
-    }
+    content.push(...calls.map(toolCallPart));
     return {
       content,
       finishReason: settle(finishReason, calls.length),
