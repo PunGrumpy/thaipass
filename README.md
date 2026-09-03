@@ -1,106 +1,70 @@
 # AIPass Proxy
 
-An OpenAI-compatible `/v1/chat/completions` and Anthropic-compatible `/v1/messages` proxy in front of the [AI Pass](https://de.aipass.net) chat backend. It lets a personal tool (t3, Codex, an Anthropic SDK app, an AI SDK agent) reach the same models the account already sees in the web UI: Claude Opus 5, GPT-5.6, Gemini 3.x, GLM 5.2, DeepSeek, Grok, and others.
+Point your OpenAI or Anthropic client at AI Pass.
 
-> **Personal use only.** Every request carries the caller's own AI Pass session cookie, so the proxy stores no credential and drives no account but the caller's. It is still not for redistribution or any kind of scale. See [Scope](#scope).
+AIPass Proxy serves an OpenAI-compatible `/v1/chat/completions` and an Anthropic-compatible `/v1/messages` in front of the [AI Pass](https://de.aipass.net) chat backend. Any tool that speaks either protocol reaches the models your account already sees in the web UI. AI SDK apps can import the bundled provider instead.
 
-## How it works
+Every request carries your own session cookie. The proxy stores no credential and drives no account but yours. See [Personal use only](#personal-use-only).
 
-AI Pass is a stateful chat app that speaks the Vercel AI SDK v5 UI-message stream behind a browser session cookie. Each proxied request does four things.
+## Quick start
 
-1. **Creates a throwaway conversation.** `POST /chat.data`, form-encoded, `intent=create-conversation`. The conversation id is the first 16 hex chars of a client-generated UUID.
-2. **Sends one flattened turn.** `POST /actions/send-message/<id>`, JSON. The backend answers from _server-stored_ history and ignores multi-message bodies, so the whole conversation (system plus turns) is flattened into a single role-labelled user message. A fresh conversation per request keeps that history empty, so nothing bleeds between requests.
-3. **Streams the reply.** The `text-delta` SSE events become OpenAI `chat.completion.chunk`s or Anthropic message events, or accumulate into one non-streaming response.
-4. **Deletes the conversation.** `POST /actions/update-conversation.data` with `intent=delete`, so the account's chat list stays clean.
-
-## Authentication
-
-The proxy holds no credential. Each request must carry the caller's own AI Pass session cookie in the `Authorization` header:
-
-```
-Authorization: Bearer <full Cookie header value>
-```
-
-The value is the whole `Cookie:` header from a logged-in browser session and must contain `__Secure-ai_passport_auth.session_token`. Semicolons and spaces inside it are fine, and the percent-encoding the browser applies must survive the copy: a `%2B` decoded back to `+` reaches AI Pass as a different token. In an OpenAI client, paste it into the API key field. A client that requires the key to look like `sk-...` will not work.
-
-An Anthropic client sends its key as `x-api-key` rather than a bearer token, so that header carries the same value and is read first when present.
-
-A 401 says which of the three things went wrong: no credential, a scheme other than Bearer, or a value carrying no session token, which is what sending the token on its own looks like. The message never repeats what the caller sent.
-
-`GET /v1/models` and `GET /health` need no credential.
-
-## Setup
+### 1. Run the proxy
 
 ```bash
 bun install
 bun run start
 ```
 
-Configuration is environment only. Bun loads a local `.env` on its own; every value has a default, so no file is required.
+The server listens on `http://127.0.0.1:3789`. Every setting has a default, so no `.env` is required.
 
-| var | default | notes |
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `AIPASS_ORIGIN` | `https://de.aipass.net` |  |
-| `AIPASS_HOST` | `127.0.0.1` | bind address, local server only |
-| `AIPASS_PORT` | `3789` | local server only |
-| `POSTHOG_API_KEY` | none | optional, enables the PostHog drain. The project token, `phc_...` |
-| `POSTHOG_HOST` | `https://us.i.posthog.com` | optional |
+| `AIPASS_ORIGIN` | `https://de.aipass.net` | Upstream origin |
+| `AIPASS_HOST` | `127.0.0.1` | Bind address, local only |
+| `AIPASS_PORT` | `3789` | Port, local only |
+| `POSTHOG_API_KEY` | none | Project token (`phc_…`), enables PostHog |
+| `POSTHOG_HOST` | `https://us.i.posthog.com` | PostHog ingestion host |
 
-A bad value fails at startup naming the variable, rather than surfacing later as a malformed URL.
+### 2. Copy your session cookie
 
-## Endpoints
+Log in to AI Pass and copy the full `Cookie` header from any request to `de.aipass.net`. It must contain `__Secure-ai_passport_auth.session_token`. Keep the percent-encoding as the browser sends it.
 
-- `POST /v1/chat/completions`, OpenAI, streaming by default
-- `POST /v1/messages`, Anthropic, buffered by default as that API is, `stream: true` for the event stream
-- `GET /v1/models`, the chat model catalog
-- `GET /health`
-- `GET /openapi.json`, the OpenAPI document
-- `GET /`, that document rendered by Scalar
+That string is your API key. Pass it as a bearer token, or as `x-api-key` from an Anthropic client. A client that requires keys to start with `sk-` will not work.
 
-The document is generated by `@elysiajs/openapi` from the routes themselves. Each route registers the Zod schemas it validates with as named models, so the model enum, the request bodies and every response shape come from the code rather than a copy of it. What the plugin cannot see from a route, that a reply may arrive as an event stream and which error shape each status carries, is declared next to that route in its `detail`. `/` used to repeat the health payload; `/health` still serves it.
-
-Anyone who can reach the deployment can read the docs, which describe how to drive the proxy. That is one more reason to keep Deployment Protection on. See [Deploying](#deploying).
+### 3. Send a request
 
 ```bash
 curl -sN localhost:3789/v1/chat/completions \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $COOKIE" \
+  -H "authorization: Bearer $AIPASS_COOKIE" \
   -d '{"model":"claude-sonnet-5@default","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-Model ids are case-sensitive and Claude carries a `@provider` suffix (`claude-opus-5@azure`, `claude-sonnet-5@default`). An id outside the catalog is rejected with 400 rather than forwarded. The full list is in [`src/aipass/models.ts`](src/aipass/models.ts). `gemini-3.1-flash-lite` is the free default.
+`GET /v1/models` lists every accepted model id. Ids are case-sensitive, Claude ids carry a `@provider` suffix, and `gemini-3.1-flash-lite` is the free default.
 
-## Using it from an Anthropic client
+## Endpoints
 
-`/v1/messages` takes what the Anthropic SDK and `@ai-sdk/anthropic` send and answers in the shape they read, streamed or buffered. Errors come back as `{ type: "error", error: { type, message } }` on that path, so the SDK's own error classes apply. The system prompt, text blocks, `tool_use` and `tool_result` blocks are carried; images and documents are dropped; `max_tokens`, `thinking`, `metadata` and the sampling settings are accepted and ignored, because AI Pass reads none of them.
+- `POST /v1/chat/completions`: OpenAI protocol, streaming by default
+- `POST /v1/messages`: Anthropic protocol, buffered unless `stream: true`
+- `GET /v1/models`: the model catalog, no credential needed
+- `GET /health`: liveness, no credential needed
+- `GET /`: OpenAPI docs rendered by Scalar, also at `/openapi.json`
 
-An app that already speaks the Anthropic protocol needs only its environment changed. For an [eve](https://eve.dev) agent such as [baymi](https://github.com/PunGrumpy/baymi):
+## Use it from an Anthropic client
 
-```
-ANTHROPIC_BASE_URL=https://<deployment>/v1
-ANTHROPIC_API_KEY=<full Cookie header value>
+Change the environment of any app that speaks the Anthropic protocol, such as a [baymi](https://github.com/PunGrumpy/baymi) agent:
+
+```bash
+ANTHROPIC_BASE_URL=https://your_deployment_here/v1
+ANTHROPIC_API_KEY=your_cookie_header_here
 MODEL=claude-sonnet-5@default
 ```
 
-The cookie expires on AI Pass's schedule, so the key needs refreshing when a 502 says it is stale, and every reply reports zero usage.
+Text, `tool_use` and `tool_result` blocks are carried through. Images, documents, `max_tokens`, `thinking` and sampling settings are dropped.
 
-## Tool calling
+## Use it as an AI SDK provider
 
-AI Pass reads a model id and one message and answers with text, so a tool call cannot cross the wire as a structured field. When a request offers tools, the proxy puts them in the prompt instead: a short guide naming each tool with its description and input schema, and the block the model must write to call one:
-
-````
-```tool_call
-{"name": "get_weather", "input": {"city": "Bangkok"}}
-```
-````
-
-Past calls and their results are rendered back into the flattened prompt in the same shape, so on each round the model sees what it asked for and what came back. The reply is split as it streams: text goes out as text, and each block naming an offered tool becomes a `tool_calls` entry (OpenAI), a `tool_use` content block (Anthropic), or a `tool-call` part (AI SDK), with the finish reason set accordingly. A block that is not JSON, or names a tool that was not offered, is passed through as the text it was, and nothing is held back when no tools were offered.
-
-This is emulation, and it holds up as well as the model follows the format. The larger models follow it reliably; a small one may narrate a call instead of writing the block, which reaches the client as text. Every round of an agent loop is one more throwaway conversation upstream, so an agent that calls many tools per turn spends the daily credit allowance quickly.
-
-## Using it as an AI SDK provider
-
-The proxy exists for OpenAI clients. An AI SDK app does not need it. `createAipass` returns models that `streamText` and `generateText` accept, and the call reaches AI Pass without an HTTP hop of its own.
+`createAipass` returns models that `streamText` and `generateText` accept, with no HTTP hop:
 
 ```ts
 import { streamText } from "ai";
@@ -114,69 +78,55 @@ const result = streamText({
 });
 ```
 
-`aipass(id)` takes an id from the catalog and autocompletes it. `aipass.languageModel(id)` takes any string, which is what `ProviderV2` asks for and what a model id read from config looks like; an id outside the catalog throws `NoSuchModelError` there.
+The provider implements `LanguageModelV2` for `ai` v5. Sampling settings return `unsupported-setting` warnings, and `usage` is undefined. An app on `ai` v7 should use `/v1/messages` over HTTP instead.
 
-It calls the same `src/aipass` code the route does: one throwaway conversation per call, the messages flattened into a single turn, a delete on the way out. An upstream answer that is not an event stream throws `APICallError`.
+## Tool calling over text
 
-AI Pass reads a model id and messages, nothing else. So `temperature`, `maxOutputTokens`, `seed`, `stopSequences`, `responseFormat`, the penalties, `topP`, `topK` and `toolChoice` come back as `unsupported-setting` warnings. Function tools go through the text protocol described under [Tool calling](#tool-calling) and come back as `tool-call` parts; provider-defined tools have nothing upstream to run on and come back as `unsupported-tool`. The provider drops file parts and names the types it dropped. `usage` is undefined, for the same reason it is zero over HTTP.
+AI Pass answers with plain text, so tools are emulated. The proxy describes each offered tool in the prompt and asks the model to call one with a fenced block:
 
-The provider implements `LanguageModelV2`, the contract of `ai` v5. An app on `ai` v7 expects `LanguageModelV3` and should use `/v1/messages` over HTTP instead.
-
-## Deploying
-
-`src/app.ts` builds the Elysia app and starts nothing, so both entry points share it.
-
-- Local: `src/server.ts` calls `.listen()`, which is what `bun run start` and `bun run dev` use.
-- Vercel: `src/index.ts` default-exports the app, the entry Vercel's Elysia preset looks for, and `vercel.json` sets `bunVersion` so functions run on Bun. There is no `api/` directory and nothing to rewrite.
-
-Because the deployment stores no credential, a leaked URL leaks nothing. It is still an open relay to AI Pass for anyone holding a valid cookie, so keep Vercel's Deployment Protection on unless you want it reachable.
-
-Dependencies are pinned to exact versions rather than ranges. Vercel builds on a Bun old enough to reject the lockfile this repo writes, and it says so before carrying on without it, so ranges would resolve fresh on every build and ship a tree no one had run. Pinning is what makes the deployed tree the tested one until the lockfile can be read again.
-
-Two Bun-only settings do not apply on Vercel: `AIPASS_HOST` / `AIPASS_PORT`, and the 240s idle timeout. A long stream is bounded by the platform's function duration instead, so a slow model can be cut off mid-reply.
-
-## Notes
-
-- `usage` on a non-streaming reply is always zeros. AI Pass reports no token counts, and a character-count estimate would look right while being wrong, so a client that meters spend from this field reads 0.
-- The cookie is short-lived. When it expires, requests fail with `upstream 3xx ... cookie is stale`. Send a fresh one; nothing on the server needs to change.
-- Prompts and cookies never reach the logs. Each request emits one wide event carrying sizes, counts and timings, plus the upstream status, `reasoningChars` for thinking models, and a count of the SSE payloads that failed to decode with the `type` of each one.
-- Set `POSTHOG_API_KEY` to the project token from Project Settings, `phc_...`, to forward those events to PostHog as `aipass_proxy_request`. Ingestion authenticates on that token alone, so there is no project id to set; a personal key, `phx_...`, is for reading data back and is rejected at startup. Fields are flat, so `model`, `msToFirstChunk` and `country` arrive as filterable properties rather than one opaque object. Startup lines are not forwarded.
-- Callers are identified by IP, user agent, Vercel's geo headers, and `clientId`, a SHA-256 prefix of the cookie that groups one session without revealing it. IPv4 redaction is off, so the address survives. Email masking is off too. That masker matches by value rather than by field name, so it would have scrubbed `userEmail` along with every address in an error string. JWTs, bearer tokens, cards, phones and IBANs are still masked.
-- `userId`, `userName`, `userEmail`, `userTier` and `userTierExp` come from `GET /lms/api/v1/session/session-tier`, cached five minutes per caller. `userId` is the PostHog distinct id, because `clientId` changes every time the cookie rotates and would split one person into a new profile each time. `userName` joins the given, middle and family names; the separate `name` the endpoint returns is a display handle, used only when those are empty. The response also carries a profile photo URL and a ban flag, which the schema drops. The cookie itself never leaves the process. When this lookup fails the fields are absent and evlog marks the event `$process_person_profile: false`, so a failed lookup produces an anonymous event instead of a wrong person.
-- `orgName`, `userRole` and `sessionExpiresAt` come from a second call to `GET /lms/api/v1/session/`, sent in parallel with the first and cached alongside it. That endpoint returns the split names as null and carries no tier, so it supplements the tier call rather than replacing it. `sessionExpiresAt` is the only way to watch a cookie approach its expiry instead of finding out from a 502. Its payload also holds a live session token and a citizen id hash, and the schema reads neither. A failure here drops those three fields and leaves the rest of the identity intact.
-- `modelFree` and `modelReady` come from the upstream catalog, cached five minutes per caller. When that catalog lists a model the proxy does not serve, a warning names it, so a stale `CHAT_MODELS` shows up in the logs instead of as a 400 nobody can explain.
-- Every event also carries the caller's AI Pass credit balance: `creditsUsed`, `creditsAvailable`, `creditsLimit` and `creditsResetAt`. The daily allowance is 10000 and resets at `creditsResetAt`, so a burn-down chart falls out of `creditsAvailable` over time. That costs one extra `GET /loaders/get-usage-quota`, started in parallel with the chat request and awaited only before the event is written, so it never delays a reply.
-
-## Layout
-
-The proxy is an adapter between wire formats and one upstream, so each format lives apart from the others and from AI Pass, and they meet only in the three root modules.
-
+````markdown
+```tool_call
+{"name": "get_weather", "input": {"city": "Bangkok"}}
 ```
-src/app.ts       the Elysia app, error mapping, body parsing, route mounting
-src/index.ts     Vercel entry, default-exports the app
-src/server.ts    local Bun server
-src/routes/      one module per endpoint
-src/aipass/      upstream: client, session cookie, model catalog, quotas, SSE stream
-src/openai/      wire format: request schema, chunk and completion shapes, error shape
-src/anthropic/   wire format: request schema, message and event shapes, error shape
-src/provider/    LanguageModelV2 implementation, for AI SDK callers
-src/translate.ts flattens a conversation into the single turn AI Pass reads
-src/tools.ts     the text protocol tool calls travel in, both directions
-src/turn.ts      one turn against AI Pass, rendered through a protocol's Wire
-src/lib/         env, config, logging, client info, stream guards, ids, OpenAPI response helpers
-src/testing/     helpers shared between test files
-```
+````
 
-A protocol reduces its request to `Conversation` (turns plus tools) and implements `Wire`, which says how a failure, a streamed reply and a buffered reply look on that protocol. `turn.ts` does the rest. The request schemas are the one place that reaches across into `src/aipass`, for the model enum: the proxy only accepts models AI Pass serves.
+Each such block becomes a `tool_calls` entry (OpenAI), a `tool_use` block (Anthropic), or a `tool-call` part (AI SDK). Larger models follow the format reliably. A small model may narrate the call instead, which reaches the client as text.
 
-## Scripts
+## How a request reaches AI Pass
 
-- `bun run dev`, watch mode
-- `bun run test`, Bun test suite
-- `bun run check`, Ultracite (oxlint + oxfmt) check
-- `bun run fix`, format and autofix
-- `bun run typecheck`, `tsc --noEmit`
+Each proxied request does four things:
 
-## Scope
+1. **Create a throwaway conversation** with `POST /chat.data`.
+2. **Send one flattened turn**: the backend ignores multi-message bodies, so the whole conversation becomes a single role-labelled user message.
+3. **Stream the reply**: `text-delta` events become OpenAI chunks or Anthropic events.
+4. **Delete the conversation**, so the account’s chat list stays clean.
 
-This is a reverse-engineered adapter over an undocumented private API. Keep it to a single account you own, for your own use. Don't publish it as a service, point it at accounts that aren't yours, or run it at a scale that would burden the shared program. Asking other people for their session cookie means asking them to trust you with full access to their account, which is a good reason not to.
+Every agent round is one more conversation upstream, so tool-heavy loops spend the daily credit allowance fast.
+
+## Deploy to Vercel
+
+`src/index.ts` default-exports the Elysia app and `vercel.json` sets `bunVersion`, so the repo deploys as is. Keep Deployment Protection on: the deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
+
+Streams on Vercel are bounded by the function duration, not the 240s idle timeout, so a slow model can be cut off mid-reply.
+
+## Logging
+
+Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, and the account’s credit balance. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
+
+## Limits
+
+- **Usage is always zero**: AI Pass reports no token counts.
+- **Cookies expire**: a 502 whose message says the cookie is stale means you need a fresh one.
+- **Unknown model ids return 400** instead of being forwarded.
+
+## Development scripts
+
+- `bun run dev`: watch mode
+- `bun run test`: Bun test suite
+- `bun run check`: Ultracite check
+- `bun run fix`: format and autofix
+- `bun run typecheck`: `tsc --noEmit`
+
+## Personal use only
+
+This is a reverse-engineered adapter over an undocumented private API. Keep it to a single account you own. Don’t publish it as a service, point it at accounts that aren’t yours, or run it at a scale that would burden the shared program.
