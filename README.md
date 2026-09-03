@@ -49,6 +49,7 @@ curl -sN localhost:3789/v1/chat/completions \
 - `POST /v1/chat/completions`: OpenAI protocol, streaming by default
 - `POST /v1/messages`: Anthropic protocol, buffered unless `stream: true`
 - `GET /v1/models`: the model catalog, no credential needed
+- `GET /v1/usage`: the account's credit balance, needs the cookie
 - `GET /health`: liveness, no credential needed
 - `GET /`: OpenAPI docs rendered by Scalar, also at `/openapi.json`
 
@@ -80,7 +81,7 @@ const result = streamText({
 });
 ```
 
-The provider implements `LanguageModelV2` for `ai` v5. Sampling settings return `unsupported-setting` warnings, and `usage` is undefined. An app on `ai` v7 should use `/v1/messages` over HTTP instead.
+The provider implements `LanguageModelV2` for `ai` v5. Sampling settings return `unsupported-setting` warnings, token `usage` is undefined, and `providerMetadata.aipass.credits` holds the credit balance. An app on `ai` v7 should use `/v1/messages` over HTTP instead.
 
 ## Tool calling over text
 
@@ -105,6 +106,39 @@ Each proxied request does four things:
 
 Every agent round is one more conversation upstream, so tool-heavy loops spend the daily credit allowance fast.
 
+## Usage in credits
+
+AI Pass meters in credits per period, not in tokens, so token counts in every reply are zero. Every reply reports the credit balance instead. Each completion reads the balance as it starts and again as it ends, and puts the result under `usage.credits`:
+
+```json
+{
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "credits": {
+      "spent": 30.25,
+      "used": 130.25,
+      "limit": 10000,
+      "available": 9869.75,
+      "reset_at": "2026-09-04T00:00:00.000Z"
+    }
+  }
+}
+```
+
+`spent` is what this reply cost, as the difference between the two reads. It is absent when either read failed, and the whole `credits` object is absent when both did. Where to find it depends on the protocol:
+
+- **OpenAI stream**: the final chunk, the one with `finish_reason`
+- **Anthropic stream**: the `message_delta` event
+- **AI SDK provider**: `providerMetadata.aipass.credits`
+
+`GET /v1/usage` returns the same balance without spending anything:
+
+```bash
+curl -s localhost:3789/v1/usage -H "authorization: Bearer $AIPASS_COOKIE"
+```
+
 ## Deploy to Vercel
 
 `src/index.ts` default-exports the Elysia app and `vercel.json` sets `bunVersion`, so the repo deploys as is. Keep Deployment Protection on: the deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
@@ -113,11 +147,11 @@ Streams on Vercel are bounded by the function duration, not the 240s idle timeou
 
 ## Logging
 
-Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, and the account’s credit balance. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
+Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, the account’s credit balance, and the credits the reply spent. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
 
 ## Limits
 
-- **Usage is always zero**: AI Pass reports no token counts.
+- **Token counts are always zero**: AI Pass reports none. Every reply reports credits instead, see [Usage in credits](#usage-in-credits).
 - **Cookies expire**: a 502 whose message says the cookie is stale means you need a fresh one.
 - **Unknown model ids return 400** instead of being forwarded.
 
