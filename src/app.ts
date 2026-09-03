@@ -12,7 +12,6 @@ import { modelRoutes } from "./routes/models";
 
 const ANTHROPIC_PREFIX = "/v1/messages";
 
-/** An error answers in the shape of the protocol the path belongs to. */
 const errorBody = (path: string, code: number, message: string) =>
   path.startsWith(ANTHROPIC_PREFIX)
     ? anthropicError({ message, status: code })
