@@ -200,9 +200,17 @@ const streamCompletion = (
   completion: Completion,
   deferEmit: DeferredEmit
 ): Response => {
-  const { body, conversation, conversationId, cookie, facts, log, model } =
-    completion;
-  const { startedAt, wire } = completion;
+  const {
+    body,
+    conversation,
+    conversationId,
+    cookie,
+    facts,
+    log,
+    model,
+    startedAt,
+    wire,
+  } = completion;
   deferEmit.value = true;
   let guarded: GuardedController<Uint8Array> | undefined;
   const stream = new ReadableStream<Uint8Array>({
@@ -277,9 +285,17 @@ const streamCompletion = (
 const bufferedCompletion = async (
   completion: Completion
 ): Promise<Response> => {
-  const { body, conversation, conversationId, cookie, facts, log, model } =
-    completion;
-  const { startedAt, wire } = completion;
+  const {
+    body,
+    conversation,
+    conversationId,
+    cookie,
+    facts,
+    log,
+    model,
+    startedAt,
+    wire,
+  } = completion;
   const tally = newTally();
   const calls: ToolCall[] = [];
   let text = "";
