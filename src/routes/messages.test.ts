@@ -6,6 +6,7 @@ import type { messagesRequestSchema } from "../anthropic/schema";
 import { app } from "../app";
 import {
   DELETE_PATH,
+  quotaResponse,
   sseResponse,
   stubUpstream,
   textDeltas,
@@ -217,4 +218,52 @@ test("returns 502 in the anthropic error shape when upstream is not a stream", a
   expect(body.error.type).toBe("api_error");
   expect(body.error.message).toContain("cookie is stale");
   expect(upstream.calls).toContain(DELETE_PATH);
+});
+
+const usageSchema = z.object({
+  usage: z.object({
+    credits: z
+      .object({ spent: z.number().optional(), used: z.number() })
+      .optional(),
+    input_tokens: z.number(),
+    output_tokens: z.number(),
+  }),
+});
+
+const deltaUsageSchema = z.object({
+  usage: z.object({
+    credits: z.object({ spent: z.number().optional() }).optional(),
+    output_tokens: z.number(),
+  }),
+});
+
+const CREDIT_LIMIT = 10_000;
+const USED_BEFORE = 100;
+const USED_AFTER = 130.25;
+
+test("reports the credits a buffered message spent in its usage", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(1)),
+    quotaResponse([USED_BEFORE, USED_AFTER], CREDIT_LIMIT)
+  );
+  const response = await app.fetch(messagesRequest({}));
+  const { usage } = usageSchema.parse(await response.json());
+  expect(usage.input_tokens).toBe(0);
+  expect(usage.credits?.spent).toBe(USED_AFTER - USED_BEFORE);
+  expect(usage.credits?.used).toBe(USED_AFTER);
+});
+
+test("reports the credits on message_delta when streaming", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(1)),
+    quotaResponse([USED_BEFORE, USED_AFTER], CREDIT_LIMIT)
+  );
+  const response = await app.fetch(messagesRequest({ stream: true }));
+  const text = await response.text();
+  const delta = text
+    .split("\n")
+    .find((line) => line.startsWith('data: {"delta":{"stop_reason"'));
+  const { usage } = deltaUsageSchema.parse(JSON.parse(delta?.slice(6) ?? "{}"));
+  expect(usage.output_tokens).toBe(0);
+  expect(usage.credits?.spent).toBe(USED_AFTER - USED_BEFORE);
 });

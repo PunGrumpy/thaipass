@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { creditUsageSchema } from "../aipass/quotas";
+import type { CreditUsage } from "../aipass/quotas";
 import { randomHex } from "../lib/id";
 import type { ToolCall } from "../tools";
 import type { Reply, StreamWire, Wire } from "../turn";
@@ -9,6 +11,13 @@ const toolCallSchema = z.object({
   function: z.object({ arguments: z.string(), name: z.string() }),
   id: z.string(),
   type: z.literal("function"),
+});
+
+const usageSchema = z.object({
+  completion_tokens: z.number().int(),
+  credits: creditUsageSchema.optional(),
+  prompt_tokens: z.number().int(),
+  total_tokens: z.number().int(),
 });
 
 export const chatDeltaSchema = z.object({
@@ -32,6 +41,7 @@ export const chatCompletionChunkSchema = z.object({
   id: z.string(),
   model: z.string(),
   object: z.literal("chat.completion.chunk"),
+  usage: usageSchema.optional(),
 });
 
 export const chatCompletionSchema = z.object({
@@ -51,16 +61,13 @@ export const chatCompletionSchema = z.object({
   id: z.string(),
   model: z.string(),
   object: z.literal("chat.completion"),
-  usage: z.object({
-    completion_tokens: z.number().int(),
-    prompt_tokens: z.number().int(),
-    total_tokens: z.number().int(),
-  }),
+  usage: usageSchema,
 });
 
 type ChatDelta = z.infer<typeof chatDeltaSchema>;
 type ChatCompletionChunk = z.infer<typeof chatCompletionChunkSchema>;
 type ChatCompletion = z.infer<typeof chatCompletionSchema>;
+type Usage = z.infer<typeof usageSchema>;
 type WireToolCall = z.infer<typeof toolCallSchema>;
 
 const PROTOCOL = "openai";
@@ -76,6 +83,13 @@ const FINISH_REASONS = new Map([
 const toFinishReason = (reason: string): string =>
   FINISH_REASONS.get(reason) ?? reason;
 
+const usage = (credits: CreditUsage | undefined): Usage => ({
+  completion_tokens: 0,
+  credits,
+  prompt_tokens: 0,
+  total_tokens: 0,
+});
+
 const toolCall = (call: ToolCall): WireToolCall => ({
   function: { arguments: JSON.stringify(call.input), name: call.name },
   id: `call_${call.id}`,
@@ -87,13 +101,15 @@ const chatChunk = (
   model: string,
   created: number,
   delta: ChatDelta,
-  finishReason: string | null
+  finishReason: string | null,
+  credits?: CreditUsage
 ): ChatCompletionChunk => ({
   choices: [{ delta, finish_reason: finishReason, index: 0, logprobs: null }],
   created,
   id,
   model,
   object: "chat.completion.chunk",
+  usage: credits ? usage(credits) : undefined,
 });
 
 type ChatMessage = ChatCompletion["choices"][number]["message"];
@@ -127,15 +143,19 @@ const chatCompletion = (
   id,
   model,
   object: "chat.completion",
-  usage: { completion_tokens: 0, prompt_tokens: 0, total_tokens: 0 },
+  usage: usage(reply.credits),
 });
 
 /** Every chunk of one stream carries the same id and `created` second. */
 export const openaiWire = (model: string): Wire => {
   const id = `chatcmpl-${randomHex(COMPLETION_ID_LENGTH)}`;
   const created = Math.floor(Date.now() / MS_PER_SECOND);
-  const chunk = (delta: ChatDelta, finishReason: string | null): string =>
-    `data: ${JSON.stringify(chatChunk(id, model, created, delta, finishReason))}\n\n`;
+  const chunk = (
+    delta: ChatDelta,
+    finishReason: string | null,
+    credits?: CreditUsage
+  ): string =>
+    `data: ${JSON.stringify(chatChunk(id, model, created, delta, finishReason, credits))}\n\n`;
 
   const stream = (): StreamWire => {
     let index = 0;
@@ -148,8 +168,8 @@ export const openaiWire = (model: string): Wire => {
         index += 1;
         return frame;
       },
-      close: (finishReason) =>
-        `${chunk({}, toFinishReason(finishReason))}${DONE_FRAME}`,
+      close: (finishReason, credits) =>
+        `${chunk({}, toFinishReason(finishReason), credits)}${DONE_FRAME}`,
       open: () => chunk({ role: "assistant" }, null),
       text: (delta) => chunk({ content: delta }, null),
     };
