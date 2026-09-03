@@ -9,6 +9,7 @@ import { docsRoutes } from "./routes/docs";
 import { healthRoutes } from "./routes/health";
 import { messageRoutes } from "./routes/messages";
 import { modelRoutes } from "./routes/models";
+import { usageRoutes } from "./routes/usage";
 
 const ANTHROPIC_PREFIX = "/v1/messages";
 
@@ -47,6 +48,7 @@ export const app = new Elysia()
   .use(messageRoutes)
   .use(modelRoutes)
   .use(healthRoutes)
+  .use(usageRoutes)
   .use(docsRoutes);
 
 export default app;

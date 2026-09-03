@@ -110,7 +110,10 @@ export const docsRoutes = (host: AnyElysia) =>
           tags: [
             { description: "OpenAI-compatible endpoints", name: "Chat" },
             { description: "Anthropic-compatible endpoint", name: "Messages" },
-            { description: "Documentation and health", name: "Meta" },
+            {
+              description: "Documentation, health and credit usage",
+              name: "Meta",
+            },
           ],
         },
         path: "/",
