@@ -102,11 +102,6 @@ const heldLength = (tail: string): number => {
   return 0;
 };
 
-const passthrough = (): ReplySplitter => ({
-  flush: () => [],
-  push: text,
-});
-
 /**
  * Splits a reply into text and tool calls as it streams.
  *
@@ -116,18 +111,19 @@ const passthrough = (): ReplySplitter => ({
  */
 export const splitReply = (tools: readonly ToolDefinition[]): ReplySplitter => {
   if (tools.length === 0) {
-    return passthrough();
+    return { flush: () => [], push: text };
   }
   const names = new Set(tools.map((tool) => tool.name));
   let buffer = "";
   let inBlock = false;
 
-  const closeBlock = (json: string): ReplyPart[] => {
+  /** Ends the open block; `fence` is what closed it, nothing when the reply ran out first. */
+  const closeBlock = (json: string, fence: string): ReplyPart[] => {
     inBlock = false;
     const call = parseCall(json.trim(), names);
     return call
       ? [{ call, type: "call" }]
-      : text(`${FENCE_OPEN}${json}${FENCE_CLOSE}`);
+      : text(`${FENCE_OPEN}${json}${fence}`);
   };
 
   const drain = (final: boolean): ReplyPart[] => {
@@ -141,13 +137,7 @@ export const splitReply = (tools: readonly ToolDefinition[]): ReplySplitter => {
           }
           const json = buffer;
           buffer = "";
-          inBlock = false;
-          const call = parseCall(json.trim(), names);
-          parts.push(
-            ...(call
-              ? [{ call, type: "call" } as const]
-              : text(`${FENCE_OPEN}${json}`))
-          );
+          parts.push(...closeBlock(json, ""));
           return parts;
         }
         const json = buffer.slice(0, end);
@@ -155,7 +145,7 @@ export const splitReply = (tools: readonly ToolDefinition[]): ReplySplitter => {
         if (buffer.startsWith("\n")) {
           buffer = buffer.slice(1);
         }
-        parts.push(...closeBlock(json));
+        parts.push(...closeBlock(json, FENCE_CLOSE));
         continue;
       }
       const start = buffer.indexOf(FENCE_OPEN);
