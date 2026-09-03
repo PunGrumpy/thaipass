@@ -6,13 +6,27 @@ export type CookieLookup =
   | { readonly ok: true; readonly cookie: string }
   | { readonly ok: false; readonly reason: string };
 
-const NO_HEADER = `missing Authorization header, send the AI Pass Cookie header as "Authorization: Bearer ${SESSION_TOKEN}=..."`;
+const NO_HEADER = `missing Authorization header, send the AI Pass Cookie header as "Authorization: Bearer ${SESSION_TOKEN}=...", or as x-api-key from an Anthropic client`;
 
 const NOT_BEARER = "Authorization must use the Bearer scheme";
 
-const NO_TOKEN = `the bearer value carries no ${SESSION_TOKEN}, send the whole Cookie header from a logged-in browser session rather than the token on its own`;
+const NO_TOKEN = `the credential carries no ${SESSION_TOKEN}, send the whole Cookie header from a logged-in browser session rather than the token on its own`;
 
+const withToken = (cookie: string): CookieLookup =>
+  cookie.includes(SESSION_TOKEN)
+    ? { cookie, ok: true }
+    : { ok: false, reason: NO_TOKEN };
+
+/**
+ * The cookie travels as a bearer token, or in `x-api-key`, which is where an
+ * Anthropic client puts its key. The two never both need reading: a client
+ * sends one or the other.
+ */
 export const cookieFromRequest = (request: Request): CookieLookup => {
+  const apiKey = request.headers.get("x-api-key");
+  if (apiKey) {
+    return withToken(apiKey.trim());
+  }
   const header = request.headers.get("authorization");
   if (!header) {
     return { ok: false, reason: NO_HEADER };
@@ -21,11 +35,7 @@ export const cookieFromRequest = (request: Request): CookieLookup => {
   if (scheme.toLowerCase() !== "bearer") {
     return { ok: false, reason: NOT_BEARER };
   }
-  const cookie = rest.join(" ").trim();
-  if (!cookie.includes(SESSION_TOKEN)) {
-    return { ok: false, reason: NO_TOKEN };
-  }
-  return { cookie, ok: true };
+  return withToken(rest.join(" ").trim());
 };
 
 const CLIENT_ID_LENGTH = 16;

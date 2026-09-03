@@ -97,3 +97,68 @@ test("keeps the four known roles", () => {
     "tool",
   ]);
 });
+
+test("keeps the calls an assistant message made, with parsed arguments", () => {
+  const result = chatRequestSchema.safeParse({
+    messages: [
+      {
+        content: null,
+        role: "assistant",
+        tool_calls: [
+          {
+            function: { arguments: '{"city":"Bangkok"}', name: "get_weather" },
+            id: "call_1",
+            type: "function",
+          },
+          {
+            function: { arguments: "not json", name: "get_time" },
+            id: "call_2",
+            type: "function",
+          },
+        ],
+      },
+    ],
+  });
+  expect(result.data?.messages?.[0]).toEqual({
+    calls: [
+      { id: "call_1", input: { city: "Bangkok" }, name: "get_weather" },
+      { id: "call_2", input: {}, name: "get_time" },
+    ],
+    content: "",
+    role: "assistant",
+  });
+});
+
+test("keeps the call a tool message answers", () => {
+  const result = chatRequestSchema.safeParse({
+    messages: [{ content: "sunny", role: "tool", tool_call_id: "call_1" }],
+  });
+  expect(result.data?.messages?.[0]).toEqual({
+    callId: "call_1",
+    content: "sunny",
+    role: "tool",
+  });
+});
+
+test("offers function tools under their own names and schemas", () => {
+  const result = chatRequestSchema.safeParse({
+    messages: [],
+    tools: [
+      {
+        function: {
+          description: "Reads the weather.",
+          name: "get_weather",
+          parameters: { type: "object" },
+        },
+        type: "function",
+      },
+    ],
+  });
+  expect(result.data?.tools).toEqual([
+    {
+      description: "Reads the weather.",
+      inputSchema: { type: "object" },
+      name: "get_weather",
+    },
+  ]);
+});

@@ -1,8 +1,22 @@
 import { z } from "zod";
 
+import { randomHex } from "../lib/id";
+import type { ToolCall } from "../tools";
+import type { Reply, StreamWire, Wire } from "../turn";
+import { openaiFailure } from "./errors";
+
+const toolCallSchema = z.object({
+  function: z.object({ arguments: z.string(), name: z.string() }),
+  id: z.string(),
+  type: z.literal("function"),
+});
+
 export const chatDeltaSchema = z.object({
   content: z.string().optional(),
   role: z.literal("assistant").optional(),
+  tool_calls: z
+    .array(toolCallSchema.extend({ index: z.number().int() }))
+    .optional(),
 });
 
 export const chatCompletionChunkSchema = z.object({
@@ -27,8 +41,9 @@ export const chatCompletionSchema = z.object({
       index: z.number().int(),
       logprobs: z.null(),
       message: z.object({
-        content: z.string(),
+        content: z.string().nullable(),
         role: z.literal("assistant"),
+        tool_calls: z.array(toolCallSchema).optional(),
       }),
     })
   ),
@@ -43,14 +58,31 @@ export const chatCompletionSchema = z.object({
   }),
 });
 
-export type ChatDelta = z.infer<typeof chatDeltaSchema>;
-export type ChatCompletionChunk = z.infer<typeof chatCompletionChunkSchema>;
-export type ChatCompletion = z.infer<typeof chatCompletionSchema>;
+type ChatDelta = z.infer<typeof chatDeltaSchema>;
+type ChatCompletionChunk = z.infer<typeof chatCompletionChunkSchema>;
+type ChatCompletion = z.infer<typeof chatCompletionSchema>;
+type WireToolCall = z.infer<typeof toolCallSchema>;
 
-export const createdAt = (startedAt: number): number =>
-  Math.floor(startedAt / 1000);
+const PROTOCOL = "openai";
+const COMPLETION_ID_LENGTH = 16;
+const MS_PER_SECOND = 1000;
+const DONE_FRAME = "data: [DONE]\n\n";
 
-export const chatChunk = (
+const FINISH_REASONS = new Map([
+  ["content-filter", "content_filter"],
+  ["tool-calls", "tool_calls"],
+]);
+
+const toFinishReason = (reason: string): string =>
+  FINISH_REASONS.get(reason) ?? reason;
+
+const toolCall = (call: ToolCall): WireToolCall => ({
+  function: { arguments: JSON.stringify(call.input), name: call.name },
+  id: `call_${call.id}`,
+  type: "function",
+});
+
+const chatChunk = (
   id: string,
   model: string,
   created: number,
@@ -64,19 +96,31 @@ export const chatChunk = (
   object: "chat.completion.chunk",
 });
 
-export const chatCompletion = (
+type ChatMessage = ChatCompletion["choices"][number]["message"];
+
+const chatMessage = (reply: Reply): ChatMessage => {
+  const message: ChatMessage = {
+    content: reply.text.length > 0 ? reply.text : null,
+    role: "assistant",
+  };
+  if (reply.calls.length > 0) {
+    message.tool_calls = reply.calls.map(toolCall);
+  }
+  return message;
+};
+
+const chatCompletion = (
   id: string,
   model: string,
   created: number,
-  content: string,
-  finishReason: string
+  reply: Reply
 ): ChatCompletion => ({
   choices: [
     {
-      finish_reason: finishReason,
+      finish_reason: toFinishReason(reply.finishReason),
       index: 0,
       logprobs: null,
-      message: { content, role: "assistant" },
+      message: chatMessage(reply),
     },
   ],
   created,
@@ -85,3 +129,37 @@ export const chatCompletion = (
   object: "chat.completion",
   usage: { completion_tokens: 0, prompt_tokens: 0, total_tokens: 0 },
 });
+
+/** Every chunk of one stream carries the same id and `created` second. */
+export const openaiWire = (model: string): Wire => {
+  const id = `chatcmpl-${randomHex(COMPLETION_ID_LENGTH)}`;
+  const created = Math.floor(Date.now() / MS_PER_SECOND);
+  const chunk = (delta: ChatDelta, finishReason: string | null): string =>
+    `data: ${JSON.stringify(chatChunk(id, model, created, delta, finishReason))}\n\n`;
+
+  const stream = (): StreamWire => {
+    let index = 0;
+    return {
+      call: (call) => {
+        const frame = chunk(
+          { tool_calls: [{ ...toolCall(call), index }] },
+          null
+        );
+        index += 1;
+        return frame;
+      },
+      close: (finishReason) =>
+        `${chunk({}, toFinishReason(finishReason))}${DONE_FRAME}`,
+      open: () => chunk({ role: "assistant" }, null),
+      text: (delta) => chunk({ content: delta }, null),
+    };
+  };
+
+  return {
+    fail: openaiFailure,
+    id,
+    protocol: PROTOCOL,
+    reply: (reply) => Response.json(chatCompletion(id, model, created, reply)),
+    stream,
+  };
+};

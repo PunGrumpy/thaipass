@@ -1,17 +1,17 @@
 import { expect, test } from "bun:test";
 
-import { convertPrompt } from "./prompt";
+import { convertPrompt, convertTools } from "./prompt";
 
 test("keeps a system message as plain text", () => {
-  const { messages, warnings } = convertPrompt([
+  const { turns, warnings } = convertPrompt([
     { content: "be terse", role: "system" },
   ]);
-  expect(messages).toEqual([{ content: "be terse", role: "system" }]);
+  expect(turns).toEqual([{ content: "be terse", role: "system" }]);
   expect(warnings).toEqual([]);
 });
 
 test("joins the text parts of a user turn", () => {
-  const { messages } = convertPrompt([
+  const { turns } = convertPrompt([
     {
       content: [
         { text: "one", type: "text" },
@@ -20,11 +20,11 @@ test("joins the text parts of a user turn", () => {
       role: "user",
     },
   ]);
-  expect(messages).toEqual([{ content: "onetwo", role: "user" }]);
+  expect(turns).toEqual([{ content: "onetwo", role: "user" }]);
 });
 
 test("keeps assistant reasoning alongside its text", () => {
-  const { messages } = convertPrompt([
+  const { turns } = convertPrompt([
     {
       content: [
         { text: "thinking", type: "reasoning" },
@@ -33,11 +33,11 @@ test("keeps assistant reasoning alongside its text", () => {
       role: "assistant",
     },
   ]);
-  expect(messages).toEqual([{ content: "thinkinganswer", role: "assistant" }]);
+  expect(turns).toEqual([{ content: "thinkinganswer", role: "assistant" }]);
 });
 
 test("warns once naming every part type it dropped", () => {
-  const { messages, warnings } = convertPrompt([
+  const { turns, warnings } = convertPrompt([
     {
       content: [
         { text: "look", type: "text" },
@@ -50,7 +50,7 @@ test("warns once naming every part type it dropped", () => {
       role: "user",
     },
   ]);
-  expect(messages).toEqual([
+  expect(turns).toEqual([
     { content: "look", role: "user" },
     { content: "", role: "user" },
   ]);
@@ -61,8 +61,8 @@ test("warns once naming every part type it dropped", () => {
   });
 });
 
-test("drops tool results and says so", () => {
-  const { messages, warnings } = convertPrompt([
+test("keeps a tool result as a tool turn answering its call", () => {
+  const { turns, warnings } = convertPrompt([
     {
       content: [
         {
@@ -71,14 +71,76 @@ test("drops tool results and says so", () => {
           toolName: "weather",
           type: "tool-result",
         },
+        {
+          output: { type: "json", value: { c: 31 } },
+          toolCallId: "call_2",
+          toolName: "weather",
+          type: "tool-result",
+        },
       ],
       role: "tool",
     },
   ]);
-  expect(messages).toEqual([{ content: "", role: "tool" }]);
-  expect(warnings[0]?.type).toBe("other");
+  expect(turns).toEqual([
+    { callId: "call_1", content: "sunny", role: "tool" },
+    { callId: "call_2", content: '{"c":31}', role: "tool" },
+  ]);
+  expect(warnings).toEqual([]);
+});
+
+test("keeps the calls an assistant turn made", () => {
+  const { turns } = convertPrompt([
+    {
+      content: [
+        { text: "Checking.", type: "text" },
+        {
+          input: { city: "Bangkok" },
+          toolCallId: "call_1",
+          toolName: "weather",
+          type: "tool-call",
+        },
+      ],
+      role: "assistant",
+    },
+  ]);
+  expect(turns).toEqual([
+    {
+      calls: [{ id: "call_1", input: { city: "Bangkok" }, name: "weather" }],
+      content: "Checking.",
+      role: "assistant",
+    },
+  ]);
+});
+
+test("offers function tools and warns about provider-defined ones", () => {
+  const { tools, warnings } = convertTools({
+    prompt: [],
+    tools: [
+      {
+        description: "Reads the weather.",
+        inputSchema: { type: "object" },
+        name: "weather",
+        type: "function",
+      },
+      {
+        args: {},
+        id: "openai.web_search",
+        name: "web",
+        type: "provider-defined",
+      },
+    ],
+  });
+  expect(tools).toEqual([
+    {
+      description: "Reads the weather.",
+      inputSchema: { type: "object" },
+      name: "weather",
+    },
+  ]);
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]?.type).toBe("unsupported-tool");
 });
 
 test("returns nothing for an empty prompt", () => {
-  expect(convertPrompt([])).toEqual({ messages: [], warnings: [] });
+  expect(convertPrompt([])).toEqual({ turns: [], warnings: [] });
 });

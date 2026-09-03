@@ -1,12 +1,22 @@
 import { Elysia, NotFound, ParseError, ValidationError, status } from "elysia";
 import { log } from "evlog";
 
+import { anthropicError } from "./anthropic/errors";
 import { requestLogger } from "./lib/logger";
 import { apiError } from "./openai/errors";
 import { chatRoutes } from "./routes/chat";
 import { docsRoutes } from "./routes/docs";
 import { healthRoutes } from "./routes/health";
+import { messageRoutes } from "./routes/messages";
 import { modelRoutes } from "./routes/models";
+
+const ANTHROPIC_PREFIX = "/v1/messages";
+
+/** An error answers in the shape of the protocol the path belongs to. */
+const errorBody = (path: string, code: number, message: string) =>
+  path.startsWith(ANTHROPIC_PREFIX)
+    ? anthropicError({ message, status: code })
+    : apiError(message);
 
 const reject = (
   request: Request,
@@ -20,7 +30,7 @@ const reject = (
     path,
     status: code,
   });
-  return status(code, apiError(message));
+  return status(code, errorBody(path, code, message));
 };
 
 export const app = new Elysia()
@@ -33,14 +43,9 @@ export const app = new Elysia()
   .error(NotFound, ({ request, path }) =>
     reject(request, path, 404, "not found")
   )
-  .parse(async ({ request, contentType }) => {
-    if (contentType) {
-      return;
-    }
-    return await request.json();
-  })
   .use(requestLogger)
   .use(chatRoutes)
+  .use(messageRoutes)
   .use(modelRoutes)
   .use(healthRoutes)
   .use(docsRoutes);

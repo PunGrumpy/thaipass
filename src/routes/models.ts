@@ -16,11 +16,25 @@ export const modelListSchema = z.object({
 
 export type ModelList = z.infer<typeof modelListSchema>;
 
-export const modelRoutes = new Elysia().get("/v1/models", (): ModelList => ({
-  data: CHAT_MODELS.map((modelId) => ({
-    id: modelId,
-    object: "model",
-    owned_by: "aipass",
-  })),
-  object: "list",
-}));
+export const modelRoutes = new Elysia()
+  .model({ ModelList: modelListSchema })
+  .get(
+    "/v1/models",
+    {
+      detail: {
+        description:
+          "The chat models the proxy accepts. Ids are case-sensitive and Claude carries a @provider suffix. Needs no credential.",
+        summary: "List models",
+        tags: ["Chat"],
+      },
+      response: "ModelList",
+    },
+    (): ModelList => ({
+      data: CHAT_MODELS.map((modelId) => ({
+        id: modelId,
+        object: "model",
+        owned_by: "aipass",
+      })),
+      object: "list",
+    })
+  );
