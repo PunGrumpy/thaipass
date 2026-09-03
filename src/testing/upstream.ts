@@ -4,6 +4,9 @@ import type { SseStreamOptions } from "./sse";
 
 export const DELETE_PATH = "/actions/update-conversation.data";
 export const SEND_PREFIX = "/actions/send-message/";
+export const QUOTA_PATH = "/loaders/get-usage-quota";
+const QUOTA_DECIMALS = 2;
+const RESET_AT = "2026-09-04T00:00:00.000Z";
 
 const DELETE_TIMEOUT_MS = 1000;
 
@@ -72,3 +75,27 @@ export const sseResponse =
     new Response(sseStream(frames, options), {
       headers: { "content-type": "text/event-stream" },
     });
+
+/** Answers the quota loader with one `used` figure per read, then the last one. */
+export const quotaResponse = (used: readonly number[], limit: number) => {
+  let reads = 0;
+  const scale = 10 ** QUOTA_DECIMALS;
+  return (path: string): Response | undefined => {
+    if (path !== QUOTA_PATH) {
+      return undefined;
+    }
+    const current = used[Math.min(reads, used.length - 1)] ?? 0;
+    reads += 1;
+    return Response.json({
+      creditStatus: {
+        credits: {
+          available: String(Math.round((limit - current) * scale)),
+          limit: String(Math.round(limit * scale)),
+          used: String(Math.round(current * scale)),
+        },
+        creditsDecimals: QUOTA_DECIMALS,
+        periodEndsAt: RESET_AT,
+      },
+    });
+  };
+};

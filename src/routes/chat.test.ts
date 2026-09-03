@@ -5,6 +5,7 @@ import { z } from "zod";
 import { app } from "../app";
 import {
   DELETE_PATH,
+  quotaResponse,
   sseResponse,
   stubUpstream,
   textDeltas,
@@ -43,6 +44,25 @@ const chunkSchema = z.object({
 const completionSchema = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string() }) })),
 });
+
+const creditsSchema = z.object({
+  available: z.number(),
+  limit: z.number(),
+  reset_at: z.string(),
+  spent: z.number().optional(),
+  used: z.number(),
+});
+
+const usageSchema = z.object({
+  usage: z.object({
+    credits: creditsSchema.optional(),
+    total_tokens: z.number(),
+  }),
+});
+
+const CREDIT_LIMIT = 10_000;
+const USED_BEFORE = 100;
+const USED_AFTER = 130.25;
 
 afterEach(() => {
   upstream.restore();
@@ -269,4 +289,45 @@ test("renders past tool calls and results into the prompt", async () => {
   expect(response.status).toBe(200);
   expect(sent).toContain("You can call tools.");
   expect(sent).toContain("Tool (get_weather): sunny");
+});
+
+test("reports the credits a buffered completion spent in its usage", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(1)),
+    quotaResponse([USED_BEFORE, USED_AFTER], CREDIT_LIMIT)
+  );
+  const response = await app.fetch(chatRequest(false));
+  const { usage } = usageSchema.parse(await response.json());
+  expect(usage.total_tokens).toBe(0);
+  expect(usage.credits).toEqual({
+    available: CREDIT_LIMIT - USED_AFTER,
+    limit: CREDIT_LIMIT,
+    reset_at: expect.any(String),
+    spent: USED_AFTER - USED_BEFORE,
+    used: USED_AFTER,
+  });
+});
+
+test("reports the credits on the final chunk of a stream", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(2)),
+    quotaResponse([USED_BEFORE, USED_AFTER], CREDIT_LIMIT)
+  );
+  const response = await app.fetch(chatRequest(true));
+  const text = await response.text();
+  const frames = text
+    .split("\n")
+    .filter((line) => line.startsWith("data: {"))
+    .map((line) => usageSchema.partial().parse(JSON.parse(line.slice(6))));
+  const withUsage = frames.filter((frame) => frame.usage !== undefined);
+  expect(withUsage).toHaveLength(1);
+  expect(withUsage[0]?.usage?.credits?.spent).toBe(USED_AFTER - USED_BEFORE);
+  expect(frames.at(-1)?.usage?.credits?.used).toBe(USED_AFTER);
+});
+
+test("leaves credits out of usage when AI Pass reports none", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)));
+  const response = await app.fetch(chatRequest(false));
+  const { usage } = usageSchema.parse(await response.json());
+  expect(usage.credits).toBeUndefined();
 });

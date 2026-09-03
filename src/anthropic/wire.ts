@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { creditUsageSchema } from "../aipass/quotas";
+import type { CreditUsage } from "../aipass/quotas";
 import { randomHex } from "../lib/id";
 import type { ToolCall } from "../tools";
 import type { Reply, StreamWire, Wire } from "../turn";
@@ -15,7 +17,13 @@ const toolUseBlockSchema = z.object({
 });
 
 const usageSchema = z.object({
+  credits: creditUsageSchema.optional(),
   input_tokens: z.number().int(),
+  output_tokens: z.number().int(),
+});
+
+const deltaUsageSchema = z.object({
+  credits: creditUsageSchema.optional(),
   output_tokens: z.number().int(),
 });
 
@@ -52,7 +60,7 @@ export const messageStreamEventSchema = z.discriminatedUnion("type", [
   z.object({
     delta: z.object({ stop_reason: z.string(), stop_sequence: z.null() }),
     type: z.literal("message_delta"),
-    usage: z.object({ output_tokens: z.number().int() }),
+    usage: deltaUsageSchema,
   }),
   z.object({ type: z.literal("message_stop") }),
 ]);
@@ -63,7 +71,6 @@ type ToolUseBlock = z.infer<typeof toolUseBlockSchema>;
 
 const PROTOCOL = "anthropic";
 const MESSAGE_ID_LENGTH = 24;
-const NO_USAGE = { input_tokens: 0, output_tokens: 0 };
 
 const STOP_REASONS = new Map([
   ["content-filter", "refusal"],
@@ -88,7 +95,8 @@ const message = (
   id: string,
   model: string,
   content: Message["content"],
-  stopReason: string | null
+  stopReason: string | null,
+  credits?: CreditUsage
 ): Message => ({
   content,
   id,
@@ -97,7 +105,7 @@ const message = (
   stop_reason: stopReason,
   stop_sequence: null,
   type: "message",
-  usage: NO_USAGE,
+  usage: { credits, input_tokens: 0, output_tokens: 0 },
 });
 
 /**
@@ -137,12 +145,12 @@ const streamWire = (id: string, model: string): StreamWire => {
         frame({ index, type: "content_block_stop" })
       );
     },
-    close: (finishReason) =>
+    close: (finishReason, credits) =>
       closeText() +
       frame({
         delta: { stop_reason: toStopReason(finishReason), stop_sequence: null },
         type: "message_delta",
-        usage: { output_tokens: 0 },
+        usage: { credits, output_tokens: 0 },
       }) +
       frame({ type: "message_stop" }),
     open: () =>
@@ -176,7 +184,13 @@ const reply = (id: string, model: string, value: Reply): Message => {
     content.push({ text: value.text, type: "text" });
   }
   content.push(...value.calls.map(toolUse));
-  return message(id, model, content, toStopReason(value.finishReason));
+  return message(
+    id,
+    model,
+    content,
+    toStopReason(value.finishReason),
+    value.credits
+  );
 };
 
 export const anthropicWire = (model: string): Wire => {

@@ -8,10 +8,13 @@ import type {
   LanguageModelV2StreamPart,
   LanguageModelV2ToolCall,
   LanguageModelV2Usage,
+  SharedV2ProviderMetadata,
 } from "@ai-sdk/provider";
 
 import { deleteConversation, sendMessage } from "../aipass/client";
 import type { ChatModel } from "../aipass/models";
+import { fetchCredits, settleCredits } from "../aipass/quotas";
+import type { Credits, CreditUsage } from "../aipass/quotas";
 import { parseAipassSSE } from "../aipass/stream";
 import { config } from "../lib/config";
 import { guardController } from "../lib/stream";
@@ -68,6 +71,19 @@ const settingWarnings = (
   return warnings;
 };
 
+/** Provider metadata allows no undefined, so `spent` is left out when unknown. */
+const creditMetadata = (
+  usage: CreditUsage | undefined
+): SharedV2ProviderMetadata | undefined => {
+  if (!usage) {
+    return undefined;
+  }
+  const { spent, ...balance } = usage;
+  return {
+    aipass: { credits: spent === undefined ? balance : { ...balance, spent } },
+  };
+};
+
 const toolCallPart = (call: ToolCall): LanguageModelV2ToolCall => ({
   input: JSON.stringify(call.input),
   toolCallId: call.id,
@@ -78,6 +94,7 @@ const toolCallPart = (call: ToolCall): LanguageModelV2ToolCall => ({
 interface Turn {
   readonly body: ReadableStream<Uint8Array>;
   readonly conversationId: string;
+  readonly credits: Promise<Credits | null>;
   readonly tools: readonly ToolDefinition[];
   readonly warnings: LanguageModelV2CallWarning[];
 }
@@ -91,6 +108,7 @@ const startTurn = async (
   const offered = convertTools(options);
   const { tools } = offered;
   const body = toAipassMessages({ tools, turns: prompt.turns }, modelId);
+  const credits = fetchCredits(cookie, options.abortSignal);
   const { conversationId, response } = await sendMessage(
     cookie,
     modelId,
@@ -102,6 +120,7 @@ const startTurn = async (
     return {
       body: response.body,
       conversationId,
+      credits,
       tools,
       warnings: [
         ...prompt.warnings,
@@ -194,12 +213,16 @@ const streamTurn = (
           out.enqueue({ id: REASONING_ID, type: "reasoning-end" });
         }
         closeText();
+        const [{ usage }] = await Promise.all([
+          settleCredits(cookie, turn.credits),
+          deleteConversation(cookie, turn.conversationId),
+        ]);
         out.enqueue({
           finishReason: settle(finishReason, calls),
+          providerMetadata: creditMetadata(usage),
           type: "finish",
           usage: NO_USAGE,
         });
-        await deleteConversation(cookie, turn.conversationId);
         out.close();
       }
     },
@@ -241,6 +264,7 @@ export const aipassModel = (
     } finally {
       await deleteConversation(cookie, turn.conversationId);
     }
+    const { usage } = await settleCredits(cookie, turn.credits);
     const content: LanguageModelV2Content[] = [];
     if (reasoning.length > 0) {
       content.push({ text: reasoning, type: "reasoning" });
@@ -252,6 +276,7 @@ export const aipassModel = (
     return {
       content,
       finishReason: settle(finishReason, calls.length),
+      providerMetadata: creditMetadata(usage),
       usage: NO_USAGE,
       warnings: turn.warnings,
     };

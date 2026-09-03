@@ -7,8 +7,8 @@ import type { SendResult } from "./aipass/client";
 import { fetchIdentity } from "./aipass/identity";
 import type { Identity } from "./aipass/identity";
 import type { ChatModel } from "./aipass/models";
-import { fetchCredits } from "./aipass/quotas";
-import type { Credits } from "./aipass/quotas";
+import { fetchCredits, settleCredits } from "./aipass/quotas";
+import type { CreditUsage, Credits } from "./aipass/quotas";
 import { clientIdFromCookie, cookieFromRequest } from "./aipass/session";
 import { parseAipassSSE } from "./aipass/stream";
 import type { SSESkips } from "./aipass/stream";
@@ -38,6 +38,7 @@ export interface Failure {
 
 export interface Reply {
   readonly calls: readonly ToolCall[];
+  readonly credits?: CreditUsage;
   readonly finishReason: string;
   readonly text: string;
 }
@@ -47,7 +48,7 @@ export interface StreamWire {
   readonly open: () => string;
   readonly text: (delta: string) => string;
   readonly call: (call: ToolCall) => string;
-  readonly close: (finishReason: string) => string;
+  readonly close: (finishReason: string, credits?: CreditUsage) => string;
 }
 
 export interface Wire {
@@ -96,13 +97,15 @@ interface UpstreamFacts {
 const recordUpstream = async (
   facts: UpstreamFacts,
   model: string,
-  log: RequestLogger
+  log: RequestLogger,
+  settled: Credits | null = null
 ): Promise<void> => {
-  const [credits, catalog, identity] = await Promise.all([
+  const [before, catalog, identity] = await Promise.all([
     facts.credits,
     facts.catalog,
     facts.identity,
   ]);
+  const credits = settled ?? before;
   if (credits) {
     log.set({ ...credits });
   }
@@ -260,14 +263,18 @@ const streamCompletion = (
         send(frames.text(`\n[proxy error: ${error}]`));
       } finally {
         settle(tally);
-        send(frames.close(tally.finishReason));
-        await deleteConversation(cookie, conversationId);
+        const [{ after, usage }] = await Promise.all([
+          settleCredits(cookie, facts.credits),
+          deleteConversation(cookie, conversationId),
+        ]);
+        send(frames.close(tally.finishReason, usage));
         log.set({
           ...tallyFields(tally),
           clientAborted: !out.isOpen(),
+          creditsSpent: usage?.spent,
           status: out.isOpen() ? 200 : CLIENT_CLOSED_STATUS,
         });
-        await recordUpstream(facts, model, log);
+        await recordUpstream(facts, model, log, after);
         log.emit();
         out.close();
       }
@@ -338,8 +345,15 @@ const bufferedCompletion = async (
     settle(tally);
     log.set(tallyFields(tally));
   }
-  await recordUpstream(facts, model, log);
-  return wire.reply({ calls, finishReason: tally.finishReason, text });
+  const { after, usage } = await settleCredits(cookie, facts.credits);
+  log.set({ creditsSpent: usage?.spent });
+  await recordUpstream(facts, model, log, after);
+  return wire.reply({
+    calls,
+    credits: usage,
+    finishReason: tally.finishReason,
+    text,
+  });
 };
 
 const runTurn = async (

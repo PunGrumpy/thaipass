@@ -8,6 +8,7 @@ import type {
 
 import {
   DELETE_PATH,
+  quotaResponse,
   sseResponse,
   stubUpstream,
   textDeltas,
@@ -228,4 +229,44 @@ test("no longer warns about function tools", async () => {
   const { stream } = await aipass(MODEL).doStream(call({ tools: [WEATHER] }));
   const [first] = await drain(stream);
   expect(first).toEqual({ type: "stream-start", warnings: [] });
+});
+
+const CREDIT_LIMIT = 10_000;
+const USED_BEFORE = 100;
+const USED_AFTER = 130.25;
+
+test("reports spent credits as provider metadata on generate", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(1)),
+    quotaResponse([USED_BEFORE, USED_AFTER], CREDIT_LIMIT)
+  );
+  const result = await aipass(MODEL).doGenerate(call());
+  expect(result.usage.totalTokens).toBeUndefined();
+  expect(result.providerMetadata?.aipass?.credits).toEqual({
+    available: CREDIT_LIMIT - USED_AFTER,
+    limit: CREDIT_LIMIT,
+    reset_at: expect.any(String),
+    spent: USED_AFTER - USED_BEFORE,
+    used: USED_AFTER,
+  });
+});
+
+test("reports spent credits on the finish part of a stream", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(1)),
+    quotaResponse([USED_BEFORE, USED_AFTER], CREDIT_LIMIT)
+  );
+  const { stream } = await aipass(MODEL).doStream(call());
+  const parts = await drain(stream);
+  const finish = parts.find((part) => part.type === "finish");
+  expect(finish?.providerMetadata?.aipass?.credits).toMatchObject({
+    spent: USED_AFTER - USED_BEFORE,
+    used: USED_AFTER,
+  });
+});
+
+test("leaves provider metadata out when AI Pass reports no credits", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)));
+  const result = await aipass(MODEL).doGenerate(call());
+  expect(result.providerMetadata).toBeUndefined();
 });

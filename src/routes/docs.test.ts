@@ -70,6 +70,7 @@ test("documents every route the app serves", async () => {
     "/v1/chat/completions",
     "/v1/messages",
     "/v1/models",
+    "/v1/usage",
   ]);
 });
 
@@ -118,10 +119,14 @@ test("offers both the buffered and the streamed reply on both model routes", asy
   }
 });
 
-test("marks only the two model routes as needing the cookie", async () => {
+test("marks the model routes and the usage route as needing the cookie", async () => {
   const spec = await document();
   const secured = Object.entries(spec.paths)
     .filter(([, item]) => JSON.stringify(item).includes("aipassCookie"))
     .map(([path]) => path);
-  expect(secured).toEqual(["/v1/chat/completions", "/v1/messages"]);
+  expect(secured).toEqual([
+    "/v1/chat/completions",
+    "/v1/messages",
+    "/v1/usage",
+  ]);
 });
