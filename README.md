@@ -48,6 +48,7 @@ curl -sN localhost:3789/v1/chat/completions \
 
 - `POST /v1/chat/completions`: OpenAI protocol, streaming by default
 - `POST /v1/messages`: Anthropic protocol, buffered unless `stream: true`
+- `POST /v1/messages/count_tokens`: the estimated size of a prompt, no credential needed
 - `GET /v1/models`: the model catalog, no credential needed
 - `GET /v1/usage`: the account's credit balance, needs the cookie
 - `GET /health`: liveness, no credential needed
@@ -65,6 +66,17 @@ MODEL=claude-sonnet-5@default
 
 Text, `tool_use` and `tool_result` blocks are carried through. Images, documents, `max_tokens`, `thinking` and sampling settings are dropped.
 
+Claude Code reads `/v1/messages` under the base URL itself, so leave off the `/v1` the SDKs add, and name both models, because the ids Claude Code sends are outside the catalog:
+
+```bash
+ANTHROPIC_BASE_URL=https://your_deployment_here
+ANTHROPIC_AUTH_TOKEN=your_cookie_header_here
+ANTHROPIC_MODEL=claude-sonnet-5@default
+ANTHROPIC_SMALL_FAST_MODEL=gemini-3.1-flash-lite
+```
+
+It is a heavy caller: its system prompt and tool definitions make a first request of around 100 kB, and every turn resends the whole conversation, so a session spends the daily allowance quickly.
+
 ## Use it as an AI SDK provider
 
 `createAipass` returns models that `streamText` and `generateText` accept, with no HTTP hop:
@@ -81,7 +93,7 @@ const result = streamText({
 });
 ```
 
-The provider implements `LanguageModelV2` for `ai` v5. Sampling settings return `unsupported-setting` warnings, token `usage` is undefined, and `providerMetadata.aipass.credits` holds the credit balance. An app on `ai` v7 should use `/v1/messages` over HTTP instead.
+The provider implements `LanguageModelV2` for `ai` v5. Sampling settings return `unsupported-setting` warnings, token `usage` is estimated from the text, and `providerMetadata.aipass.credits` holds the credit balance. An app on `ai` v7 should use `/v1/messages` over HTTP instead.
 
 ## Tool calling over text
 
@@ -108,14 +120,14 @@ Every agent round is one more conversation upstream, so tool-heavy loops spend t
 
 ## Usage in credits
 
-AI Pass meters in credits per period, not in tokens, so token counts in every reply are zero. Every reply reports the credit balance instead. Each completion reads the balance as it starts and again as it ends, and puts the result under `usage.credits`:
+AI Pass meters in credits per period, not in tokens, and reports no token counts at all. Every reply reports the credit balance instead, alongside token counts the proxy estimates from the text it sent and received. Each completion reads the balance as it starts and again as it ends, and puts the result under `usage.credits`:
 
 ```json
 {
   "usage": {
-    "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
+    "prompt_tokens": 25001,
+    "completion_tokens": 12,
+    "total_tokens": 25013,
     "credits": {
       "spent": 30.25,
       "used": 130.25,
@@ -132,6 +144,8 @@ AI Pass meters in credits per period, not in tokens, so token counts in every re
 - **OpenAI stream**: the final chunk, the one with `finish_reason`
 - **Anthropic stream**: the `message_delta` event
 - **AI SDK provider**: `providerMetadata.aipass.credits`
+
+Token counts are an estimate, not a tokeniser: about four characters to a token for ASCII and one and a half for Thai and the other non-Latin scripts, counted on the flattened prompt the proxy sends, which carries the tool guide and the role labels alongside the conversation. `POST /v1/messages/count_tokens` returns the same estimate for a prompt without sending it, so a client that manages its own context window has something to read.
 
 `GET /v1/usage` returns the same balance without spending anything:
 
@@ -151,7 +165,7 @@ Prompts and cookies never reach the logs. Each request emits one wide event with
 
 ## Limits
 
-- **Token counts are always zero**: AI Pass reports none. Every reply reports credits instead, see [Usage in credits](#usage-in-credits).
+- **Token counts are estimated**: AI Pass reports none, so the proxy counts characters. Credits are the exact figure, see [Usage in credits](#usage-in-credits).
 - **Cookies expire**: a 502 whose message says the cookie is stale means you need a fresh one.
 - **Unknown model ids return 400** instead of being forwarded.
 

@@ -83,11 +83,15 @@ const FINISH_REASONS = new Map([
 const toFinishReason = (reason: string): string =>
   FINISH_REASONS.get(reason) ?? reason;
 
-const usage = (credits: CreditUsage | undefined): Usage => ({
-  completion_tokens: 0,
+const usage = (
+  inputTokens: number,
+  outputTokens: number,
+  credits: CreditUsage | undefined
+): Usage => ({
+  completion_tokens: outputTokens,
   credits,
-  prompt_tokens: 0,
-  total_tokens: 0,
+  prompt_tokens: inputTokens,
+  total_tokens: inputTokens + outputTokens,
 });
 
 const toolCall = (call: ToolCall): WireToolCall => ({
@@ -102,14 +106,14 @@ const chatChunk = (
   created: number,
   delta: ChatDelta,
   finishReason: string | null,
-  credits?: CreditUsage
+  spent?: Usage
 ): ChatCompletionChunk => ({
   choices: [{ delta, finish_reason: finishReason, index: 0, logprobs: null }],
   created,
   id,
   model,
   object: "chat.completion.chunk",
-  usage: credits ? usage(credits) : undefined,
+  usage: spent,
 });
 
 type ChatMessage = ChatCompletion["choices"][number]["message"];
@@ -143,7 +147,7 @@ const chatCompletion = (
   id,
   model,
   object: "chat.completion",
-  usage: usage(reply.credits),
+  usage: usage(reply.inputTokens, reply.outputTokens, reply.credits),
 });
 
 /** Every chunk of one stream carries the same id and `created` second. */
@@ -153,11 +157,11 @@ export const openaiWire = (model: string): Wire => {
   const chunk = (
     delta: ChatDelta,
     finishReason: string | null,
-    credits?: CreditUsage
+    spent?: Usage
   ): string =>
-    `data: ${JSON.stringify(chatChunk(id, model, created, delta, finishReason, credits))}\n\n`;
+    `data: ${JSON.stringify(chatChunk(id, model, created, delta, finishReason, spent))}\n\n`;
 
-  const stream = (): StreamWire => {
+  const stream = (inputTokens: number): StreamWire => {
     let index = 0;
     return {
       call: (call) => {
@@ -168,8 +172,8 @@ export const openaiWire = (model: string): Wire => {
         index += 1;
         return frame;
       },
-      close: (finishReason, credits) =>
-        `${chunk({}, toFinishReason(finishReason), credits)}${DONE_FRAME}`,
+      close: (finishReason, outputTokens, credits) =>
+        `${chunk({}, toFinishReason(finishReason), usage(inputTokens, outputTokens, credits))}${DONE_FRAME}`,
       open: () => chunk({ role: "assistant" }, null),
       text: (delta) => chunk({ content: delta }, null),
     };

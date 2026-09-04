@@ -44,6 +44,8 @@ const messagesRequest = (
     method: "POST",
   });
 
+const countSchema = z.object({ input_tokens: z.number().int() });
+
 const errorSchema = z.object({
   error: z.object({ message: z.string(), type: z.string() }),
   type: z.literal("error"),
@@ -248,7 +250,7 @@ test("reports the credits a buffered message spent in its usage", async () => {
   );
   const response = await app.fetch(messagesRequest({}));
   const { usage } = usageSchema.parse(await response.json());
-  expect(usage.input_tokens).toBe(0);
+  expect(usage.input_tokens).toBeGreaterThan(0);
   expect(usage.credits?.spent).toBe(USED_AFTER - USED_BEFORE);
   expect(usage.credits?.used).toBe(USED_AFTER);
 });
@@ -264,6 +266,46 @@ test("reports the credits on message_delta when streaming", async () => {
     .split("\n")
     .find((line) => line.startsWith('data: {"delta":{"stop_reason"'));
   const { usage } = deltaUsageSchema.parse(JSON.parse(delta?.slice(6) ?? "{}"));
-  expect(usage.output_tokens).toBe(0);
+  expect(usage.output_tokens).toBeGreaterThan(0);
   expect(usage.credits?.spent).toBe(USED_AFTER - USED_BEFORE);
+});
+
+const countRequest = (body: MessagesBody): Request =>
+  new Request("https://proxy.test/v1/messages/count_tokens", {
+    body: JSON.stringify({
+      messages: [{ content: "hi", role: "user" }],
+      ...body,
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+
+test("counts the tokens of a prompt without reaching upstream", async () => {
+  const response = await app.fetch(countRequest({}));
+  const { input_tokens } = countSchema.parse(await response.json());
+  expect(response.status).toBe(200);
+  expect(input_tokens).toBeGreaterThan(0);
+});
+
+test("counts a system prompt and the tool guide into the total", async () => {
+  const [plain, loaded] = await Promise.all([
+    app.fetch(countRequest({})),
+    app.fetch(countRequest({ system: "be terse", tools: [WEATHER] })),
+  ]);
+  const small = countSchema.parse(await plain.json());
+  const large = countSchema.parse(await loaded.json());
+  expect(large.input_tokens).toBeGreaterThan(small.input_tokens);
+});
+
+test("accepts a system message from the middle of the conversation", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)));
+  const response = await app.fetch(
+    messagesRequest({
+      messages: [
+        { content: "hi", role: "user" },
+        { content: "<system-reminder>", role: "system" },
+      ],
+    })
+  );
+  expect(response.status).toBe(200);
 });
