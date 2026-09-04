@@ -7,9 +7,13 @@ import {
   anthropicWire,
   messageSchema,
   messageStreamEventSchema,
+  tokenCountSchema,
 } from "../anthropic/wire";
+import type { TokenCount } from "../anthropic/wire";
 import { requestLogger } from "../lib/logger";
 import { json, jsonOrStream } from "../lib/openapi";
+import { estimateTokens } from "../tokens";
+import { flattenPrompt } from "../translate";
 import { serveTurn } from "../turn";
 
 export const messageRoutes = new Elysia()
@@ -19,13 +23,14 @@ export const messageRoutes = new Elysia()
     Message: messageSchema,
     MessageStreamEvent: messageStreamEventSchema,
     MessagesRequest: messagesRequestSchema,
+    TokenCount: tokenCountSchema,
   })
   .post(
     "/v1/messages",
     {
       body: "MessagesRequest",
       detail: {
-        description: `Buffered by default, as the Anthropic API is. Send stream: true for the event stream. The system prompt and the conversation are flattened into a single role-labelled turn before they reach AI Pass, images and documents are dropped, max_tokens and the sampling settings are accepted and ignored, and token counts in usage are always zero because the upstream reports none. usage.credits reports the account's credit balance and what this reply spent instead; on a stream it is on message_delta. Omitting model uses ${DEFAULT_MODEL}. Tools are offered to the model through the prompt and its calls come back as tool_use blocks, since AI Pass carries text only; how well that works depends on the model following the format.`,
+        description: `Buffered by default, as the Anthropic API is. Send stream: true for the event stream. The system prompt and the conversation are flattened into a single role-labelled turn before they reach AI Pass, images and documents are dropped, max_tokens and the sampling settings are accepted and ignored, and the token counts in usage are estimated from the text because the upstream reports none. usage.credits reports the account's credit balance and what this reply spent instead; on a stream it is on message_delta. Omitting model uses ${DEFAULT_MODEL}. Tools are offered to the model through the prompt and its calls come back as tool_use blocks, since AI Pass carries text only; how well that works depends on the model following the format.`,
         responses: {
           "200": jsonOrStream(
             "Message",
@@ -60,4 +65,28 @@ export const messageRoutes = new Elysia()
         wire: anthropicWire(model),
       });
     }
+  )
+  .post(
+    "/v1/messages/count_tokens",
+    {
+      body: "MessagesRequest",
+      detail: {
+        description:
+          "The tokens the prompt would cost, counted on the flattened prompt the proxy would send: the system prompt, the tool guide and the role-labelled turns. AI Pass reports no token counts, so this is an estimate from the text rather than a tokeniser, and it reaches no upstream and needs no credential.",
+        responses: {
+          "200": json("TokenCount", "The estimated size of the prompt"),
+          "400": json(
+            "AnthropicError",
+            "Malformed body, or a model outside the catalog"
+          ),
+        },
+        summary: "Count message tokens",
+        tags: ["Messages"],
+      },
+      parse: "json",
+      response: "TokenCount",
+    },
+    ({ body }): TokenCount => ({
+      input_tokens: estimateTokens(flattenPrompt(toConversation(body))),
+    })
   );

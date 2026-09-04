@@ -298,7 +298,7 @@ test("reports the credits a buffered completion spent in its usage", async () =>
   );
   const response = await app.fetch(chatRequest(false));
   const { usage } = usageSchema.parse(await response.json());
-  expect(usage.total_tokens).toBe(0);
+  expect(usage.total_tokens).toBeGreaterThan(0);
   expect(usage.credits).toEqual({
     available: CREDIT_LIMIT - USED_AFTER,
     limit: CREDIT_LIMIT,

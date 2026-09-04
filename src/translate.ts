@@ -50,7 +50,7 @@ const turnText = (turn: ChatTurn): string => {
   return [text, ...calls].filter((part) => part.length > 0).join("\n\n");
 };
 
-const flattenConversation = ({ tools, turns }: Conversation): string => {
+export const flattenPrompt = ({ tools, turns }: Conversation): string => {
   const system = turns
     .filter((turn) => turn.role === "system")
     .map((turn) => turn.content)
@@ -86,13 +86,13 @@ const flattenConversation = ({ tools, turns }: Conversation): string => {
 };
 
 export const toAipassMessages = (
-  conversation: Conversation,
+  prompt: string,
   modelId: string
 ): AipassMessage[] => [
   {
     id: crypto.randomUUID(),
     metadata: { modelId },
-    parts: [{ text: flattenConversation(conversation), type: "text" }],
+    parts: [{ text: prompt, type: "text" }],
     role: "user",
   },
 ];

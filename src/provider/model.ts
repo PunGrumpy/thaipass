@@ -18,20 +18,24 @@ import type { Credits, CreditUsage } from "../aipass/quotas";
 import { parseAipassSSE } from "../aipass/stream";
 import { config } from "../lib/config";
 import { guardController } from "../lib/stream";
-import { splitReply } from "../tools";
+import { addText, charTokens, estimateTokens, newCharCount } from "../tokens";
+import { renderCall, splitReply } from "../tools";
 import type { ReplyPart, ToolCall, ToolDefinition } from "../tools";
-import { toAipassMessages } from "../translate";
+import { flattenPrompt, toAipassMessages } from "../translate";
 import { convertPrompt, convertTools } from "./prompt";
 
 const PROVIDER = "aipass";
 const REASONING_ID = "reasoning";
 const DETAIL_LIMIT = 300;
 
-const NO_USAGE: LanguageModelV2Usage = {
-  inputTokens: undefined,
-  outputTokens: undefined,
-  totalTokens: undefined,
-};
+const estimatedUsage = (
+  inputTokens: number,
+  outputTokens: number
+): LanguageModelV2Usage => ({
+  inputTokens,
+  outputTokens,
+  totalTokens: inputTokens + outputTokens,
+});
 
 const FINISH_REASONS = new Map<string, LanguageModelV2FinishReason>([
   ["content-filter", "content-filter"],
@@ -95,6 +99,7 @@ interface Turn {
   readonly body: ReadableStream<Uint8Array>;
   readonly conversationId: string;
   readonly credits: Promise<Credits | null>;
+  readonly inputTokens: number;
   readonly tools: readonly ToolDefinition[];
   readonly warnings: LanguageModelV2CallWarning[];
 }
@@ -107,7 +112,9 @@ const startTurn = async (
   const prompt = convertPrompt(options.prompt);
   const offered = convertTools(options);
   const { tools } = offered;
-  const body = toAipassMessages({ tools, turns: prompt.turns }, modelId);
+  const text = flattenPrompt({ tools, turns: prompt.turns });
+  const inputTokens = estimateTokens(text);
+  const body = toAipassMessages(text, modelId);
   const credits = fetchCredits(cookie, options.abortSignal);
   const { conversationId, response } = await sendMessage(
     cookie,
@@ -121,6 +128,7 @@ const startTurn = async (
       body: response.body,
       conversationId,
       credits,
+      inputTokens,
       tools,
       warnings: [
         ...prompt.warnings,
@@ -166,14 +174,17 @@ const streamTurn = (
           textId = undefined;
         }
       };
+      const replyCount = newCharCount();
       const emit = (parts: readonly ReplyPart[]): void => {
         for (const part of parts) {
           if (part.type === "call") {
             closeText();
             calls += 1;
+            addText(replyCount, renderCall(part.call));
             out.enqueue(toolCallPart(part.call));
             continue;
           }
+          addText(replyCount, part.text);
           if (textId === undefined) {
             textId = `text-${textBlocks}`;
             textBlocks += 1;
@@ -221,7 +232,7 @@ const streamTurn = (
           finishReason: settle(finishReason, calls),
           providerMetadata: creditMetadata(usage),
           type: "finish",
-          usage: NO_USAGE,
+          usage: estimatedUsage(turn.inputTokens, charTokens(replyCount)),
         });
         out.close();
       }
@@ -238,12 +249,15 @@ export const aipassModel = (
     let text = "";
     let reasoning = "";
     let finishReason: LanguageModelV2FinishReason = "stop";
+    const replyCount = newCharCount();
     const collect = (parts: readonly ReplyPart[]): void => {
       for (const part of parts) {
         if (part.type === "text") {
           text += part.text;
+          addText(replyCount, part.text);
         } else {
           calls.push(part.call);
+          addText(replyCount, renderCall(part.call));
         }
       }
     };
@@ -277,7 +291,7 @@ export const aipassModel = (
       content,
       finishReason: settle(finishReason, calls.length),
       providerMetadata: creditMetadata(usage),
-      usage: NO_USAGE,
+      usage: estimatedUsage(turn.inputTokens, charTokens(replyCount)),
       warnings: turn.warnings,
     };
   },

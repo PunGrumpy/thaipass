@@ -2,21 +2,16 @@ import { expect, test } from "bun:test";
 
 import { FENCE_CLOSE, FENCE_OPEN } from "./tools";
 import type { ToolDefinition } from "./tools";
-import { toAipassMessages } from "./translate";
-import type { ChatTurn, Conversation } from "./translate";
+import { flattenPrompt, toAipassMessages } from "./translate";
+import type { ChatTurn } from "./translate";
 
 const MODEL = "gemini-3.1-flash-lite";
 
-const flatten = (turns: ChatTurn[], tools: ToolDefinition[] = []): string => {
-  const [message] = toAipassMessages({ tools, turns }, MODEL);
-  return message?.parts[0]?.text ?? "";
-};
+const flatten = (turns: ChatTurn[], tools: ToolDefinition[] = []): string =>
+  flattenPrompt({ tools, turns });
 
 test("wraps the conversation in one user message tagged with the model", () => {
-  const [message] = toAipassMessages(
-    { tools: [], turns: [{ content: "hi", role: "user" }] },
-    MODEL
-  );
+  const [message] = toAipassMessages("hi", MODEL);
   expect(message?.role).toBe("user");
   expect(message?.metadata.modelId).toBe(MODEL);
   expect(message?.parts).toHaveLength(1);
@@ -24,12 +19,8 @@ test("wraps the conversation in one user message tagged with the model", () => {
 });
 
 test("gives each call a fresh message id", () => {
-  const conversation: Conversation = {
-    tools: [],
-    turns: [{ content: "hi", role: "user" }],
-  };
-  const [first] = toAipassMessages(conversation, MODEL);
-  const [second] = toAipassMessages(conversation, MODEL);
+  const [first] = toAipassMessages("hi", MODEL);
+  const [second] = toAipassMessages("hi", MODEL);
   expect(first?.id).not.toBe(second?.id);
 });
 

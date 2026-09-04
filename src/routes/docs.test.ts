@@ -69,6 +69,7 @@ test("documents every route the app serves", async () => {
     "/health",
     "/v1/chat/completions",
     "/v1/messages",
+    "/v1/messages/count_tokens",
     "/v1/models",
     "/v1/usage",
   ]);

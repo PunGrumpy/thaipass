@@ -15,9 +15,11 @@ import type { SSESkips } from "./aipass/stream";
 import type { DeferredEmit } from "./lib/logger";
 import { guardController } from "./lib/stream";
 import type { GuardedController } from "./lib/stream";
-import { splitReply } from "./tools";
+import { addText, charTokens, estimateTokens, newCharCount } from "./tokens";
+import type { CharCount } from "./tokens";
+import { renderCall, splitReply } from "./tools";
 import type { ReplyPart, ToolCall } from "./tools";
-import { toAipassMessages } from "./translate";
+import { flattenPrompt, toAipassMessages } from "./translate";
 import type { Conversation } from "./translate";
 
 /**
@@ -40,6 +42,8 @@ export interface Reply {
   readonly calls: readonly ToolCall[];
   readonly credits?: CreditUsage;
   readonly finishReason: string;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
   readonly text: string;
 }
 
@@ -48,14 +52,18 @@ export interface StreamWire {
   readonly open: () => string;
   readonly text: (delta: string) => string;
   readonly call: (call: ToolCall) => string;
-  readonly close: (finishReason: string, credits?: CreditUsage) => string;
+  readonly close: (
+    finishReason: string,
+    outputTokens: number,
+    credits?: CreditUsage
+  ) => string;
 }
 
 export interface Wire {
   readonly id: string;
   readonly protocol: string;
   readonly fail: (failure: Failure) => Response;
-  readonly stream: () => StreamWire;
+  readonly stream: (inputTokens: number) => StreamWire;
   readonly reply: (reply: Reply) => Response;
 }
 
@@ -152,6 +160,7 @@ const upstreamError = async (
 interface Completion {
   readonly body: ReadableStream<Uint8Array>;
   readonly conversation: Conversation;
+  readonly inputTokens: number;
   readonly conversationId: string;
   readonly cookie: string;
   readonly facts: UpstreamFacts;
@@ -169,6 +178,7 @@ interface Tally {
   finishReason: string;
   msToFirstChunk: number | undefined;
   reasoningChars: number;
+  readonly reply: CharCount;
   readonly skips: SSESkips;
 }
 
@@ -179,6 +189,7 @@ const newTally = (): Tally => ({
   finishReason: "stop",
   msToFirstChunk: undefined,
   reasoningChars: 0,
+  reply: newCharCount(),
   skips: { count: 0, types: new Set() },
 });
 
@@ -188,6 +199,7 @@ const tallyFields = (tally: Tally) => ({
   msToFirstChunk: tally.msToFirstChunk,
   reasoningChars: tally.reasoningChars,
   replyChars: tally.chars,
+  replyTokens: charTokens(tally.reply),
   toolCalls: tally.calls,
   undecodedEvents: tally.skips.count,
   undecodedTypes: [...tally.skips.types].join(","),
@@ -223,7 +235,7 @@ const streamCompletion = (
     async start(controller) {
       const out = guardController(controller);
       guarded = out;
-      const frames = wire.stream();
+      const frames = wire.stream(completion.inputTokens);
       const send = (text: string): void => {
         out.enqueue(encoder.encode(text));
       };
@@ -232,9 +244,11 @@ const streamCompletion = (
         for (const part of parts) {
           if (part.type === "text") {
             tally.chars += part.text.length;
+            addText(tally.reply, part.text);
             send(frames.text(part.text));
           } else {
             tally.calls += 1;
+            addText(tally.reply, renderCall(part.call));
             send(frames.call(part.call));
           }
         }
@@ -267,7 +281,7 @@ const streamCompletion = (
           settleCredits(cookie, facts.credits),
           deleteConversation(cookie, conversationId),
         ]);
-        send(frames.close(tally.finishReason, usage));
+        send(frames.close(tally.finishReason, charTokens(tally.reply), usage));
         log.set({
           ...tallyFields(tally),
           clientAborted: !out.isOpen(),
@@ -310,8 +324,10 @@ const bufferedCompletion = async (
     for (const part of parts) {
       if (part.type === "text") {
         text += part.text;
+        addText(tally.reply, part.text);
       } else {
         calls.push(part.call);
+        addText(tally.reply, renderCall(part.call));
       }
     }
   };
@@ -352,6 +368,8 @@ const bufferedCompletion = async (
     calls,
     credits: usage,
     finishReason: tally.finishReason,
+    inputTokens: completion.inputTokens,
+    outputTokens: charTokens(tally.reply),
     text,
   });
 };
@@ -370,12 +388,15 @@ const runTurn = async (
     identity: fetchIdentity(clientId, cookie, signal),
   };
   const { turns, tools } = conversation;
+  const prompt = flattenPrompt(conversation);
+  const inputTokens = estimateTokens(prompt);
 
   log.set({
     completionId: wire.id,
     messageCount: turns.length,
     model,
-    promptChars: turns.reduce((sum, item) => sum + item.content.length, 0),
+    promptChars: prompt.length,
+    promptTokens: inputTokens,
     protocol: wire.protocol,
     streaming: stream,
     toolCount: tools.length,
@@ -386,7 +407,7 @@ const runTurn = async (
     result = await sendMessage(
       cookie,
       model,
-      toAipassMessages(conversation, model),
+      toAipassMessages(prompt, model),
       signal
     );
   } catch (error) {
@@ -413,6 +434,7 @@ const runTurn = async (
     conversationId,
     cookie,
     facts,
+    inputTokens,
     log,
     model,
     startedAt,

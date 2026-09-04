@@ -109,9 +109,9 @@ test("maps the upstream finish reason onto the sdk vocabulary", async () => {
     finishReason: "length",
     type: "finish",
     usage: {
-      inputTokens: undefined,
-      outputTokens: undefined,
-      totalTokens: undefined,
+      inputTokens: expect.any(Number),
+      outputTokens: 0,
+      totalTokens: expect.any(Number),
     },
   });
 });
@@ -241,7 +241,7 @@ test("reports spent credits as provider metadata on generate", async () => {
     quotaResponse([USED_BEFORE, USED_AFTER], CREDIT_LIMIT)
   );
   const result = await aipass(MODEL).doGenerate(call());
-  expect(result.usage.totalTokens).toBeUndefined();
+  expect(result.usage.totalTokens).toBeGreaterThan(0);
   expect(result.providerMetadata?.aipass?.credits).toEqual({
     available: CREDIT_LIMIT - USED_AFTER,
     limit: CREDIT_LIMIT,

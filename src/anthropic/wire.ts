@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import { creditUsageSchema } from "../aipass/quotas";
-import type { CreditUsage } from "../aipass/quotas";
 import { randomHex } from "../lib/id";
 import type { ToolCall } from "../tools";
 import type { Reply, StreamWire, Wire } from "../turn";
@@ -38,6 +37,10 @@ export const messageSchema = z.object({
   usage: usageSchema,
 });
 
+export const tokenCountSchema = z.object({
+  input_tokens: z.number().int(),
+});
+
 export const messageStreamEventSchema = z.discriminatedUnion("type", [
   z.object({ message: messageSchema, type: z.literal("message_start") }),
   z.object({
@@ -66,6 +69,8 @@ export const messageStreamEventSchema = z.discriminatedUnion("type", [
 ]);
 
 type Message = z.infer<typeof messageSchema>;
+export type TokenCount = z.infer<typeof tokenCountSchema>;
+type Usage = z.infer<typeof usageSchema>;
 type MessageStreamEvent = z.infer<typeof messageStreamEventSchema>;
 type ToolUseBlock = z.infer<typeof toolUseBlockSchema>;
 
@@ -96,7 +101,7 @@ const message = (
   model: string,
   content: Message["content"],
   stopReason: string | null,
-  credits?: CreditUsage
+  usage: Usage
 ): Message => ({
   content,
   id,
@@ -105,7 +110,7 @@ const message = (
   stop_reason: stopReason,
   stop_sequence: null,
   type: "message",
-  usage: { credits, input_tokens: 0, output_tokens: 0 },
+  usage,
 });
 
 /**
@@ -113,7 +118,11 @@ const message = (
  * order they arrive, so a reply that talks, calls a tool, and talks again is
  * three blocks. Only the text block stays open between deltas.
  */
-const streamWire = (id: string, model: string): StreamWire => {
+const streamWire = (
+  id: string,
+  model: string,
+  inputTokens: number
+): StreamWire => {
   let index = -1;
   let textOpen = false;
   const closeText = (): string => {
@@ -145,16 +154,22 @@ const streamWire = (id: string, model: string): StreamWire => {
         frame({ index, type: "content_block_stop" })
       );
     },
-    close: (finishReason, credits) =>
+    close: (finishReason, outputTokens, credits) =>
       closeText() +
       frame({
         delta: { stop_reason: toStopReason(finishReason), stop_sequence: null },
         type: "message_delta",
-        usage: { credits, output_tokens: 0 },
+        usage: { credits, output_tokens: outputTokens },
       }) +
       frame({ type: "message_stop" }),
     open: () =>
-      frame({ message: message(id, model, [], null), type: "message_start" }),
+      frame({
+        message: message(id, model, [], null, {
+          input_tokens: inputTokens,
+          output_tokens: 0,
+        }),
+        type: "message_start",
+      }),
     text: (delta) => {
       let opened = "";
       if (!textOpen) {
@@ -184,13 +199,11 @@ const reply = (id: string, model: string, value: Reply): Message => {
     content.push({ text: value.text, type: "text" });
   }
   content.push(...value.calls.map(toolUse));
-  return message(
-    id,
-    model,
-    content,
-    toStopReason(value.finishReason),
-    value.credits
-  );
+  return message(id, model, content, toStopReason(value.finishReason), {
+    credits: value.credits,
+    input_tokens: value.inputTokens,
+    output_tokens: value.outputTokens,
+  });
 };
 
 export const anthropicWire = (model: string): Wire => {
@@ -200,6 +213,6 @@ export const anthropicWire = (model: string): Wire => {
     id,
     protocol: PROTOCOL,
     reply: (value) => Response.json(reply(id, model, value)),
-    stream: () => streamWire(id, model),
+    stream: (inputTokens) => streamWire(id, model, inputTokens),
   };
 };

@@ -162,3 +162,21 @@ test("ignores the fields AI Pass has no use for", () => {
   expect(result.success).toBe(true);
   expect(result.data).not.toHaveProperty("temperature");
 });
+
+test("keeps a system message from the middle of the conversation", () => {
+  const { turns } = parse({
+    messages: [
+      { content: "hi", role: "user" },
+      {
+        content: [{ text: "<system-reminder>", type: "text" }],
+        role: "system",
+      },
+    ],
+    system: "be terse",
+  });
+  expect(turns).toEqual([
+    { content: "be terse", role: "system" },
+    { content: "hi", role: "user" },
+    { content: "<system-reminder>", role: "system" },
+  ]);
+});

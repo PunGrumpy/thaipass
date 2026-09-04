@@ -63,7 +63,7 @@ const blockSchema = z.union([
   z.unknown().transform((): Block => ({ kind: "skip" })),
 ]);
 
-const roleSchema = z.enum(["user", "assistant"]);
+const roleSchema = z.enum(["user", "assistant", "system"]);
 
 type Role = z.infer<typeof roleSchema>;
 
