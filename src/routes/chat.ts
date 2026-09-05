@@ -3,7 +3,11 @@ import { Elysia } from "elysia";
 import { DEFAULT_MODEL } from "../aipass/models";
 import { requestLogger } from "../lib/logger";
 import { json, jsonOrStream } from "../lib/openapi";
-import { apiErrorSchema, upstreamErrorSchema } from "../openai/errors";
+import {
+  apiErrorSchema,
+  requestErrorSchema,
+  upstreamErrorSchema,
+} from "../openai/errors";
 import { chatRequestSchema, toConversation } from "../openai/schema";
 import {
   chatCompletionChunkSchema,
@@ -19,6 +23,7 @@ export const chatRoutes = new Elysia()
     ChatCompletion: chatCompletionSchema,
     ChatCompletionChunk: chatCompletionChunkSchema,
     ChatRequest: chatRequestSchema,
+    RequestError: requestErrorSchema,
     UpstreamError: upstreamErrorSchema,
   })
   .post(
@@ -34,13 +39,13 @@ export const chatRoutes = new Elysia()
             "A data: line per ChatCompletionChunk, closed by data: [DONE]."
           ),
           "400": json(
-            "ApiError",
-            "Malformed body, or a model outside the catalog"
+            "RequestError",
+            "Malformed body, a model outside the catalog, or a prompt the AI Pass edge refused before the model ran"
           ),
           "401": json("ApiError", "Missing or malformed session cookie"),
           "502": json(
             "UpstreamError",
-            "AI Pass refused the request, often a stale cookie"
+            "AI Pass failed the request, often a stale cookie"
           ),
         },
         security: [{ aipassCookie: [] }],

@@ -77,6 +77,8 @@ ANTHROPIC_SMALL_FAST_MODEL=gemini-3.1-flash-lite
 
 It is a heavy caller: its system prompt and tool definitions make a first request of around 100 kB, and every turn resends the whole conversation, so a session spends the daily allowance quickly.
 
+Its system prompt is also the shape the edge is most likely to refuse, so a `400` naming an edge refusal on the very first request is worth expecting; see [When the edge refuses a prompt](#when-the-edge-refuses-a-prompt).
+
 ## Use it as an AI SDK provider
 
 `createAipass` returns models that `streamText` and `generateText` accept, with no HTTP hop:
@@ -163,10 +165,30 @@ Streams on Vercel are bounded by the function duration, not the 240s idle timeou
 
 Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, the account’s credit balance, and the credits the reply spent. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
 
+## When the edge refuses a prompt
+
+AI Pass sits behind an edge that answers some requests itself, with a `403`, before the chat backend runs. It scores what a request _contains_ rather than how long it is, so prose of one length passes where an agent-style prompt of the same length is refused, and a shell path or an environment variable carried in the prompt is reported to be enough on its own.
+
+The proxy reports that as a **400**, not a 502, because a retry of the identical body reaches the identical verdict and a bad gateway invites one:
+
+```json
+{
+  "error": {
+    "message": "upstream 403 (text/html); the AI Pass edge refused this before the model ran, on what the prompt contains rather than how long it is — resending the same text will be refused again",
+    "detail": "<the edge's own body, truncated>"
+  }
+}
+```
+
+An Anthropic client sees the same thing as `invalid_request_error`. The wide event carries `edgeRefused` so a run of them is visible in the logs.
+
+The trigger set is undocumented, so the proxy names the shape of the problem and hands back the edge's own body rather than guessing which string was the one. If you hit it, the thing to change is the prompt, most often a literal path or variable in a system prompt. This is also why a heavy agent client can fail on its first request while plain chat of the same size works.
+
 ## Limits
 
 - **Token counts are estimated**: AI Pass reports none, so the proxy counts characters. Credits are the exact figure, see [Usage in credits](#usage-in-credits).
 - **Cookies expire**: a 502 whose message says the cookie is stale means you need a fresh one.
+- **The edge can refuse a prompt outright**: see [When the edge refuses a prompt](#when-the-edge-refuses-a-prompt).
 - **Unknown model ids return 400** instead of being forwarded.
 
 ## Development scripts

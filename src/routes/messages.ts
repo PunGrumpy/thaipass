@@ -39,12 +39,12 @@ export const messageRoutes = new Elysia()
           ),
           "400": json(
             "AnthropicError",
-            "Malformed body, or a model outside the catalog"
+            "Malformed body, a model outside the catalog, or a prompt the AI Pass edge refused before the model ran"
           ),
           "401": json("AnthropicError", "Missing or malformed session cookie"),
           "502": json(
             "AnthropicError",
-            "AI Pass refused the request, often a stale cookie"
+            "AI Pass failed the request, often a stale cookie"
           ),
         },
         security: [{ aipassCookieKey: [] }, { aipassCookie: [] }],

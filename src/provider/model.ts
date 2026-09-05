@@ -15,6 +15,7 @@ import { deleteConversation, sendMessage } from "../aipass/client";
 import type { ChatModel } from "../aipass/models";
 import { fetchCredits, settleCredits } from "../aipass/quotas";
 import type { Credits, CreditUsage } from "../aipass/quotas";
+import { EDGE_REFUSAL_HINT, isEdgeRefusal } from "../aipass/refusal";
 import { parseAipassSSE } from "../aipass/stream";
 import { config } from "../lib/config";
 import { guardController } from "../lib/stream";
@@ -116,7 +117,7 @@ const startTurn = async (
   const inputTokens = estimateTokens(text);
   const body = toAipassMessages(text, modelId);
   const credits = fetchCredits(cookie, options.abortSignal);
-  const { conversationId, response } = await sendMessage(
+  const { conversationId, created, response } = await sendMessage(
     cookie,
     modelId,
     body,
@@ -138,13 +139,18 @@ const startTurn = async (
     };
   }
   const detail = response.body ? await response.text().catch(() => "") : "";
-  await deleteConversation(cookie, conversationId);
+  if (created) {
+    await deleteConversation(cookie, conversationId);
+  }
+  const hint = isEdgeRefusal(response.status) ? EDGE_REFUSAL_HINT : "";
   throw new APICallError({
-    message: `AI Pass answered ${response.status} (${contentType || "no content-type"})`,
+    message: `AI Pass answered ${response.status} (${contentType || "no content-type"})${hint}`,
     requestBodyValues: { messages: body, modelId },
     responseBody: detail.slice(0, DETAIL_LIMIT),
     statusCode: response.status,
-    url: `${config.origin}/actions/send-message/${conversationId}`,
+    url: created
+      ? `${config.origin}/actions/send-message/${conversationId}`
+      : `${config.origin}/chat.data`,
   });
 };
 

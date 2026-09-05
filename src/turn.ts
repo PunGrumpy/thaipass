@@ -9,6 +9,11 @@ import type { Identity } from "./aipass/identity";
 import type { ChatModel } from "./aipass/models";
 import { fetchCredits, settleCredits } from "./aipass/quotas";
 import type { CreditUsage, Credits } from "./aipass/quotas";
+import {
+  EDGE_REFUSAL_CLIENT_STATUS,
+  EDGE_REFUSAL_HINT,
+  isEdgeRefusal,
+} from "./aipass/refusal";
 import { clientIdFromCookie, cookieFromRequest } from "./aipass/session";
 import { parseAipassSSE } from "./aipass/stream";
 import type { SSESkips } from "./aipass/stream";
@@ -126,25 +131,37 @@ const recordUpstream = async (
   }
 };
 
+const hintFor = (staleCookie: boolean, edgeRefused: boolean): string => {
+  if (staleCookie) {
+    return "; cookie is stale, re-auth needed";
+  }
+  return edgeRefused ? EDGE_REFUSAL_HINT : "";
+};
+
 const upstreamError = async (
   wire: Wire,
   cookie: string,
   response: Response,
-  conversationId: string,
+  conversation: { readonly id: string; readonly created: boolean },
   log: RequestLogger
 ): Promise<Response> => {
   const contentType = response.headers.get("content-type") ?? "";
   const location = response.headers.get("location");
   const detail = response.body ? await response.text().catch(() => "") : "";
-  await deleteConversation(cookie, conversationId);
+  if (conversation.created) {
+    await deleteConversation(cookie, conversation.id);
+  }
   const staleCookie =
     response.status >= 300 &&
     response.status < 400 &&
     (location ?? "").includes("sign-in");
-  const hint = staleCookie ? "; cookie is stale, re-auth needed" : "";
+  const edgeRefused = isEdgeRefusal(response.status);
+  const status = edgeRefused ? EDGE_REFUSAL_CLIENT_STATUS : 502;
+  const hint = hintFor(staleCookie, edgeRefused);
   log.set({
+    edgeRefused,
     staleCookie,
-    status: 502,
+    status,
     upstreamContentType: contentType,
     upstreamStatus: response.status,
   });
@@ -153,7 +170,7 @@ const upstreamError = async (
     detail: detail.slice(0, DETAIL_LIMIT),
     location: location ?? undefined,
     message: `upstream ${response.status} (${contentType || "no content-type"})${hint}`,
-    status: 502,
+    status,
   });
 };
 
@@ -415,7 +432,7 @@ const runTurn = async (
     return failUpstream(wire, log, error, `upstream fetch failed: ${error}`);
   }
 
-  const { response: upstream, conversationId } = result;
+  const { response: upstream, conversationId, created } = result;
   const contentType = upstream.headers.get("content-type") ?? "";
   const upstreamBody = upstream.ok ? upstream.body : null;
   log.set({
@@ -425,7 +442,13 @@ const runTurn = async (
   });
   if (!upstreamBody || !contentType.includes("event-stream")) {
     await recordUpstream(facts, model, log);
-    return await upstreamError(wire, cookie, upstream, conversationId, log);
+    return await upstreamError(
+      wire,
+      cookie,
+      upstream,
+      { created, id: conversationId },
+      log
+    );
   }
 
   const completion: Completion = {

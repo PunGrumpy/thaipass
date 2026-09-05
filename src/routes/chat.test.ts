@@ -4,8 +4,10 @@ import { z } from "zod";
 
 import { app } from "../app";
 import {
+  CREATE_PATH,
   DELETE_PATH,
   quotaResponse,
+  SEND_PREFIX,
   sseResponse,
   stubUpstream,
   textDeltas,
@@ -165,6 +167,40 @@ test("returns 502 and deletes the conversation when upstream is not a stream", a
   const response = await app.fetch(chatRequest(true));
   expect(response.status).toBe(502);
   expect(upstream.calls).toContain(DELETE_PATH);
+});
+
+const EDGE_REFUSAL_BODY = "<html>Request blocked</html>";
+
+const edgeRefusal = (): Response =>
+  new Response(EDGE_REFUSAL_BODY, {
+    headers: { "content-type": "text/html" },
+    status: 403,
+  });
+
+test("reports an edge refusal on send as a 400 the caller can act on", async () => {
+  upstream = stubUpstream(edgeRefusal);
+  const response = await app.fetch(chatRequest(true));
+  expect(response.status).toBe(400);
+  const body = z
+    .object({ error: z.object({ detail: z.string(), message: z.string() }) })
+    .parse(await response.json());
+  expect(body.error.message).toContain("upstream 403");
+  expect(body.error.message).toContain("before the model ran");
+  expect(body.error.detail).toContain("Request blocked");
+  expect(upstream.calls).toContain(DELETE_PATH);
+});
+
+test("stops at an edge refusal on create rather than addressing a conversation that was never opened", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)), (path) =>
+    path === CREATE_PATH ? edgeRefusal() : undefined
+  );
+  const response = await app.fetch(chatRequest(true));
+  expect(response.status).toBe(400);
+  expect(upstream.calls).toContain(CREATE_PATH);
+  expect(upstream.calls.some((path) => path.startsWith(SEND_PREFIX))).toBe(
+    false
+  );
+  expect(upstream.calls).not.toContain(DELETE_PATH);
 });
 
 const WEATHER_TOOL = {

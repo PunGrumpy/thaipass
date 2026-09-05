@@ -2,6 +2,7 @@ import { config } from "../lib/config";
 import { sseStream } from "./sse";
 import type { SseStreamOptions } from "./sse";
 
+export const CREATE_PATH = "/chat.data";
 export const DELETE_PATH = "/actions/update-conversation.data";
 export const SEND_PREFIX = "/actions/send-message/";
 export const QUOTA_PATH = "/loaders/get-usage-quota";
