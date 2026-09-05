@@ -2,7 +2,7 @@ import { log } from "evlog";
 
 import { config } from "../lib/config";
 import { isEdgeRefusal } from "./refusal";
-import { browserPostHeaders } from "./request";
+import { browserPostHeaders, conversationJsonHeaders } from "./request";
 import type { AipassMessage, AipassPart } from "./stream";
 import type { ThinkingLevel } from "./thinking";
 import { uploadAttachment } from "./upload";
@@ -233,11 +233,7 @@ export const sendMessage = async (
     `${config.origin}/actions/send-message/${conversationId}`,
     {
       body: JSON.stringify(sendBody(modelId, sent, options)),
-      headers: browserPostHeaders(
-        cookie,
-        `${config.origin}/chat/${conversationId}`,
-        "application/json"
-      ),
+      headers: conversationJsonHeaders(cookie, conversationId),
       method: "POST",
       redirect: "manual",
       signal,

@@ -23,6 +23,17 @@ export const browserPostHeaders = (
   "content-type": contentType,
 });
 
+/** Headers for a JSON action made from inside one conversation's page. */
+export const conversationJsonHeaders = (
+  cookie: string,
+  conversationId: string
+) =>
+  browserPostHeaders(
+    cookie,
+    `${config.origin}/chat/${conversationId}`,
+    "application/json"
+  );
+
 export const loadJson = async <T>(
   path: string,
   schema: z.ZodType<T>,

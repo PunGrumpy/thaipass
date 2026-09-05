@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { config } from "../lib/config";
-import { browserPostHeaders } from "./request";
+import { conversationJsonHeaders } from "./request";
 
 /**
  * Getting a file to AI Pass takes three calls, and the proxy makes all three.
@@ -47,13 +47,6 @@ const confirmSchema = z.object({
   error: z.string().optional(),
   storageKey: z.string().optional(),
 });
-
-const jsonHeaders = (cookie: string, conversationId: string) =>
-  browserPostHeaders(
-    cookie,
-    `${config.origin}/chat/${conversationId}`,
-    "application/json"
-  );
 
 export class UploadError extends Error {
   override name = "UploadError";
@@ -106,7 +99,7 @@ export const uploadAttachment = async (
         modelId,
         sizeBytes: bytes.length,
       }),
-      headers: jsonHeaders(cookie, conversationId),
+      headers: conversationJsonHeaders(cookie, conversationId),
       method: "POST",
       redirect: "manual",
       signal,
@@ -147,7 +140,7 @@ export const uploadAttachment = async (
   const confirmed = await readJson(
     await fetch(`${config.origin}${CONFIRM_PATH}`, {
       body: JSON.stringify({ uploadToken: initiated.uploadToken }),
-      headers: jsonHeaders(cookie, conversationId),
+      headers: conversationJsonHeaders(cookie, conversationId),
       method: "POST",
       redirect: "manual",
       signal,

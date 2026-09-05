@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { config } from "../lib/config";
 import type { VideoModel } from "./models";
-import { browserGetHeaders, browserPostHeaders } from "./request";
+import { browserGetHeaders, conversationJsonHeaders } from "./request";
 
 /**
  * Video is a different protocol from everything else AI Pass serves.
@@ -160,13 +160,6 @@ export const explainVideoError = (code: string): string => {
   return hint ? `${code} — ${hint}` : code;
 };
 
-const jsonHeaders = (cookie: string, conversationId: string) =>
-  browserPostHeaders(
-    cookie,
-    `${config.origin}/chat/${conversationId}`,
-    "application/json"
-  );
-
 export const submitVideo = (
   cookie: string,
   body: VideoBody,
@@ -174,7 +167,7 @@ export const submitVideo = (
 ): Promise<Response> =>
   fetch(`${config.origin}${VIDEO_PATH}`, {
     body: JSON.stringify(body),
-    headers: jsonHeaders(cookie, body.conversationId),
+    headers: conversationJsonHeaders(cookie, body.conversationId),
     method: "POST",
     redirect: "manual",
     signal,
@@ -207,7 +200,7 @@ export const cancelVideo = async (
   try {
     const response = await fetch(`${config.origin}${VIDEO_PATH}`, {
       body: JSON.stringify({ _action: "cancel", conversationId, jobId }),
-      headers: jsonHeaders(cookie, conversationId),
+      headers: conversationJsonHeaders(cookie, conversationId),
       method: "POST",
       redirect: "manual",
     });
