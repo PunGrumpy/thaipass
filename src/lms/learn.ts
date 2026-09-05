@@ -196,6 +196,7 @@ export type LearnEvent =
       readonly event: "done";
       readonly earned: number;
       readonly lessons: number;
+      readonly monthly: number | null;
       readonly target: number;
       readonly reached: boolean;
       readonly reason: string;
@@ -205,7 +206,7 @@ export type Sleep = (ms: number, signal?: AbortSignal) => Promise<void>;
 
 export interface LearnOptions {
   readonly cookie: string;
-  /** EXP to earn before stopping. */
+  /** The period's EXP to reach before stopping; this run's own earnings when the LMS reports no figure. */
   readonly target?: number;
   /** Playback speed: 1 stamps in real time, 4 gets through a video in a quarter of its length. */
   readonly pace?: number;
@@ -233,11 +234,15 @@ interface Run {
   lessons: number;
 }
 
+/** The target is the period's figure when the LMS reports one, else what this run has earned. */
+const targetReached = (run: Run): boolean =>
+  (run.monthly ?? run.earned) >= run.target;
+
 const limitReached = (run: Run): string | undefined => {
   if (run.signal?.aborted) {
     return "the caller went away";
   }
-  if (run.earned >= run.target) {
+  if (targetReached(run)) {
     return "target reached";
   }
   if (run.lessons >= run.maxLessons) {
@@ -593,17 +598,23 @@ export const learn = async function* learn(
     target: options.target ?? DEFAULT_TARGET,
     videoExp: undefined,
   };
+  const done = (reached: boolean, reason: string): LearnEvent => ({
+    earned: run.earned,
+    event: "done",
+    lessons: run.lessons,
+    monthly: run.monthly ?? null,
+    reached,
+    reason,
+    target: run.target,
+  });
   const before = await expEvent(run, "before");
   yield before;
   if (before.event === "error") {
-    yield {
-      earned: 0,
-      event: "done",
-      lessons: 0,
-      reached: false,
-      reason: "the LMS refused the session",
-      target: run.target,
-    };
+    yield done(false, "the LMS refused the session");
+    return;
+  }
+  if (targetReached(run)) {
+    yield done(true, "the period already has the target");
     return;
   }
   run.videoExp = await videoExpOf(run);
@@ -617,12 +628,5 @@ export const learn = async function* learn(
       : "a lesson call failed, see the error event";
   }
   yield await expEvent(run, "after");
-  yield {
-    earned: run.earned,
-    event: "done",
-    lessons: run.lessons,
-    reached: run.earned >= run.target,
-    reason,
-    target: run.target,
-  };
+  yield done(targetReached(run), reason);
 };

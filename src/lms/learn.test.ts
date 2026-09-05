@@ -51,6 +51,8 @@ const refused = (): Response =>
   );
 
 interface Fixture {
+  /** The period's EXP before the run. */
+  readonly monthly?: number;
   readonly courses?: readonly Payload[];
   readonly lessons?: readonly Payload[];
   readonly content?: Payload;
@@ -121,8 +123,9 @@ const stampReply = (fixture: Fixture, progress: Progress): Response => {
 
 const expReply = (fixture: Fixture, progress: Progress): Response => {
   const paid = progress.completed && (fixture.expMoves ?? true);
+  const monthly = fixture.monthly ?? MONTHLY;
   return ok({
-    member: { expEarn: String(MONTHLY + (paid ? VIDEO_EXP : 0)) },
+    member: { expEarn: String(monthly + (paid ? VIDEO_EXP : 0)) },
     user: { name: "Grumpy" },
   });
 };
@@ -309,13 +312,38 @@ test("keeps the enrolment id the listing already carries", async () => {
   expect(stampsSent()[0]?.enrollmentId).toBe("e-1");
 });
 
-test("stops once the target is earned", async () => {
+test("stops once the period's EXP reaches the target", async () => {
   upstream = lmsUpstream();
+  const done = doneOf(
+    await collect({
+      cookie: COOKIE,
+      sleep: NO_SLEEP,
+      target: MONTHLY + VIDEO_EXP,
+    })
+  );
+  expect(done.reached).toBe(true);
+  expect(done.monthly).toBe(MONTHLY + VIDEO_EXP);
+  expect(done.reason).toBe("target reached");
+});
+
+test("touches nothing when the period already has the target", async () => {
+  upstream = lmsUpstream({ monthly: 325 });
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  const done = doneOf(events);
+  expect(done.reached).toBe(true);
+  expect(done.reason).toContain("already");
+  expect(upstream.calls).not.toContain(`${LMS}/course/v2`);
+  expect(events).toHaveLength(2);
+});
+
+test("falls back to this run's earnings when the LMS reports no figure", async () => {
+  upstream = lmsUpstream({ monthly: Number.NaN });
   const done = doneOf(
     await collect({ cookie: COOKIE, sleep: NO_SLEEP, target: VIDEO_EXP })
   );
+  expect(done.monthly).toBeNull();
+  expect(done.earned).toBe(VIDEO_EXP);
   expect(done.reached).toBe(true);
-  expect(done.reason).toBe("target reached");
 });
 
 test("a dry run lists the plan and sends nothing that changes the account", async () => {

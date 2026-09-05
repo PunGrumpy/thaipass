@@ -243,20 +243,20 @@ The reply is one JSON object per line as the run goes: the month's EXP before, a
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `target` | 100 | EXP to earn before stopping |
+| `target` | 100 | The period's EXP to reach, as the LMS reports it; a run whose period already has it touches nothing |
 | `pace` | 1 | Playback speed, up to 16. At 1 a ten minute video takes ten minutes |
 | `max_lessons` | 50 | Stop after this many lessons regardless |
 | `dry_run` | false | List what would be learned and change nothing |
 
 Send `dry_run` first. It reads the catalogue and reports each lesson it would watch, with the tier's EXP per video lesson, without enrolling or stamping anything.
 
-`GET /v1/lms/exp` returns the session's EXP payload, the tier and the achievement summary as the LMS reports them, and a `monthly` figure when the payload names one. Read it once a month to see whether the minimum is met; a cron line that runs the learn call when it is not is the whole automation.
+`GET /v1/lms/exp` returns the session's EXP payload, the tier and the achievement summary as the LMS reports them, with the period's figure as `monthly`. A cron line that runs the learn call once a month is the whole automation: the run reads the figure first and ends at once when the target is already there.
 
 Three things to know before relying on it:
 
 - **The stamp is the player's own, read off the lesson page and confirmed against a live session.** Each stamp carries the video content id, the enrolment, the progress record and the whole seconds watched, never more than ten past the last one, and the LMS answers with the lesson's status. A stamp that reports `COMPLETED` is what earns the EXP; the proxy then asks the course to close, as the page does, and prices the lesson by how much the period's EXP moved.
 - **The LMS needs its own cookies.** Copy the `Cookie` header from a request made while the browser is on a `/lms` page, not from the chat, so the tenant cookie the LMS sets travels with the session token. A `401` from the LMS says the cookie is stale or came from the wrong page.
-- **Keep the pace at 1.** The player blocks seeking on a first watch, so the backend expects the stamps to arrive as slowly as the video plays. A run at pace 1 holds the connection for as long as the videos take; run it locally, not on Vercel, and pass `-N` to curl so the lines show as they come.
+- **Keep the pace at 1, and run it locally.** The player blocks seeking on a first watch and never lets a stamp advance more than ten seconds, so the stamps arrive as slowly as the video plays. Vercel cuts the function at about five minutes, which is shorter than most lessons; a cut run keeps the stamps it sent and the next run resumes from there, but only a local proxy sees a long lesson through. Pass `-N` to curl so the lines show as they come.
 
 The proxy stops at the first failed call rather than trying the next course, because an undocumented backend that refused once will refuse again, and the programme awards these points for learning that a person is meant to do. This is your account and your call; the proxy sends nothing a browser watching the video would not.
 
