@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { fetchCatalog } from "../aipass/catalog";
 import { ANY_MODELS, kindOf, VIDEO_MODELS } from "../aipass/models";
-import type { ModelKind, VideoModel } from "../aipass/models";
+import type { VideoModel } from "../aipass/models";
 import { clientIdFromCookie, cookieFromRequest } from "../aipass/session";
 import { optionsFor } from "../aipass/video";
 import { requestLogger } from "../lib/logger";
@@ -80,7 +80,7 @@ export const modelRoutes = new Elysia()
       return {
         data: ANY_MODELS.map((modelId) => ({
           id: modelId,
-          kind: kindOf(modelId) satisfies ModelKind,
+          kind: kindOf(modelId),
           object: "model" as const,
           options: optionsOf(modelId),
           owned_by: "aipass" as const,

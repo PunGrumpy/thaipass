@@ -98,13 +98,13 @@ export const parseAipassSSE = async function* parseAipassSSE(
         break;
       }
       case "file": {
-        const { data, type: _type, ...outer } = event;
+        const { data } = event;
         yield {
           file: {
-            filename: outer.filename ?? data?.filename,
-            mediaType: outer.mediaType ?? data?.mediaType,
-            snapshotUrl: outer.snapshotUrl ?? data?.snapshotUrl,
-            url: outer.url ?? data?.url,
+            filename: event.filename ?? data?.filename,
+            mediaType: event.mediaType ?? data?.mediaType,
+            snapshotUrl: event.snapshotUrl ?? data?.snapshotUrl,
+            url: event.url ?? data?.url,
           },
           kind: "file",
         };
