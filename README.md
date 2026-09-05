@@ -42,14 +42,17 @@ curl -sN localhost:3789/v1/chat/completions \
   -d '{"model":"claude-sonnet-5@default","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-`GET /v1/models` lists every accepted model id. Ids are case-sensitive, Claude ids carry a `@provider` suffix, and `gemini-3.1-flash-lite` is the free default.
+`GET /v1/models` lists every model id the proxy routes, with a `kind` saying which endpoint takes it. Ids are case-sensitive, Claude ids carry a `@provider` suffix, and `gemini-3.1-flash-lite` is the free default.
 
 ## Endpoints
 
 - `POST /v1/chat/completions`: OpenAI protocol, streaming by default
 - `POST /v1/messages`: Anthropic protocol, buffered unless `stream: true`
+- `POST /v1/images/generations`: one image, buffered
+- `POST /v1/videos`: one video; blocks for the whole render, see [Images, video and music](#images-video-and-music)
+- `POST /v1/audio/generations`: one music clip, buffered
 - `POST /v1/messages/count_tokens`: the estimated size of a prompt, no credential needed
-- `GET /v1/models`: the model catalog, no credential needed
+- `GET /v1/models`: the model catalog, richer with the cookie than without
 - `GET /v1/usage`: the account's credit balance, needs the cookie
 - `GET /health`: liveness, no credential needed
 - `GET /`: OpenAPI docs rendered by Scalar, also at `/openapi.json`
@@ -64,7 +67,7 @@ ANTHROPIC_API_KEY=your_cookie_header_here
 MODEL=claude-sonnet-5@default
 ```
 
-Text, `tool_use` and `tool_result` blocks are carried through. Images, documents, `max_tokens`, `thinking` and sampling settings are dropped.
+Text, `tool_use`, `tool_result`, `image` and `document` blocks are carried through, and a `thinking` block picks a reasoning level. `max_tokens` and the sampling settings are dropped.
 
 Claude Code reads `/v1/messages` under the base URL itself, so leave off the `/v1` the SDKs add, and name both models, because the ids Claude Code sends are outside the catalog:
 
@@ -95,7 +98,67 @@ const result = streamText({
 });
 ```
 
-The provider implements `LanguageModelV2` for `ai` v5. Sampling settings return `unsupported-setting` warnings, token `usage` is estimated from the text, and `providerMetadata.aipass.credits` holds the credit balance. An app on `ai` v7 should use `/v1/messages` over HTTP instead.
+The provider implements `LanguageModelV2` for `ai` v5. File parts go up as attachments and a generated file comes back as the SDK's own file part; `providerOptions.aipass.thinkingLevel` asks for a reasoning level. Sampling settings return `unsupported-setting` warnings, token `usage` is estimated from the text, and `providerMetadata.aipass.credits` holds the credit balance. An app on `ai` v7 should use `/v1/messages` over HTTP instead.
+
+## Attachments
+
+Send a file inline and it goes up with the turn. OpenAI `image_url` and `file` parts, Anthropic `image` and `document` blocks, and AI SDK file parts all work:
+
+```bash
+curl -s localhost:3789/v1/chat/completions \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $AIPASS_COOKIE" \
+  -d '{
+    "model": "gemini-3.1-flash-lite",
+    "messages": [{"role": "user", "content": [
+      {"type": "text", "text": "what is in this?"},
+      {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KG..."}}
+    ]}]
+  }'
+```
+
+**The bytes have to arrive inline** — a data URI, or base64 in the block that carries them. A remote URL is refused with a `400` rather than fetched: this proxy is meant to be deployable, and a deployment that will fetch any URL a caller names is a request forger pointed at whatever network it sits in. Fetch the file yourself and send the bytes.
+
+Files up to 20 MB are accepted. Getting one upstream takes three calls — a place is reserved, the bytes go to a signed storage URL, the object is confirmed — and the proxy makes all three before it sends the turn. A file it cannot read fails the request rather than being dropped, because a model answering about a document it never received is worse than an error naming the document.
+
+## Reasoning effort
+
+AI Pass takes a reasoning level, not a token budget, and each model advertises the levels it will take. Every protocol has a way to ask:
+
+| Protocol | Field |
+| --- | --- |
+| OpenAI | `thinking_level`, or `reasoning_effort` with OpenAI's own values |
+| Anthropic | `thinking_level`, or a `thinking` block whose `budget_tokens` picks a level |
+| AI SDK | `providerOptions.aipass.thinkingLevel` |
+
+The levels are `low`, `medium`, `high`, and `max` on Claude Opus. A model that does not offer the one asked for is not an error: the level is dropped and named in the wide event, and the reply still comes. `GET /v1/models` reports each model's levels when you send the cookie.
+
+The Anthropic budget thresholds are the proxy's own — AI Pass publishes no token figure for a level, so there is nothing to derive them from. Under 4096 is `low`, under 16384 is `medium`, above that `high`.
+
+## Images, video and music
+
+Three endpoints, and the same models also work through `/v1/chat/completions`, where the file comes back as a markdown image or link in the reply.
+
+```bash
+curl -s localhost:3789/v1/images/generations \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $AIPASS_COOKIE" \
+  -d '{"model":"gpt-image-2","prompt":"a cat in Chiang Mai","size":"1024x768"}'
+```
+
+AI Pass describes an image by its shape rather than its pixel size, so `size` is reduced to the nearest ratio it offers — `1:1`, `3:4`, `4:3` — and `aspect_ratio` says it outright. One file per request: `n` above one is refused rather than quietly making a single image.
+
+**Video blocks.** AI Pass submits a job and polls it, and offers no streaming variant, so neither does the proxy — `POST /v1/videos` holds the connection for the whole render, which takes minutes. A job that fails or loses its caller is cancelled upstream, because one left running keeps spending the video quota. On Vercel the function duration will cut this off long before a render finishes; run the proxy locally for video.
+
+What a video model accepts differs per model, and the upstream rejects the whole body without naming a field, so an option a model does not take is dropped rather than sent. `GET /v1/models` reports the surface under `options`:
+
+| Option | Models |
+| --- | --- |
+| `aspect_ratio`, `style_preprompt` | every video model |
+| `duration`, `camera_fixed`, `generate_audio` | seedance only |
+| `resolution` (`480p`, `720p`) | `seedance-2.0-fast`, `seedance-2.0-mini` |
+
+The generated file is usually stored behind the session cookie, so the proxy reads it and hands back the bytes: `b64_json` by default, `url` as a data URI on request. Past a per-kind cap — 5 MB for an image, 25 MB for audio, 50 MB for video — it stays a link, and says that the link needs a logged-in browser rather than handing you a URL that quietly 401s. On the AI SDK provider a generated file comes back as the SDK's own file part.
 
 ## Tool calling over text
 
@@ -159,7 +222,7 @@ curl -s localhost:3789/v1/usage -H "authorization: Bearer $AIPASS_COOKIE"
 
 `src/index.ts` default-exports the Elysia app and `vercel.json` sets `bunVersion`, so the repo deploys as is. Keep Deployment Protection on: the deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
 
-Streams on Vercel are bounded by the function duration, not the 240s idle timeout, so a slow model can be cut off mid-reply.
+Streams on Vercel are bounded by the function duration, not the 240s idle timeout, so a slow model can be cut off mid-reply. `POST /v1/videos` holds the connection for a render that takes minutes, so it will not survive a deployment at all; run the proxy locally for video.
 
 ## Logging
 
@@ -190,6 +253,9 @@ The trigger set is undocumented, so the proxy names the shape of the problem and
 - **Cookies expire**: a 502 whose message says the cookie is stale means you need a fresh one.
 - **The edge can refuse a prompt outright**: see [When the edge refuses a prompt](#when-the-edge-refuses-a-prompt).
 - **Unknown model ids return 400** instead of being forwarded.
+- **Attachments must be inline**: a URL is refused, not fetched. See [Attachments](#attachments).
+- **Video holds the connection open** for the whole render, and cannot be deployed behind a function timeout.
+- **The media and attachment paths are built from the upstream protocol, not from a live account.** They are covered by tests against a stubbed upstream; nothing here has been run against de.aipass.net. Expect to fix something the first time you use them for real.
 
 ## Development scripts
 
