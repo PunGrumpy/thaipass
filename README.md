@@ -252,6 +252,15 @@ The reply is one JSON object per line as the run goes: the month's EXP before, a
 
 Send `dry_run` first. It reads the catalogue and reports each lesson it would watch, with the tier's EXP per video lesson, without enrolling or stamping anything.
 
+### Through the API, on a schedule
+
+Every call to `POST /v1/lms/learn` makes progress and stops on its own: at the target, at the end of the videos, or at `budget_seconds` with `paused: true`, from where the next call resumes. So the whole automation from any scheduler is one call, repeated:
+
+- **Monthly minimum**: call with `{"target": 100}` every ten minutes, or once an hour. A call whose period already has the target reads one figure and ends, so the idle calls cost nothing. Because `target` is the period's figure, a target of 1000 is reached across as many calls as it takes.
+- **Keep accumulating**: call with `{"earn": 100}` on the same schedule; each call earns that much more, whatever the period has, until the videos run out.
+
+On Vercel each call stops itself at 270 seconds, under the function limit, so a lesson longer than that spans two calls. The stream carries the account's EXP figure and nothing else about the account; `GET /v1/lms/exp` has the rest.
+
 ### One command, on your machine
 
 The route is for a client that already talks to the proxy. For the monthly chore itself there is a command that runs the learner in-process, with no function limit and no loop to write:

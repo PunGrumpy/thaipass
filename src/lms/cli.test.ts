@@ -60,11 +60,11 @@ test("names what is missing when there is no usable cookie", async () => {
 });
 
 test("describes a run in a few lines and keeps stamps transient", () => {
+  expect(describe({ event: "exp", monthly: 325, phase: "before" })?.text).toBe(
+    "EXP this period: 325"
+  );
   expect(
-    describe({ event: "exp", monthly: 325, payload: {}, phase: "before" })?.text
-  ).toBe("EXP this period: 325");
-  expect(
-    describe({ event: "exp", monthly: 325, payload: {}, phase: "after" })
+    describe({ event: "exp", monthly: 325, phase: "after" })
   ).toBeUndefined();
   expect(
     describe({ code: "56", event: "course", title: "AI", videos: 10 })?.text

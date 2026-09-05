@@ -131,7 +131,7 @@ export const lmsRoutes = new Elysia()
         responses: {
           "200": ndjson(
             "Progress, one JSON object per line",
-            "Lines of exp, course, lesson, stamp, course_completed, error and done events, in that order of occurrence."
+            "Lines of exp, course, lesson, stamp, course_completed, error and done events, in that order of occurrence. Nothing about the account but its EXP figure appears here; GET /v1/lms/exp has the rest."
           ),
           "400": json("ApiError", "Malformed body"),
           "401": json("ApiError", "Missing or malformed session cookie"),

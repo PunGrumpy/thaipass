@@ -158,7 +158,6 @@ export type LearnEvent =
       readonly event: "exp";
       readonly phase: "before" | "after";
       readonly monthly: number | null;
-      readonly payload: SessionExp;
     }
   | {
       readonly event: "course";
@@ -576,7 +575,7 @@ const expEvent = async (
     if (monthly !== undefined) {
       run.monthly = monthly;
     }
-    return { event: "exp", monthly: monthly ?? null, payload, phase };
+    return { event: "exp", monthly: monthly ?? null, phase };
   } catch (error) {
     return failure(error, "session", phase === "before");
   }
