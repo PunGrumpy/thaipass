@@ -7,6 +7,7 @@ import type { SendOptions, SendResult } from "./aipass/client";
 import { fetchIdentity } from "./aipass/identity";
 import type { Identity } from "./aipass/identity";
 import { fromDataUri, InlineError } from "./aipass/inline";
+import { renderAsset, resolveAsset } from "./aipass/media";
 import type { ChatModel } from "./aipass/models";
 import { fetchCredits, settleCredits } from "./aipass/quotas";
 import type { CreditUsage, Credits } from "./aipass/quotas";
@@ -190,6 +191,7 @@ interface Completion {
   readonly facts: UpstreamFacts;
   readonly log: RequestLogger;
   readonly model: string;
+  readonly signal: AbortSignal;
   readonly startedAt: number;
   readonly wire: Wire;
 }
@@ -199,6 +201,7 @@ interface Tally {
   calls: number;
   chars: number;
   deltas: number;
+  files: number;
   finishReason: string;
   msToFirstChunk: number | undefined;
   reasoningChars: number;
@@ -210,6 +213,7 @@ const newTally = (): Tally => ({
   calls: 0,
   chars: 0,
   deltas: 0,
+  files: 0,
   finishReason: "stop",
   msToFirstChunk: undefined,
   reasoningChars: 0,
@@ -219,6 +223,7 @@ const newTally = (): Tally => ({
 
 const tallyFields = (tally: Tally) => ({
   deltas: tally.deltas,
+  files: tally.files,
   finishReason: tally.finishReason,
   msToFirstChunk: tally.msToFirstChunk,
   reasoningChars: tally.reasoningChars,
@@ -247,6 +252,7 @@ const streamCompletion = (
     facts,
     log,
     model,
+    signal,
     startedAt,
     wire,
   } = completion;
@@ -287,6 +293,12 @@ const streamCompletion = (
             emit(splitter.push(event.text));
           } else if (event.kind === "reasoning") {
             tally.reasoningChars += event.text.length;
+          } else if (event.kind === "file") {
+            const asset = await resolveAsset(cookie, event.file, signal);
+            if (asset) {
+              tally.files += 1;
+              emit(splitter.push(`\n\n${renderAsset(asset)}\n\n`));
+            }
           } else if (event.kind === "finish") {
             tally.finishReason = event.reason;
           } else {
@@ -338,6 +350,7 @@ const bufferedCompletion = async (
     facts,
     log,
     model,
+    signal,
     startedAt,
     wire,
   } = completion;
@@ -364,6 +377,12 @@ const bufferedCompletion = async (
         collect(splitter.push(event.text));
       } else if (event.kind === "reasoning") {
         tally.reasoningChars += event.text.length;
+      } else if (event.kind === "file") {
+        const asset = await resolveAsset(cookie, event.file, signal);
+        if (asset) {
+          tally.files += 1;
+          collect(splitter.push(`\n\n${renderAsset(asset)}\n\n`));
+        }
       } else if (event.kind === "finish") {
         tally.finishReason = event.reason;
       } else {
@@ -509,6 +528,7 @@ const runTurn = async (
     inputTokens,
     log,
     model,
+    signal,
     startedAt,
     wire,
   };

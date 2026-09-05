@@ -1,6 +1,9 @@
 import { parseJsonEventStream } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
+import { fileEventSchema } from "./media";
+import type { FileEvent } from "./media";
+
 /**
  * A file part addresses an object already in the bucket. The upstream composer
  * reads `url` and the web client sends `storageKey` beside it, so both carry
@@ -26,6 +29,7 @@ export interface AipassMessage {
 export type StreamEvent =
   | { readonly kind: "delta"; readonly text: string }
   | { readonly kind: "reasoning"; readonly text: string }
+  | { readonly kind: "file"; readonly file: FileEvent }
   | { readonly kind: "finish"; readonly reason: string }
   | { readonly kind: "error"; readonly message: string };
 
@@ -36,9 +40,19 @@ const optionalText = z
   ])
   .optional();
 
+/**
+ * A generated file arrives with its fields at the top level on some models and
+ * nested under `data` on others, so both are read and the outer one wins.
+ */
+const fileFrameSchema = fileEventSchema.extend({
+  data: fileEventSchema.optional(),
+  type: z.literal("file"),
+});
+
 const upstreamEventSchema = z.discriminatedUnion("type", [
   z.object({ delta: z.string(), type: z.literal("text-delta") }),
   z.object({ delta: z.string(), type: z.literal("reasoning-delta") }),
+  fileFrameSchema,
   z.object({ finishReason: optionalText, type: z.literal("finish") }),
   z.object({
     error: optionalText,
@@ -81,6 +95,19 @@ export const parseAipassSSE = async function* parseAipassSSE(
       }
       case "reasoning-delta": {
         yield { kind: "reasoning", text: event.delta };
+        break;
+      }
+      case "file": {
+        const { data, type: _type, ...outer } = event;
+        yield {
+          file: {
+            filename: outer.filename ?? data?.filename,
+            mediaType: outer.mediaType ?? data?.mediaType,
+            snapshotUrl: outer.snapshotUrl ?? data?.snapshotUrl,
+            url: outer.url ?? data?.url,
+          },
+          kind: "file",
+        };
         break;
       }
       case "finish": {

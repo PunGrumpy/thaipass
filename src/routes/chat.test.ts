@@ -269,6 +269,88 @@ test("sends no thinking level when the caller asked for none", async () => {
   expect(upstream.bodyOf(SEND_PREFIX, sentBody).thinkingLevel).toBeUndefined();
 });
 
+const GENERATED_PATH = "/files/generated.png";
+
+const fileFrame = (extra: string): string =>
+  `{"type":"file","mediaType":"image/png","filename":"cat.png"${extra}}`;
+
+test("carries a generated image back inline, reading it with the cookie", async () => {
+  upstream = stubUpstream(
+    sseResponse([fileFrame(`,"url":"${GENERATED_PATH}"`)]),
+    (path) =>
+      path === GENERATED_PATH
+        ? new Response(new Uint8Array([137, 80, 78, 71]), {
+            headers: { "content-type": "image/png" },
+          })
+        : undefined
+  );
+  const response = await app.fetch(chatRequest(false));
+  const body = completionSchema.parse(await response.json());
+  expect(upstream.calls).toContain(GENERATED_PATH);
+  expect(body.choices[0]?.message.content).toContain(
+    "![cat.png](data:image/png;base64,iVBORw==)"
+  );
+});
+
+test("reads a video's snapshotUrl, which is the only url a video frame carries", async () => {
+  upstream = stubUpstream(
+    sseResponse([
+      '{"type":"file","mediaType":"video/mp4","filename":"clip.mp4","snapshotUrl":"/files/clip.mp4"}',
+    ]),
+    (path) =>
+      path === "/files/clip.mp4"
+        ? new Response(new Uint8Array([0, 1]), {
+            headers: { "content-type": "video/mp4" },
+          })
+        : undefined
+  );
+  const response = await app.fetch(chatRequest(false));
+  const body = completionSchema.parse(await response.json());
+  expect(body.choices[0]?.message.content).toContain(
+    "[clip.mp4](data:video/mp4"
+  );
+});
+
+test("reads the nested data object some models put the file under", async () => {
+  upstream = stubUpstream(
+    sseResponse([
+      '{"type":"file","data":{"mediaType":"image/png","filename":"nested.png","url":"data:image/png;base64,aGk="}}',
+    ])
+  );
+  const response = await app.fetch(chatRequest(false));
+  const body = completionSchema.parse(await response.json());
+  expect(body.choices[0]?.message.content).toContain(
+    "![nested.png](data:image/png;base64,aGk=)"
+  );
+});
+
+test("hands back a link, and says why, when the file cannot be read", async () => {
+  upstream = stubUpstream(
+    sseResponse([fileFrame(`,"url":"${GENERATED_PATH}"`)]),
+    (path) =>
+      path === GENERATED_PATH
+        ? new Response("gone", { status: 404 })
+        : undefined
+  );
+  const response = await app.fetch(chatRequest(false));
+  const body = completionSchema.parse(await response.json());
+  const content = body.choices[0]?.message.content ?? "";
+  expect(content).toContain("could not read the file (404)");
+  expect(content).toContain("logged-in browser");
+});
+
+test("leaves an off-origin file as the link it already is", async () => {
+  upstream = stubUpstream(
+    sseResponse([fileFrame(',"url":"https://cdn.test/cat.png"')])
+  );
+  const response = await app.fetch(chatRequest(false));
+  const body = completionSchema.parse(await response.json());
+  expect(body.choices[0]?.message.content).toContain(
+    "![cat.png](https://cdn.test/cat.png)"
+  );
+  expect(upstream.calls).not.toContain("https://cdn.test/cat.png");
+});
+
 const PNG_DATA_URI = "data:image/png;base64,aGk=";
 
 const filePart = {

@@ -1,6 +1,7 @@
 import { APICallError } from "@ai-sdk/provider";
 import type {
   LanguageModelV2,
+  LanguageModelV2File,
   LanguageModelV2CallOptions,
   LanguageModelV2CallWarning,
   LanguageModelV2Content,
@@ -15,6 +16,8 @@ import { fetchCatalog } from "../aipass/catalog";
 import { deleteConversation, sendMessage } from "../aipass/client";
 import type { SendOptions } from "../aipass/client";
 import { fromDataUri } from "../aipass/inline";
+import { renderAsset, resolveAsset } from "../aipass/media";
+import type { MediaAsset } from "../aipass/media";
 import type { ChatModel } from "../aipass/models";
 import { fetchCredits, settleCredits } from "../aipass/quotas";
 import type { Credits, CreditUsage } from "../aipass/quotas";
@@ -117,6 +120,7 @@ const toolCallPart = (call: ToolCall): LanguageModelV2ToolCall => ({
 
 interface Turn {
   readonly body: ReadableStream<Uint8Array>;
+  readonly signal: AbortSignal | undefined;
   readonly conversationId: string;
   readonly credits: Promise<Credits | null>;
   readonly inputTokens: number;
@@ -173,6 +177,7 @@ const startTurn = async (
       conversationId,
       credits,
       inputTokens,
+      signal: options.abortSignal,
       tools,
       warnings: [
         ...prompt.warnings,
@@ -196,6 +201,24 @@ const startTurn = async (
       ? `${config.origin}/actions/send-message/${conversationId}`
       : `${config.origin}/chat.data`,
   });
+};
+
+/**
+ * The SDK carries a generated file natively, so an image comes back as an image
+ * rather than as a link a caller has to notice and fetch. Only bytes fit that
+ * shape: an asset too big to carry stays a link, as text, with the reason.
+ */
+const assetPart = (
+  asset: MediaAsset
+): LanguageModelV2File | { readonly text: string } => {
+  if (!asset.inline) {
+    return { text: `\n\n${renderAsset(asset)}\n\n` };
+  }
+  return {
+    data: asset.href.slice(asset.href.indexOf(",") + 1),
+    mediaType: asset.mediaType,
+    type: "file",
+  };
 };
 
 /** A reply with calls finishes as tool-calls unless upstream said otherwise. */
@@ -258,6 +281,17 @@ const streamTurn = (
               id: REASONING_ID,
               type: "reasoning-delta",
             });
+          } else if (event.kind === "file") {
+            const asset = await resolveAsset(cookie, event.file, turn.signal);
+            if (asset) {
+              const part = assetPart(asset);
+              if ("type" in part) {
+                closeText();
+                out.enqueue(part);
+              } else {
+                emit(splitter.push(part.text));
+              }
+            }
           } else if (event.kind === "finish") {
             finishReason = toFinishReason(event.reason);
           } else {
@@ -311,6 +345,7 @@ export const aipassModel = (
         }
       }
     };
+    const files: LanguageModelV2File[] = [];
     const splitter = splitReply(turn.tools);
     try {
       for await (const event of parseAipassSSE(turn.body)) {
@@ -318,6 +353,16 @@ export const aipassModel = (
           collect(splitter.push(event.text));
         } else if (event.kind === "reasoning") {
           reasoning += event.text;
+        } else if (event.kind === "file") {
+          const asset = await resolveAsset(cookie, event.file, turn.signal);
+          if (asset) {
+            const part = assetPart(asset);
+            if ("type" in part) {
+              files.push(part);
+            } else {
+              collect(splitter.push(part.text));
+            }
+          }
         } else if (event.kind === "finish") {
           finishReason = toFinishReason(event.reason);
         } else {
@@ -336,7 +381,7 @@ export const aipassModel = (
     if (text.length > 0) {
       content.push({ text, type: "text" });
     }
-    content.push(...calls.map(toolCallPart));
+    content.push(...files, ...calls.map(toolCallPart));
     return {
       content,
       finishReason: settle(finishReason, calls.length),
