@@ -34,18 +34,16 @@ export const providerFor = (modelId: string): string | undefined =>
  * The only option the app gates by model. Everything else it sends whenever
  * the caller set it, so this mirrors that rather than inventing stricter rules.
  */
-const RESOLUTIONS = {
-  "seedance-2.0-fast": ["480p", "720p"],
-  "seedance-2.0-mini": ["480p", "720p"],
-} satisfies Record<string, readonly string[]>;
+const RESOLUTIONS = new Map<string, readonly string[]>([
+  ["seedance-2.0-fast", ["480p", "720p"]],
+  ["seedance-2.0-mini", ["480p", "720p"]],
+]);
 
 export const resolutionsFor = (modelId: string): readonly string[] | null =>
-  // SAFETY: hasOwn has just established the id is a key of the table.
-  Object.hasOwn(RESOLUTIONS, modelId)
-    ? RESOLUTIONS[modelId as keyof typeof RESOLUTIONS]
-    : null;
+  RESOLUTIONS.get(modelId) ?? null;
 
-const isSeedance = (modelId: string): boolean => /^seedance/iu.test(modelId);
+const isSeedance = (modelId: string): boolean =>
+  providerFor(modelId) === "seedance";
 
 export interface VideoOptions {
   readonly aspectRatio?: string;
@@ -142,21 +140,24 @@ export type JobState = z.infer<typeof jobStateSchema>;
  * The codes are terse and the web UI expands them in Thai. A caller reading
  * JSON gets neither, so the actionable part is spelled out.
  */
-const ERROR_HINTS = {
-  conflictActive: "another video job is still running on this conversation",
-  contentPolicyViolation:
+const ERROR_HINTS = new Map([
+  ["conflictActive", "another video job is still running on this conversation"],
+  [
+    "contentPolicyViolation",
     "a content filter rejected the prompt before it reached the model",
-  provider_content_policy:
+  ],
+  [
+    "provider_content_policy",
     "the provider's safety filter rejected the prompt; it is strict about recognisable faces, public figures, copyrighted characters and violence, and the attempt may still have counted against the video quota",
-  quotaExceeded:
+  ],
+  [
+    "quotaExceeded",
     "the account has used its video generations for this period; GET /v1/usage shows what is left",
-} satisfies Record<string, string>;
+  ],
+]);
 
 export const explainVideoError = (code: string): string => {
-  // SAFETY: hasOwn has just established the code is a key of the table.
-  const hint = Object.hasOwn(ERROR_HINTS, code)
-    ? ERROR_HINTS[code as keyof typeof ERROR_HINTS]
-    : undefined;
+  const hint = ERROR_HINTS.get(code);
   return hint ? `${code} — ${hint}` : code;
 };
 
