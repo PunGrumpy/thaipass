@@ -17,7 +17,7 @@ import {
   videoBody,
 } from "../aipass/video";
 import type { VideoOptions } from "../aipass/video";
-import { MediaError } from "./generate";
+import { DETAIL_LIMIT, MediaError } from "./generate";
 
 /**
  * A video, from submitted job to finished file.
@@ -56,7 +56,7 @@ const readJson = async <T>(
     throw new MediaError(
       `video ${step} returned ${response.status}`,
       response.status,
-      detail.slice(0, 300)
+      detail.slice(0, DETAIL_LIMIT)
     );
   }
   const parsed = schema.safeParse(await response.json().catch(() => null));
@@ -102,7 +102,7 @@ export const generateVideo = async (
     throw new MediaError(
       `upstream ${refusal.status} refused the conversation`,
       refusal.status,
-      detail.slice(0, 300)
+      detail.slice(0, DETAIL_LIMIT)
     );
   }
 
@@ -150,14 +150,12 @@ export const generateVideo = async (
           throw new MediaError("the finished video could not be read", 502);
         }
         const { usage } = await settleCredits(cookie, pending);
-        const result: VideoResult = { asset, jobId };
-        const switched =
-          started.autoSwitched && started.modelId
-            ? { servedModel: started.modelId }
-            : {};
-        return usage
-          ? { ...result, ...switched, credits: usage }
-          : { ...result, ...switched };
+        return {
+          asset,
+          credits: usage,
+          jobId,
+          servedModel: started.autoSwitched ? started.modelId : undefined,
+        };
       }
       if (state.status === "failed" || state.error) {
         throw new MediaError(

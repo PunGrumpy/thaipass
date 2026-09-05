@@ -45,7 +45,7 @@ export class MediaError extends Error {
   }
 }
 
-const DETAIL_LIMIT = 300;
+export const DETAIL_LIMIT = 300;
 
 export const generateMedia = async (
   request: MediaRequest
@@ -96,7 +96,7 @@ export const generateMedia = async (
   }
 
   const { usage } = await settleCredits(cookie, pending);
-  return usage ? { assets, credits: usage, text } : { assets, text };
+  return { assets, credits: usage, text };
 };
 
 /** What to say when a model answered with words where a file was asked for. */
