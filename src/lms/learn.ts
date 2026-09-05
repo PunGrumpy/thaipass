@@ -13,10 +13,12 @@ import type {
   Completion,
   Course,
   Lesson,
+  LessonCompletion,
   LessonContent,
   SessionExp,
+  VideoStamp,
 } from "./api";
-import { findNumber, findPayload, numberishSchema } from "./payload";
+import { findNumber, findPayload } from "./payload";
 import { LmsError } from "./request";
 
 /**
@@ -44,27 +46,8 @@ const DURATION_KEYS = [
   "duration",
 ] as const;
 
-const TIME_KEYS = [
-  "currentTime",
-  "stampTime",
-  "timestamp",
-  "watchedSeconds",
-  "seconds",
-  "second",
-  "position",
-  "time",
-] as const;
-
 /** Where a live lesson keeps its video and its progress. */
 const VIDEO_KEYS = ["videoContent", "lessonProgress", "video"] as const;
-
-const STAMP_KEYS = [
-  "videoStamp",
-  "lastVideoStamp",
-  "lastStamp",
-  "stamp",
-  "videoProgress",
-] as const;
 
 const EXP_KEYS = [
   "earnedExp",
@@ -117,44 +100,20 @@ export const durationOf = (
 ): number | undefined =>
   findNumber(content, DURATION_KEYS) ?? positive(lesson.durationInSeconds);
 
-/** The field names a video stamp is sent under. */
-export interface StampFields {
-  readonly timeKey: string;
-  readonly durationKey: string | undefined;
-}
-
-const DEFAULT_STAMP_FIELDS: StampFields = {
-  durationKey: "duration",
-  timeKey: "currentTime",
-};
-
 /**
- * Mirrors the stamp the LMS sends back inside the lesson content, when it
- * sends one. The player's own field names are not in the public bundle, so
- * the default is the HTML video property the player reads.
+ * What the lesson page sends as the video plays: the playhead, and the
+ * seconds spent watching since the lesson opened. A live lesson's
+ * videoContent carries both back under these names.
  */
-export const stampFieldsOf = (content: LessonContent): StampFields => {
-  const stamp = findPayload(content, STAMP_KEYS);
-  if (!stamp) {
-    return DEFAULT_STAMP_FIELDS;
-  }
-  const isNumber = (key: string): boolean =>
-    numberishSchema.safeParse(stamp[key]).success;
-  const timeKey = TIME_KEYS.find(isNumber);
-  if (!timeKey) {
-    return DEFAULT_STAMP_FIELDS;
-  }
-  return { durationKey: DURATION_KEYS.find(isNumber), timeKey };
-};
+export const stampBody = (seconds: number): VideoStamp => ({
+  currentSeconds: seconds,
+  watchedSeconds: seconds,
+});
 
-export const stampBody = (
-  fields: StampFields,
-  currentTime: number,
-  duration: number
-): Record<string, number> =>
-  fields.durationKey
-    ? { [fields.timeKey]: currentTime, [fields.durationKey]: duration }
-    : { [fields.timeKey]: currentTime };
+/** What closes a lesson: the time spent on it. */
+export const completionBody = (seconds: number): LessonCompletion => ({
+  watchedSeconds: seconds,
+});
 
 /** Every `interval` seconds of playback, and the end of the video last. */
 export const planStamps = (
@@ -219,7 +178,7 @@ export type LearnEvent =
       readonly title: string | null;
       readonly status: LessonStatus;
       readonly duration?: number;
-      readonly stamp?: Record<string, number>;
+      readonly stamp?: VideoStamp;
       readonly keys?: readonly string[];
       /** The video and progress parts of the content, for reading the stamp's field names off a live lesson. */
       readonly content?: LessonContent;
@@ -375,7 +334,6 @@ const learnLesson = async function* learnLesson(
     };
     return false;
   }
-  const fields = stampFieldsOf(content);
   yield {
     code,
     content: findPayload(content, VIDEO_KEYS) ?? {},
@@ -383,7 +341,7 @@ const learnLesson = async function* learnLesson(
     event: "lesson",
     keys: Object.keys(content),
     lesson: id,
-    stamp: stampBody(fields, 0, duration),
+    stamp: stampBody(0),
     status: "started",
     title,
   };
@@ -394,18 +352,18 @@ const learnLesson = async function* learnLesson(
     if (run.signal?.aborted) {
       return false;
     }
-    await stampVideo(
-      run.cookie,
-      code,
-      id,
-      stampBody(fields, at, duration),
-      run.signal
-    );
+    await stampVideo(run.cookie, code, id, stampBody(at), run.signal);
     yield { at, code, duration, event: "stamp", lesson: id };
     previous = at;
   }
   // oxlint-enable no-await-in-loop
-  const completion = await completeLesson(run.cookie, code, id, run.signal);
+  const completion = await completeLesson(
+    run.cookie,
+    code,
+    id,
+    completionBody(duration),
+    run.signal
+  );
   const exp = expOf(completion) ?? run.videoExp ?? 0;
   run.earned += exp;
   run.lessons += 1;

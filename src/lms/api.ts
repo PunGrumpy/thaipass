@@ -10,6 +10,7 @@ import {
 } from "./payload";
 import type { Payload } from "./payload";
 import { lmsRequest } from "./request";
+import type { LmsBody } from "./request";
 
 /**
  * The LMS routes, as the web client's generated API layer names them. A field
@@ -122,6 +123,17 @@ export type Lesson = z.infer<typeof lessonSchema>;
 export type LessonList = z.infer<typeof lessonListSchema>;
 export type SessionTier = z.infer<typeof sessionTierSchema>;
 export type LessonContent = Payload;
+
+/** The playhead and the seconds spent watching, as the lesson page stamps them. */
+export interface VideoStamp extends LmsBody {
+  readonly currentSeconds: number;
+  readonly watchedSeconds: number;
+}
+
+/** The time spent on a lesson, sent when it closes. */
+export interface LessonCompletion extends LmsBody {
+  readonly watchedSeconds: number;
+}
 export type Completion = Payload;
 export type SessionExp = Payload;
 export type Achievement = Payload;
@@ -196,7 +208,7 @@ export const stampVideo = (
   cookie: string,
   codeId: string,
   lessonVersionId: string,
-  body: Record<string, number>,
+  body: VideoStamp,
   signal?: AbortSignal
 ): Promise<Payload> =>
   lmsRequest(
@@ -212,6 +224,7 @@ export const completeLesson = (
   cookie: string,
   codeId: string,
   lessonVersionId: string,
+  body: LessonCompletion,
   signal?: AbortSignal
 ): Promise<Completion> =>
   lmsRequest(
@@ -219,7 +232,7 @@ export const completeLesson = (
     "PUT",
     `${lessonPath(codeId, lessonVersionId)}/lesson-completed`,
     inspectedSchema,
-    {},
+    body,
     signal
   );
 

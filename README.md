@@ -254,7 +254,7 @@ Send `dry_run` first. It reads the catalogue and reports each lesson it would wa
 
 Three things to know before relying on it:
 
-- **The LMS protocol was mapped from the web client's bundle, not a live run.** The routes and the order of calls are the lesson page's own. The body of a video stamp is not in the public bundle: the proxy mirrors the stamp shape the LMS returns inside the lesson content when there is one, and otherwise sends `currentTime` and `duration`. A `400` on the first stamp names the field the backend wanted; the `error` line carries the backend's own body, and the fix is one key in `stampShapeOf` in `src/lms/learn.ts`.
+- **The LMS protocol was mapped from the web client's bundle and one live lesson.** The routes and the order of calls are the lesson page's own. A video stamp carries `currentSeconds` and `watchedSeconds`, the names the lesson content echoes back, and closing a lesson sends the time spent on it. The `error` line carries the backend's own body when a call is refused.
 - **The LMS needs its own cookies.** Copy the `Cookie` header from a request made while the browser is on a `/lms` page, not from the chat, so the tenant cookie the LMS sets travels with the session token. A `401` from the LMS says the cookie is stale or came from the wrong page.
 - **Keep the pace at 1.** The player blocks seeking on a first watch, so the backend expects the stamps to arrive as slowly as the video plays. A run at pace 1 holds the connection for as long as the videos take; run it locally, not on Vercel, and pass `-N` to curl so the lines show as they come.
 

@@ -13,7 +13,6 @@ import {
   monthlyExpOf,
   planStamps,
   stampBody,
-  stampFieldsOf,
 } from "./learn";
 import type { LearnEvent } from "./learn";
 import { findNumber } from "./payload";
@@ -73,8 +72,14 @@ const DEFAULT_LESSONS = [
 ];
 
 const DEFAULT_CONTENT = {
-  video: { durationInSeconds: 25, url: "https://cdn.test/v.m3u8" },
-  videoStamp: { stampTime: 0 },
+  durationSeconds: 25,
+  lessonProgressId: "p-1",
+  videoContent: {
+    currentSeconds: null,
+    durationSeconds: 25,
+    videoHlsMasterPlaylistUrl: "https://cdn.test/v.m3u8",
+    watchedSeconds: null,
+  },
 };
 
 /** The LMS as the lesson page sees it: one course with one video and one article. */
@@ -156,9 +161,9 @@ test("stamps every ten seconds and the end, then completes the lesson", async ()
     target: 100,
   });
   expect(stampsSent()).toEqual([
-    { stampTime: 10 },
-    { stampTime: 20 },
-    { stampTime: 25 },
+    { currentSeconds: 10, watchedSeconds: 10 },
+    { currentSeconds: 20, watchedSeconds: 20 },
+    { currentSeconds: 25, watchedSeconds: 25 },
   ]);
   const puts = upstream.sent.filter((call) => call.method === "PUT");
   expect(puts.map((call) => call.path)).toEqual([
@@ -169,6 +174,10 @@ test("stamps every ten seconds and the end, then completes the lesson", async ()
   ]);
   expect(upstream.calls).toContain(`${LMS}/course/c-2/enrollment`);
   expect(upstream.calls).not.toContain(`${LMS}/course/done-1/lesson`);
+  const completion = upstream.sent.find((call) =>
+    call.path.endsWith("/lesson-completed")
+  );
+  expect(JSON.parse(completion?.body ?? "{}")).toEqual({ watchedSeconds: 25 });
   const done = doneOf(events);
   expect(done.earned).toBe(VIDEO_EXP);
   expect(done.lessons).toBe(1);
@@ -353,22 +362,8 @@ test("plans stamps on the interval and always ends on the duration", () => {
   expect(planStamps(4, 10)).toEqual([4]);
 });
 
-test("mirrors the stamp the LMS sends back, and defaults to currentTime", () => {
-  expect(stampFieldsOf({ videoStamp: { stampTime: 12 } })).toEqual({
-    durationKey: undefined,
-    timeKey: "stampTime",
-  });
-  expect(
-    stampBody(
-      stampFieldsOf({ lastStamp: { currentTime: 1, duration: 9 } }),
-      5,
-      9
-    )
-  ).toEqual({ currentTime: 5, duration: 9 });
-  expect(stampBody(stampFieldsOf({ nothing: true }), 5, 9)).toEqual({
-    currentTime: 5,
-    duration: 9,
-  });
+test("stamps the playhead and the watched time under the names the LMS uses", () => {
+  expect(stampBody(15)).toEqual({ currentSeconds: 15, watchedSeconds: 15 });
 });
 
 test("reads completion from the ways the LMS marks it", () => {
