@@ -387,6 +387,7 @@ test("reads an enrolment id from the shapes an enrolment can answer with", () =>
 });
 
 test("reads the month's EXP only from a key that names the month", () => {
+  expect(monthlyExpOf({ member: { expEarn: "25" }, user: {} })).toBe(25);
   expect(monthlyExpOf({ monthlyExp: 0 })).toBe(0);
   expect(monthlyExpOf({ summary: { currentMonthExp: 55 } })).toBe(55);
   expect(monthlyExpOf({ exp: 500 })).toBeUndefined();

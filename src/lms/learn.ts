@@ -71,7 +71,9 @@ const EXP_KEYS = [
   "points",
 ] as const;
 
+/** `member.expEarn` is what a live session-exp carries; the rest are the names the bundle hints at. */
 const MONTHLY_KEYS = [
+  "expEarn",
   "monthlyExp",
   "currentMonthExp",
   "monthExp",
@@ -164,7 +166,7 @@ export const planStamps = (
   return stamps;
 };
 
-/** The month's figure, only from a key that names the month. */
+/** The month's figure, only from a key that names the period's earnings. */
 export const monthlyExpOf = (payload: SessionExp): number | undefined =>
   findNumber(payload, MONTHLY_KEYS, true);
 

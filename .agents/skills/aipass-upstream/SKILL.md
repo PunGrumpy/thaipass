@@ -98,10 +98,10 @@ The learning site at `/lms` is a separate Next.js app; its backend answers on th
 | `/course/v2` | POST json | catalogue, `{page, limit}` |
 | `/course/<code>/lesson` | GET | lessons with `lessonVersionId`, `lessonType`, `enrollmentId` |
 | `/course/<code>/enrollment` | POST | enrol |
-| `/course/<code>/lesson/<lessonVersionId>` | POST json | open, `{enrollmentId}`; 403 inside a 200 when not enrolled |
+| `/course/<code>/lesson/<lessonVersionId>` | POST json | open, `{enrollmentId}`; answers `durationSeconds`, `lessonProgressId`, `videoContent`; 403 inside a 200 when not enrolled |
 | `.../video-stamp` | PUT json | playhead stamp, body unverified |
 | `.../lesson-completed`, `.../course-completed` | PUT json | close the lesson, the course |
-| `/session/session-exp`, `/session/session-tier` | GET | EXP; the tier carries `member.lessonTypeExp[]` |
+| `/session/session-exp`, `/session/session-tier` | GET | `member.expEarn` is the period's EXP as a string; the tier carries `member.lessonTypeExp[]` |
 | `/achievement` | GET | the achievements page |
 
 A `401` with `No authentication credentials provided` means no session token reached the LMS; `Authentication service error` means one did and was refused.
