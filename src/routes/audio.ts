@@ -3,15 +3,14 @@ import { Elysia, status } from "elysia";
 import { clientIdFromCookie, cookieFromRequest } from "../aipass/session";
 import { requestLogger } from "../lib/logger";
 import { json } from "../lib/openapi";
-import { generateMedia, MediaError, noAssetMessage } from "../media/generate";
+import { generateMedia, noAssetMessage } from "../media/generate";
 import {
   audioRequestSchema,
   audioResponseSchema,
   toAudioResponse,
 } from "../openai/audio";
 import { apiError, apiErrorSchema } from "../openai/errors";
-
-const UPSTREAM_ERROR = 502;
+import { failMedia } from "./media";
 
 export const audioRoutes = new Elysia()
   .use(requestLogger)
@@ -76,17 +75,7 @@ export const audioRoutes = new Elysia()
           result.credits
         );
       } catch (error) {
-        if (error instanceof MediaError) {
-          log.set({ status: UPSTREAM_ERROR, upstreamStatus: error.status });
-          log.error(error);
-          return status(UPSTREAM_ERROR, apiError(error.message));
-        }
-        log.set({ status: UPSTREAM_ERROR });
-        log.error(error instanceof Error ? error : new Error(String(error)));
-        return status(
-          UPSTREAM_ERROR,
-          apiError(`upstream fetch failed: ${error}`)
-        );
+        return failMedia(error, log, "upstream fetch failed");
       }
     }
   );

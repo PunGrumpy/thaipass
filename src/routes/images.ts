@@ -3,7 +3,7 @@ import { Elysia, status } from "elysia";
 import { clientIdFromCookie, cookieFromRequest } from "../aipass/session";
 import { requestLogger } from "../lib/logger";
 import { json } from "../lib/openapi";
-import { generateMedia, MediaError, noAssetMessage } from "../media/generate";
+import { generateMedia, noAssetMessage } from "../media/generate";
 import { apiError, apiErrorSchema } from "../openai/errors";
 import {
   aspectRatioFor,
@@ -11,6 +11,7 @@ import {
   imageResponseSchema,
   toImageResponse,
 } from "../openai/images";
+import { failMedia } from "./media";
 
 const ONE_PER_REQUEST =
   "AI Pass makes one image per request; send n: 1, or send the request again for another";
@@ -85,14 +86,7 @@ export const imageRoutes = new Elysia()
           result.credits
         );
       } catch (error) {
-        if (error instanceof MediaError) {
-          log.set({ status: 502, upstreamStatus: error.status });
-          log.error(error);
-          return status(502, apiError(error.message));
-        }
-        log.set({ status: 502 });
-        log.error(error instanceof Error ? error : new Error(String(error)));
-        return status(502, apiError(`upstream fetch failed: ${error}`));
+        return failMedia(error, log, "upstream fetch failed");
       }
     }
   );

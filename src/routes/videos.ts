@@ -3,7 +3,6 @@ import { Elysia, status } from "elysia";
 import { clientIdFromCookie, cookieFromRequest } from "../aipass/session";
 import { requestLogger } from "../lib/logger";
 import { json } from "../lib/openapi";
-import { MediaError } from "../media/generate";
 import { generateVideo } from "../media/video";
 import { apiError, apiErrorSchema } from "../openai/errors";
 import {
@@ -11,11 +10,10 @@ import {
   videoRequestSchema,
   videoResponseSchema,
 } from "../openai/videos";
+import { failMedia } from "./media";
 
 /** A render takes minutes, and a job left running keeps spending the quota. */
 const VIDEO_TIMEOUT_MS = 15 * 60 * 1000;
-
-const UPSTREAM_ERROR = 502;
 
 export const videoRoutes = new Elysia()
   .use(requestLogger)
@@ -92,15 +90,7 @@ export const videoRoutes = new Elysia()
           result.credits
         );
       } catch (error) {
-        if (error instanceof MediaError) {
-          const code = error.status === 504 ? 504 : UPSTREAM_ERROR;
-          log.set({ status: code, upstreamStatus: error.status });
-          log.error(error);
-          return status(code, apiError(error.message));
-        }
-        log.set({ status: UPSTREAM_ERROR });
-        log.error(error instanceof Error ? error : new Error(String(error)));
-        return status(UPSTREAM_ERROR, apiError(`video failed: ${error}`));
+        return failMedia(error, log, "video failed");
       }
     }
   );
