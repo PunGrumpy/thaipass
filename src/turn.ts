@@ -3,11 +3,11 @@ import type { RequestLogger } from "evlog";
 import { fetchCatalog } from "./aipass/catalog";
 import type { Catalog } from "./aipass/catalog";
 import { deleteConversation, sendMessage } from "./aipass/client";
-import type { SendOptions, SendResult } from "./aipass/client";
+import type { SendResult } from "./aipass/client";
 import { fetchIdentity } from "./aipass/identity";
 import type { Identity } from "./aipass/identity";
-import { fromDataUri, InlineError } from "./aipass/inline";
-import { renderAsset, resolveAsset } from "./aipass/media";
+import { InlineError } from "./aipass/inline";
+import { renderAsset } from "./aipass/media";
 import type { ChatModel } from "./aipass/models";
 import { fetchCredits, settleCredits } from "./aipass/quotas";
 import type { CreditUsage, Credits } from "./aipass/quotas";
@@ -17,29 +17,24 @@ import {
   isEdgeRefusal,
 } from "./aipass/refusal";
 import { clientIdFromCookie, cookieFromRequest } from "./aipass/session";
-import { parseAipassSSE } from "./aipass/stream";
-import type { SSESkips } from "./aipass/stream";
-import { resolveThinking } from "./aipass/thinking";
 import type { ThinkingLevel } from "./aipass/thinking";
 import { UploadError } from "./aipass/upload";
-import type { Attachment } from "./aipass/upload";
 import type { DeferredEmit } from "./lib/logger";
 import { guardController } from "./lib/stream";
 import type { GuardedController } from "./lib/stream";
-import { addText, charTokens, estimateTokens, newCharCount } from "./tokens";
-import type { CharCount } from "./tokens";
-import { renderCall, splitReply } from "./tools";
-import type { ReplyPart, ToolCall } from "./tools";
-import { filesOf, flattenPrompt, toAipassMessages } from "./translate";
+import { finishReasonOf, prepareTurn, readReply, replyTokens } from "./reply";
+import type { PreparedTurn, ReplyReader, ReplyTally } from "./reply";
+import type { ToolCall } from "./tools";
+import { toAipassMessages } from "./translate";
 import type { Conversation } from "./translate";
 
 /**
  * One turn against AI Pass, rendered through a protocol's wire.
  *
  * The turn is the same whichever protocol asked for it: open a throwaway
- * conversation, send the flattened prompt, split the reply into text and tool
- * calls, delete the conversation, write one wide event. What differs is the
- * shape of the bytes going back, and that is all a `Wire` decides.
+ * conversation, send the flattened prompt, read the reply, delete the
+ * conversation, write one wide event. What differs is the shape of the bytes
+ * going back, and that is all a `Wire` decides.
  */
 
 export interface Failure {
@@ -93,7 +88,6 @@ export interface TurnRequest {
 const encoder = new TextEncoder();
 const DETAIL_LIMIT = 300;
 const CLIENT_CLOSED_STATUS = 499;
-const TOOL_CALLS = "tool-calls";
 
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
@@ -183,79 +177,36 @@ const upstreamError = async (
 };
 
 interface Completion {
-  readonly body: ReadableStream<Uint8Array>;
-  readonly conversation: Conversation;
-  readonly inputTokens: number;
   readonly conversationId: string;
   readonly cookie: string;
   readonly facts: UpstreamFacts;
+  readonly inputTokens: number;
   readonly log: RequestLogger;
   readonly model: string;
-  readonly signal: AbortSignal;
-  readonly startedAt: number;
+  readonly reader: ReplyReader;
   readonly wire: Wire;
 }
 
-/** What one reply amounted to, for the wide event. */
-interface Tally {
-  calls: number;
-  chars: number;
-  deltas: number;
-  files: number;
-  finishReason: string;
-  msToFirstChunk: number | undefined;
-  reasoningChars: number;
-  readonly reply: CharCount;
-  readonly skips: SSESkips;
-}
-
-const newTally = (): Tally => ({
-  calls: 0,
-  chars: 0,
-  deltas: 0,
-  files: 0,
-  finishReason: "stop",
-  msToFirstChunk: undefined,
-  reasoningChars: 0,
-  reply: newCharCount(),
-  skips: { count: 0, types: new Set() },
-});
-
-const tallyFields = (tally: Tally) => ({
+const tallyFields = (tally: ReplyTally) => ({
   deltas: tally.deltas,
   files: tally.files,
-  finishReason: tally.finishReason,
+  finishReason: finishReasonOf(tally),
   msToFirstChunk: tally.msToFirstChunk,
   reasoningChars: tally.reasoningChars,
   replyChars: tally.chars,
-  replyTokens: charTokens(tally.reply),
+  replyTokens: replyTokens(tally),
   toolCalls: tally.calls,
   undecodedEvents: tally.skips.count,
   undecodedTypes: [...tally.skips.types].join(","),
 });
 
-const settle = (tally: Tally): void => {
-  if (tally.calls > 0 && tally.finishReason === "stop") {
-    tally.finishReason = TOOL_CALLS;
-  }
-};
-
 const streamCompletion = (
   completion: Completion,
   deferEmit: DeferredEmit
 ): Response => {
-  const {
-    body,
-    conversation,
-    conversationId,
-    cookie,
-    facts,
-    log,
-    model,
-    signal,
-    startedAt,
-    wire,
-  } = completion;
+  const { conversationId, cookie, facts, log, model, reader, wire } =
+    completion;
+  const { tally } = reader;
   deferEmit.value = true;
   let guarded: GuardedController<Uint8Array> | undefined;
   const stream = new ReadableStream<Uint8Array>({
@@ -269,55 +220,30 @@ const streamCompletion = (
       const send = (text: string): void => {
         out.enqueue(encoder.encode(text));
       };
-      const tally = newTally();
-      const emit = (parts: readonly ReplyPart[]): void => {
-        for (const part of parts) {
-          if (part.type === "text") {
-            tally.chars += part.text.length;
-            addText(tally.reply, part.text);
-            send(frames.text(part.text));
-          } else {
-            tally.calls += 1;
-            addText(tally.reply, renderCall(part.call));
-            send(frames.call(part.call));
-          }
-        }
-      };
-      const splitter = splitReply(conversation.tools);
       try {
         send(frames.open());
-        for await (const event of parseAipassSSE(body, tally.skips)) {
-          if (event.kind === "delta") {
-            tally.msToFirstChunk ??= Date.now() - startedAt;
-            tally.deltas += 1;
-            emit(splitter.push(event.text));
-          } else if (event.kind === "reasoning") {
-            tally.reasoningChars += event.text.length;
+        for await (const event of reader.events) {
+          if (event.kind === "text") {
+            send(frames.text(event.text));
+          } else if (event.kind === "call") {
+            send(frames.call(event.call));
           } else if (event.kind === "file") {
-            const asset = await resolveAsset(cookie, event.file, signal);
-            if (asset) {
-              tally.files += 1;
-              emit(splitter.push(`\n\n${renderAsset(asset)}\n\n`));
-            }
-          } else if (event.kind === "finish") {
-            tally.finishReason = event.reason;
-          } else {
+            send(frames.text(renderAsset(event.asset)));
+          } else if (event.kind === "error") {
             log.error(new Error(`upstream stream: ${event.message}`));
             send(frames.text(`\n[proxy: ${event.message}]`));
           }
         }
-        emit(splitter.flush());
       } catch (error) {
         log.error(asError(error));
         tally.finishReason = "error";
         send(frames.text(`\n[proxy error: ${error}]`));
       } finally {
-        settle(tally);
         const [{ after, usage }] = await Promise.all([
           settleCredits(cookie, facts.credits),
           deleteConversation(cookie, conversationId),
         ]);
-        send(frames.close(tally.finishReason, charTokens(tally.reply), usage));
+        send(frames.close(finishReasonOf(tally), replyTokens(tally), usage));
         log.set({
           ...tallyFields(tally),
           clientAborted: !out.isOpen(),
@@ -342,50 +268,20 @@ const streamCompletion = (
 const bufferedCompletion = async (
   completion: Completion
 ): Promise<Response> => {
-  const {
-    body,
-    conversation,
-    conversationId,
-    cookie,
-    facts,
-    log,
-    model,
-    signal,
-    startedAt,
-    wire,
-  } = completion;
-  const tally = newTally();
+  const { conversationId, cookie, facts, log, model, reader, wire } =
+    completion;
+  const { tally } = reader;
   const calls: ToolCall[] = [];
   let text = "";
-  const collect = (parts: readonly ReplyPart[]): void => {
-    for (const part of parts) {
-      if (part.type === "text") {
-        text += part.text;
-        addText(tally.reply, part.text);
-      } else {
-        calls.push(part.call);
-        addText(tally.reply, renderCall(part.call));
-      }
-    }
-  };
-  const splitter = splitReply(conversation.tools);
   try {
-    for await (const event of parseAipassSSE(body, tally.skips)) {
-      if (event.kind === "delta") {
-        tally.msToFirstChunk ??= Date.now() - startedAt;
-        tally.deltas += 1;
-        collect(splitter.push(event.text));
-      } else if (event.kind === "reasoning") {
-        tally.reasoningChars += event.text.length;
+    for await (const event of reader.events) {
+      if (event.kind === "text") {
+        text += event.text;
+      } else if (event.kind === "call") {
+        calls.push(event.call);
       } else if (event.kind === "file") {
-        const asset = await resolveAsset(cookie, event.file, signal);
-        if (asset) {
-          tally.files += 1;
-          collect(splitter.push(`\n\n${renderAsset(asset)}\n\n`));
-        }
-      } else if (event.kind === "finish") {
-        tally.finishReason = event.reason;
-      } else {
+        text += renderAsset(event.asset);
+      } else if (event.kind === "error") {
         return failUpstream(
           wire,
           log,
@@ -394,14 +290,10 @@ const bufferedCompletion = async (
         );
       }
     }
-    collect(splitter.flush());
   } catch (error) {
     return failUpstream(wire, log, error, `stream error: ${error}`);
   } finally {
     await deleteConversation(cookie, conversationId);
-    tally.calls = calls.length;
-    tally.chars = text.length;
-    settle(tally);
     log.set(tallyFields(tally));
   }
   const { after, usage } = await settleCredits(cookie, facts.credits);
@@ -410,9 +302,9 @@ const bufferedCompletion = async (
   return wire.reply({
     calls,
     credits: usage,
-    finishReason: tally.finishReason,
+    finishReason: finishReasonOf(tally),
     inputTokens: completion.inputTokens,
-    outputTokens: charTokens(tally.reply),
+    outputTokens: replyTokens(tally),
     text,
   });
 };
@@ -430,43 +322,27 @@ const runTurn = async (
     credits: fetchCredits(cookie, signal),
     identity: fetchIdentity(clientId, cookie, signal),
   };
-  const { turns, tools } = conversation;
-  const prompt = flattenPrompt(conversation);
-  const inputTokens = estimateTokens(prompt);
-
   log.set({
     completionId: wire.id,
-    messageCount: turns.length,
+    messageCount: conversation.turns.length,
     model,
-    promptChars: prompt.length,
-    promptTokens: inputTokens,
     protocol: wire.protocol,
     streaming: stream,
-    toolCount: tools.length,
+    toolCount: conversation.tools.length,
   });
-
-  /**
-   * Only a request that asked for a level waits on the catalog. The read is
-   * cached and already in flight, but on a cold cache it is a round trip, and
-   * a caller who never mentioned thinking should not pay for it.
-   */
-  let thinkingLevel: ThinkingLevel | null = null;
-  if (turn.thinking !== undefined) {
-    const catalog = await facts.catalog;
-    const resolved = resolveThinking(turn.thinking, catalog?.get(model));
-    thinkingLevel = resolved.level;
-    log.set({ thinkingDropped: resolved.dropped, thinkingLevel });
-  }
 
   /**
    * A file the proxy cannot read is the caller's to fix, so it fails the
    * request rather than being dropped: a model answering about a document it
    * never received is worse than an error naming the document.
    */
-  let attachments: Attachment[];
+  let prepared: PreparedTurn;
   try {
-    attachments = filesOf(conversation).map((file, index) =>
-      fromDataUri(file.uri, file.filename, index)
+    prepared = await prepareTurn(
+      conversation,
+      model,
+      turn.thinking,
+      () => facts.catalog
     );
   } catch (error) {
     const message =
@@ -474,11 +350,17 @@ const runTurn = async (
     log.set({ status: 400 });
     return wire.fail({ message, status: 400 });
   }
-  log.set({ attachmentCount: attachments.length });
-
-  const sendOptions: SendOptions = { attachments };
-  if (thinkingLevel) {
-    sendOptions.thinkingLevel = thinkingLevel;
+  const { inputTokens, prompt, sendOptions } = prepared;
+  log.set({
+    attachmentCount: sendOptions.attachments?.length ?? 0,
+    promptChars: prompt.length,
+    promptTokens: inputTokens,
+  });
+  if (turn.thinking !== undefined) {
+    log.set({
+      thinkingDropped: prepared.thinkingDropped,
+      thinkingLevel: prepared.thinkingLevel,
+    });
   }
 
   let result: SendResult;
@@ -520,16 +402,19 @@ const runTurn = async (
   }
 
   const completion: Completion = {
-    body: upstreamBody,
-    conversation,
     conversationId,
     cookie,
     facts,
     inputTokens,
     log,
     model,
-    signal,
-    startedAt,
+    reader: readReply({
+      body: upstreamBody,
+      cookie,
+      signal,
+      startedAt,
+      tools: conversation.tools,
+    }),
     wire,
   };
   return stream

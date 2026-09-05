@@ -14,24 +14,21 @@ import type {
 
 import { fetchCatalog } from "../aipass/catalog";
 import { deleteConversation, sendMessage } from "../aipass/client";
-import type { SendOptions } from "../aipass/client";
-import { fromDataUri } from "../aipass/inline";
-import { inlineBase64, renderAsset, resolveAsset } from "../aipass/media";
+import { inlineBase64, renderAsset } from "../aipass/media";
 import type { MediaAsset } from "../aipass/media";
 import type { ChatModel } from "../aipass/models";
 import { fetchCredits, settleCredits } from "../aipass/quotas";
 import type { Credits, CreditUsage } from "../aipass/quotas";
 import { EDGE_REFUSAL_HINT, isEdgeRefusal } from "../aipass/refusal";
 import { clientIdFromCookie } from "../aipass/session";
-import { parseAipassSSE } from "../aipass/stream";
-import { resolveThinking, thinkingLevelSchema } from "../aipass/thinking";
+import { thinkingLevelSchema } from "../aipass/thinking";
 import type { ThinkingLevel } from "../aipass/thinking";
 import { config } from "../lib/config";
 import { guardController } from "../lib/stream";
-import { addText, charTokens, estimateTokens, newCharCount } from "../tokens";
-import { renderCall, splitReply } from "../tools";
-import type { ReplyPart, ToolCall, ToolDefinition } from "../tools";
-import { filesOf, flattenPrompt, toAipassMessages } from "../translate";
+import { finishReasonOf, prepareTurn, readReply, replyTokens } from "../reply";
+import type { ReplyReader } from "../reply";
+import type { ToolCall } from "../tools";
+import { toAipassMessages } from "../translate";
 import { convertPrompt, convertTools } from "./prompt";
 
 const PROVIDER = "aipass";
@@ -119,12 +116,10 @@ const toolCallPart = (call: ToolCall): LanguageModelV2ToolCall => ({
 });
 
 interface Turn {
-  readonly body: ReadableStream<Uint8Array>;
-  readonly signal: AbortSignal | undefined;
+  readonly reader: ReplyReader;
   readonly conversationId: string;
   readonly credits: Promise<Credits | null>;
   readonly inputTokens: number;
-  readonly tools: readonly ToolDefinition[];
   readonly warnings: LanguageModelV2CallWarning[];
 }
 
@@ -136,55 +131,42 @@ const startTurn = async (
   const prompt = convertPrompt(options.prompt);
   const offered = convertTools(options);
   const { tools } = offered;
-  const conversation = { tools, turns: prompt.turns };
-  const attachments = filesOf(conversation).map((file, index) =>
-    fromDataUri(file.uri, file.filename, index)
-  );
-  const text = flattenPrompt(conversation);
-  const inputTokens = estimateTokens(text);
-  const body = toAipassMessages(text, modelId);
   const credits = fetchCredits(cookie, options.abortSignal);
-  const asked = askedThinking(options);
-  const thinkingWarnings: LanguageModelV2CallWarning[] = [];
-  let thinkingLevel: ThinkingLevel | null = null;
-  if (asked !== undefined) {
-    const catalog = await fetchCatalog(
-      clientIdFromCookie(cookie),
-      cookie,
-      options.abortSignal
-    );
-    const resolved = resolveThinking(asked, catalog?.get(modelId));
-    thinkingLevel = resolved.level;
-    if (resolved.dropped) {
-      thinkingWarnings.push({ message: resolved.dropped, type: "other" });
-    }
-  }
-  const sendOptions: SendOptions = { attachments };
-  if (thinkingLevel) {
-    sendOptions.thinkingLevel = thinkingLevel;
-  }
+  const prepared = await prepareTurn(
+    { tools, turns: prompt.turns },
+    modelId,
+    askedThinking(options),
+    () => fetchCatalog(clientIdFromCookie(cookie), cookie, options.abortSignal)
+  );
+  const body = toAipassMessages(prepared.prompt, modelId);
   const { conversationId, created, response } = await sendMessage(
     cookie,
     modelId,
     body,
     options.abortSignal,
-    sendOptions
+    prepared.sendOptions
   );
   const contentType = response.headers.get("content-type") ?? "";
   if (response.ok && response.body && contentType.includes("event-stream")) {
+    const warnings = [
+      ...prompt.warnings,
+      ...offered.warnings,
+      ...settingWarnings(options),
+    ];
+    if (prepared.thinkingDropped) {
+      warnings.push({ message: prepared.thinkingDropped, type: "other" });
+    }
     return {
-      body: response.body,
       conversationId,
       credits,
-      inputTokens,
-      signal: options.abortSignal,
-      tools,
-      warnings: [
-        ...prompt.warnings,
-        ...offered.warnings,
-        ...settingWarnings(options),
-        ...thinkingWarnings,
-      ],
+      inputTokens: prepared.inputTokens,
+      reader: readReply({
+        body: response.body,
+        cookie,
+        signal: options.abortSignal,
+        tools,
+      }),
+      warnings,
     };
   }
   const detail = response.body ? await response.text().catch(() => "") : "";
@@ -212,7 +194,7 @@ const assetPart = (
   asset: MediaAsset
 ): LanguageModelV2File | { readonly text: string } => {
   if (!asset.inline) {
-    return { text: `\n\n${renderAsset(asset)}\n\n` };
+    return { text: renderAsset(asset) };
   }
   return {
     data: inlineBase64(asset),
@@ -221,13 +203,6 @@ const assetPart = (
   };
 };
 
-/** A reply with calls finishes as tool-calls unless upstream said otherwise. */
-const settle = (
-  finishReason: LanguageModelV2FinishReason,
-  calls: number
-): LanguageModelV2FinishReason =>
-  calls > 0 && finishReason === "stop" ? "tool-calls" : finishReason;
-
 const streamTurn = (
   cookie: string,
   turn: Turn
@@ -235,11 +210,11 @@ const streamTurn = (
   new ReadableStream<LanguageModelV2StreamPart>({
     async start(raw) {
       const out = guardController(raw);
+      const { reader } = turn;
+      const { tally } = reader;
       out.enqueue({ type: "stream-start", warnings: turn.warnings });
-      let finishReason: LanguageModelV2FinishReason = "stop";
       let textId: string | undefined;
       let textBlocks = 0;
-      let calls = 0;
       let reasoningOpen = false;
       const closeText = (): void => {
         if (textId !== undefined) {
@@ -247,30 +222,21 @@ const streamTurn = (
           textId = undefined;
         }
       };
-      const replyCount = newCharCount();
-      const emit = (parts: readonly ReplyPart[]): void => {
-        for (const part of parts) {
-          if (part.type === "call") {
-            closeText();
-            calls += 1;
-            addText(replyCount, renderCall(part.call));
-            out.enqueue(toolCallPart(part.call));
-            continue;
-          }
-          addText(replyCount, part.text);
-          if (textId === undefined) {
-            textId = `text-${textBlocks}`;
-            textBlocks += 1;
-            out.enqueue({ id: textId, type: "text-start" });
-          }
-          out.enqueue({ delta: part.text, id: textId, type: "text-delta" });
+      const text = (delta: string): void => {
+        if (textId === undefined) {
+          textId = `text-${textBlocks}`;
+          textBlocks += 1;
+          out.enqueue({ id: textId, type: "text-start" });
         }
+        out.enqueue({ delta, id: textId, type: "text-delta" });
       };
-      const splitter = splitReply(turn.tools);
       try {
-        for await (const event of parseAipassSSE(turn.body)) {
-          if (event.kind === "delta") {
-            emit(splitter.push(event.text));
+        for await (const event of reader.events) {
+          if (event.kind === "text") {
+            text(event.text);
+          } else if (event.kind === "call") {
+            closeText();
+            out.enqueue(toolCallPart(event.call));
           } else if (event.kind === "reasoning") {
             if (!reasoningOpen) {
               out.enqueue({ id: REASONING_ID, type: "reasoning-start" });
@@ -282,26 +248,20 @@ const streamTurn = (
               type: "reasoning-delta",
             });
           } else if (event.kind === "file") {
-            const asset = await resolveAsset(cookie, event.file, turn.signal);
-            if (asset) {
-              const part = assetPart(asset);
-              if ("type" in part) {
-                closeText();
-                out.enqueue(part);
-              } else {
-                emit(splitter.push(part.text));
-              }
+            const part = assetPart(event.asset);
+            if ("type" in part) {
+              closeText();
+              out.enqueue(part);
+            } else {
+              text(part.text);
             }
-          } else if (event.kind === "finish") {
-            finishReason = toFinishReason(event.reason);
           } else {
-            finishReason = "error";
+            tally.finishReason = "error";
             out.enqueue({ error: new Error(event.message), type: "error" });
           }
         }
-        emit(splitter.flush());
       } catch (error) {
-        finishReason = "error";
+        tally.finishReason = "error";
         out.enqueue({ error, type: "error" });
       } finally {
         if (reasoningOpen) {
@@ -313,10 +273,10 @@ const streamTurn = (
           deleteConversation(cookie, turn.conversationId),
         ]);
         out.enqueue({
-          finishReason: settle(finishReason, calls),
+          finishReason: toFinishReason(finishReasonOf(tally)),
           providerMetadata: creditMetadata(usage),
           type: "finish",
-          usage: estimatedUsage(turn.inputTokens, charTokens(replyCount)),
+          usage: estimatedUsage(turn.inputTokens, replyTokens(tally)),
         });
         out.close();
       }
@@ -329,47 +289,31 @@ export const aipassModel = (
 ): LanguageModelV2 => ({
   doGenerate: async (options) => {
     const turn = await startTurn(cookie, modelId, options);
+    const { reader } = turn;
+    const { tally } = reader;
     const calls: ToolCall[] = [];
+    const files: LanguageModelV2File[] = [];
     let text = "";
     let reasoning = "";
-    let finishReason: LanguageModelV2FinishReason = "stop";
-    const replyCount = newCharCount();
-    const collect = (parts: readonly ReplyPart[]): void => {
-      for (const part of parts) {
-        if (part.type === "text") {
-          text += part.text;
-          addText(replyCount, part.text);
-        } else {
-          calls.push(part.call);
-          addText(replyCount, renderCall(part.call));
-        }
-      }
-    };
-    const files: LanguageModelV2File[] = [];
-    const splitter = splitReply(turn.tools);
     try {
-      for await (const event of parseAipassSSE(turn.body)) {
-        if (event.kind === "delta") {
-          collect(splitter.push(event.text));
+      for await (const event of reader.events) {
+        if (event.kind === "text") {
+          text += event.text;
+        } else if (event.kind === "call") {
+          calls.push(event.call);
         } else if (event.kind === "reasoning") {
           reasoning += event.text;
         } else if (event.kind === "file") {
-          const asset = await resolveAsset(cookie, event.file, turn.signal);
-          if (asset) {
-            const part = assetPart(asset);
-            if ("type" in part) {
-              files.push(part);
-            } else {
-              collect(splitter.push(part.text));
-            }
+          const part = assetPart(event.asset);
+          if ("type" in part) {
+            files.push(part);
+          } else {
+            text += part.text;
           }
-        } else if (event.kind === "finish") {
-          finishReason = toFinishReason(event.reason);
         } else {
-          finishReason = "error";
+          tally.finishReason = "error";
         }
       }
-      collect(splitter.flush());
     } finally {
       await deleteConversation(cookie, turn.conversationId);
     }
@@ -384,9 +328,9 @@ export const aipassModel = (
     content.push(...files, ...calls.map(toolCallPart));
     return {
       content,
-      finishReason: settle(finishReason, calls.length),
+      finishReason: toFinishReason(finishReasonOf(tally)),
       providerMetadata: creditMetadata(usage),
-      usage: estimatedUsage(turn.inputTokens, charTokens(replyCount)),
+      usage: estimatedUsage(turn.inputTokens, replyTokens(tally)),
       warnings: turn.warnings,
     };
   },

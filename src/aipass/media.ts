@@ -79,11 +79,11 @@ const isAbsolute = (url: string): boolean => /^https?:\/\//iu.test(url);
 export const inlineBase64 = (asset: MediaAsset): string =>
   asset.href.slice(asset.href.indexOf(",") + 1);
 
-/** Renders the asset the way a chat client will show it. */
+/** Renders the asset as its own paragraph, the way a chat client will show it. */
 export const renderAsset = (asset: MediaAsset): string => {
   const link = asset.kind === "image" ? "!" : "";
   const note = asset.note ? `\n\n_${asset.note}_` : "";
-  return `${link}[${asset.filename}](${asset.href})${note}`;
+  return `\n\n${link}[${asset.filename}](${asset.href})${note}\n\n`;
 };
 
 /**

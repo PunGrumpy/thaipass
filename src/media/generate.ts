@@ -1,9 +1,8 @@
 import { deleteConversation, sendMessage } from "../aipass/client";
-import { resolveAsset } from "../aipass/media";
 import type { MediaAsset } from "../aipass/media";
 import { fetchCredits, settleCredits } from "../aipass/quotas";
 import type { CreditUsage } from "../aipass/quotas";
-import { parseAipassSSE } from "../aipass/stream";
+import { readReply } from "../reply";
 import { toAipassMessages } from "../translate";
 
 /**
@@ -78,15 +77,13 @@ export const generateMedia = async (
 
   const assets: MediaAsset[] = [];
   let text = "";
+  const reader = readReply({ body: response.body, cookie, signal, tools: [] });
   try {
-    for await (const event of parseAipassSSE(response.body)) {
-      if (event.kind === "delta") {
+    for await (const event of reader.events) {
+      if (event.kind === "text") {
         text += event.text;
       } else if (event.kind === "file") {
-        const asset = await resolveAsset(cookie, event.file, signal);
-        if (asset) {
-          assets.push(asset);
-        }
+        assets.push(event.asset);
       } else if (event.kind === "error") {
         throw new MediaError(event.message, 502);
       }
