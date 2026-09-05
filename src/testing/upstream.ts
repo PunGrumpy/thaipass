@@ -80,9 +80,12 @@ export const stubUpstream = (
   });
   return {
     bodyOf: <T>(prefix: string, schema: z.ZodType<T>): T => {
-      const call = sent.findLast((entry) => entry.path.startsWith(prefix));
+      /** A GET to the same prefix carries no body, so only a call that sent one counts. */
+      const call = sent.findLast(
+        (entry) => entry.path.startsWith(prefix) && entry.body.length > 0
+      );
       if (!call) {
-        throw new Error(`no upstream call to ${prefix}`);
+        throw new Error(`no upstream call with a body to ${prefix}`);
       }
       return schema.parse(JSON.parse(call.body));
     },

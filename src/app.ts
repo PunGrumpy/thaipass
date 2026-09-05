@@ -4,6 +4,7 @@ import { log } from "evlog";
 import { anthropicError } from "./anthropic/errors";
 import { requestLogger } from "./lib/logger";
 import { apiError } from "./openai/errors";
+import { audioRoutes } from "./routes/audio";
 import { chatRoutes } from "./routes/chat";
 import { docsRoutes } from "./routes/docs";
 import { healthRoutes } from "./routes/health";
@@ -11,6 +12,7 @@ import { imageRoutes } from "./routes/images";
 import { messageRoutes } from "./routes/messages";
 import { modelRoutes } from "./routes/models";
 import { usageRoutes } from "./routes/usage";
+import { videoRoutes } from "./routes/videos";
 
 const ANTHROPIC_PREFIX = "/v1/messages";
 
@@ -48,6 +50,8 @@ export const app = new Elysia()
   .use(chatRoutes)
   .use(messageRoutes)
   .use(imageRoutes)
+  .use(videoRoutes)
+  .use(audioRoutes)
   .use(modelRoutes)
   .use(healthRoutes)
   .use(usageRoutes)

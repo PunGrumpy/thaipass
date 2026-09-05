@@ -36,7 +36,7 @@ const drain = async (response: Response): Promise<number> => {
   return response.status;
 };
 
-interface CreateResult {
+export interface CreateResult {
   readonly conversationId: string;
   /** The edge's own answer, when it refused before a conversation existed. */
   readonly refusal: Response | null;
@@ -77,6 +77,27 @@ const createConversation = async (
   await drain(response);
   return { conversationId, refusal: null };
 };
+
+/**
+ * Opens a conversation for work that does not go through send-message.
+ *
+ * A video job is submitted against a conversation the same way a turn is, so
+ * it needs one opened first, and needs the edge's refusal handed back rather
+ * than swallowed.
+ */
+export const openConversation = (
+  cookie: string,
+  modelId: string,
+  title: string,
+  signal: AbortSignal | undefined
+): Promise<CreateResult> =>
+  createConversation(
+    cookie,
+    crypto.randomUUID(),
+    modelId,
+    title.slice(0, TITLE_PREVIEW_LENGTH) || "hi",
+    signal
+  );
 
 export const deleteConversation = async (
   cookie: string,

@@ -74,6 +74,10 @@ export const videoModelSchema = z.enum(VIDEO_MODELS, {
   error: "unknown video model, see GET /v1/models",
 });
 
+export const musicModelSchema = z.enum(MUSIC_MODELS, {
+  error: "unknown music model, see GET /v1/models",
+});
+
 export type ModelKind = "chat" | "image" | "video" | "music";
 
 const KINDS = new Map<string, ModelKind>([
