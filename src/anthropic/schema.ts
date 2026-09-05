@@ -28,6 +28,11 @@ const textOnlySchema = z
 type Block =
   | { readonly kind: "text"; readonly text: string }
   | {
+      readonly kind: "file";
+      readonly uri: string;
+      readonly filename?: string;
+    }
+  | {
       readonly kind: "call";
       readonly id: string;
       readonly name: string;
@@ -36,8 +41,40 @@ type Block =
   | { readonly kind: "result"; readonly callId: string; readonly text: string }
   | { readonly kind: "skip" };
 
+/**
+ * Anthropic carries a file as base64 beside its media type, so a data URI is
+ * assembled here and decoded once, where every protocol's files meet. A `url`
+ * source is left to fail there with the reason, rather than being dropped.
+ */
+const sourceSchema = z.union([
+  z
+    .object({
+      data: z.string(),
+      /** Anthropic requires it; a caller that omits it should still be carried. */
+      media_type: z.string().default("application/octet-stream"),
+      type: z.literal("base64"),
+    })
+    .transform((source) => `data:${source.media_type};base64,${source.data}`),
+  z
+    .object({ type: z.literal("url"), url: z.string() })
+    .transform((source) => source.url),
+]);
+
+const fileBlockSchema = z
+  .object({
+    source: sourceSchema,
+    title: z.string().optional(),
+    type: z.enum(["image", "document"]),
+  })
+  .transform((block): Block => ({
+    filename: block.title,
+    kind: "file",
+    uri: block.source,
+  }));
+
 const blockSchema = z.union([
   textBlockSchema.transform((text): Block => ({ kind: "text", text })),
+  fileBlockSchema,
   z
     .object({
       id: z.string(),
@@ -89,10 +126,14 @@ const toTurns = (role: Role, blocks: readonly Block[]): ChatTurn[] => {
   const calls = blocks
     .filter((block) => block.kind === "call")
     .map(({ id, input, name }) => ({ id, input, name }));
+  const files = blocks
+    .filter((block) => block.kind === "file")
+    .map(({ filename, uri }) => ({ filename, uri }));
+  const attached = files.length > 0 ? { files } : {};
   if (calls.length > 0 && role === "assistant") {
-    turns.push({ calls, content: text, role });
-  } else if (text.length > 0 || turns.length === 0) {
-    turns.push({ content: text, role });
+    turns.push({ calls, content: text, role, ...attached });
+  } else if (text.length > 0 || files.length > 0 || turns.length === 0) {
+    turns.push({ content: text, role, ...attached });
   }
   return turns;
 };

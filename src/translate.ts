@@ -5,23 +5,41 @@ import type { ToolCall, ToolDefinition } from "./tools";
 export type TurnRole = "system" | "user" | "assistant" | "tool";
 
 /**
+ * A file the caller attached to a turn, still as the caller sent it.
+ *
+ * It is carried alongside the text rather than inside it: the text is flattened
+ * into one prompt, and a file has to leave the conversation entirely and be
+ * uploaded before the turn can be sent.
+ */
+export interface TurnFile {
+  readonly uri: string;
+  readonly filename?: string;
+}
+
+/**
  * One turn of a conversation, in the shape every protocol reduces to.
  *
  * `calls` are the tool calls an assistant turn made; `callId` names the call a
  * tool turn answers. Both are rendered back into the text protocol so the
  * model sees its own past calls in the shape it is asked to produce them.
+ * `files` are what it attached, on their way to the bucket.
  */
 export interface ChatTurn {
   readonly role: TurnRole;
   readonly content: string;
   readonly calls?: readonly ToolCall[];
   readonly callId?: string;
+  readonly files?: readonly TurnFile[];
 }
 
 export interface Conversation {
   readonly turns: readonly ChatTurn[];
   readonly tools: readonly ToolDefinition[];
 }
+
+/** Every file across the conversation, in the order the caller wrote them. */
+export const filesOf = (conversation: Conversation): readonly TurnFile[] =>
+  conversation.turns.flatMap((turn) => turn.files ?? []);
 
 const toolNames = (turns: readonly ChatTurn[]): Map<string, string> => {
   const names = new Map<string, string>();

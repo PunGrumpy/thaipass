@@ -36,7 +36,7 @@ test("keeps assistant reasoning alongside its text", () => {
   expect(turns).toEqual([{ content: "thinkinganswer", role: "assistant" }]);
 });
 
-test("warns once naming every part type it dropped", () => {
+test("carries file parts beside the text rather than dropping them", () => {
   const { turns, warnings } = convertPrompt([
     {
       content: [
@@ -46,17 +46,57 @@ test("warns once naming every part type it dropped", () => {
       role: "user",
     },
     {
-      content: [{ data: "aGk=", mediaType: "application/pdf", type: "file" }],
+      content: [
+        {
+          data: "JVBERi0=",
+          filename: "report.pdf",
+          mediaType: "application/pdf",
+          type: "file",
+        },
+      ],
       role: "user",
     },
   ]);
   expect(turns).toEqual([
-    { content: "look", role: "user" },
-    { content: "", role: "user" },
+    {
+      content: "look",
+      files: [{ filename: "image-1.png", uri: "data:image/png;base64,aGk=" }],
+      role: "user",
+    },
+    {
+      content: "",
+      files: [
+        {
+          filename: "report.pdf",
+          uri: "data:application/pdf;base64,JVBERi0=",
+        },
+      ],
+      role: "user",
+    },
   ]);
+  expect(warnings).toHaveLength(0);
+});
+
+test("warns once naming every part type it dropped", () => {
+  const { turns, warnings } = convertPrompt([
+    {
+      content: [
+        { text: "look", type: "text" },
+        {
+          output: { type: "text", value: "sunny" },
+          toolCallId: "call_1",
+          toolName: "get_weather",
+          type: "tool-result",
+        },
+      ],
+      role: "assistant",
+    },
+  ]);
+  expect(turns).toEqual([{ content: "look", role: "assistant" }]);
   expect(warnings).toHaveLength(1);
   expect(warnings[0]).toEqual({
-    message: "the provider dropped file parts because AI Pass reads text only",
+    message:
+      "the provider dropped tool-result parts because AI Pass reads text only",
     type: "other",
   });
 });

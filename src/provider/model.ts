@@ -13,6 +13,8 @@ import type {
 
 import { fetchCatalog } from "../aipass/catalog";
 import { deleteConversation, sendMessage } from "../aipass/client";
+import type { SendOptions } from "../aipass/client";
+import { fromDataUri } from "../aipass/inline";
 import type { ChatModel } from "../aipass/models";
 import { fetchCredits, settleCredits } from "../aipass/quotas";
 import type { Credits, CreditUsage } from "../aipass/quotas";
@@ -26,7 +28,7 @@ import { guardController } from "../lib/stream";
 import { addText, charTokens, estimateTokens, newCharCount } from "../tokens";
 import { renderCall, splitReply } from "../tools";
 import type { ReplyPart, ToolCall, ToolDefinition } from "../tools";
-import { flattenPrompt, toAipassMessages } from "../translate";
+import { filesOf, flattenPrompt, toAipassMessages } from "../translate";
 import { convertPrompt, convertTools } from "./prompt";
 
 const PROVIDER = "aipass";
@@ -130,7 +132,11 @@ const startTurn = async (
   const prompt = convertPrompt(options.prompt);
   const offered = convertTools(options);
   const { tools } = offered;
-  const text = flattenPrompt({ tools, turns: prompt.turns });
+  const conversation = { tools, turns: prompt.turns };
+  const attachments = filesOf(conversation).map((file, index) =>
+    fromDataUri(file.uri, file.filename, index)
+  );
+  const text = flattenPrompt(conversation);
   const inputTokens = estimateTokens(text);
   const body = toAipassMessages(text, modelId);
   const credits = fetchCredits(cookie, options.abortSignal);
@@ -149,12 +155,16 @@ const startTurn = async (
       thinkingWarnings.push({ message: resolved.dropped, type: "other" });
     }
   }
+  const sendOptions: SendOptions = { attachments };
+  if (thinkingLevel) {
+    sendOptions.thinkingLevel = thinkingLevel;
+  }
   const { conversationId, created, response } = await sendMessage(
     cookie,
     modelId,
     body,
     options.abortSignal,
-    thinkingLevel ? { thinkingLevel } : {}
+    sendOptions
   );
   const contentType = response.headers.get("content-type") ?? "";
   if (response.ok && response.body && contentType.includes("event-stream")) {

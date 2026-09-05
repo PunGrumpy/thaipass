@@ -1,14 +1,16 @@
 import type {
   LanguageModelV2CallOptions,
   LanguageModelV2CallWarning,
+  LanguageModelV2FilePart,
   LanguageModelV2Prompt,
   LanguageModelV2ToolCallPart,
   LanguageModelV2ToolResultOutput,
 } from "@ai-sdk/provider";
 
+import { nameFor } from "../aipass/inline";
 import { toolInputSchema } from "../tools";
 import type { ToolCall, ToolDefinition, ToolInput } from "../tools";
-import type { ChatTurn } from "../translate";
+import type { ChatTurn, TurnFile } from "../translate";
 
 export interface ConvertedPrompt {
   readonly turns: ChatTurn[];
@@ -57,7 +59,31 @@ const droppedWarning = (
       ]
     : [];
 
-/** Text stays text, tool calls and results keep their ids, everything else is dropped and named. */
+/**
+ * The SDK hands a file's bytes three ways. Two are inline and become a data
+ * URI; a URL is passed through as it stands so the one place that decodes
+ * files can refuse it with the same reason every protocol gets.
+ */
+const fileUri = (part: LanguageModelV2FilePart): string => {
+  const { data, mediaType } = part;
+  if (data instanceof URL) {
+    return data.href;
+  }
+  if (data instanceof Uint8Array) {
+    return `data:${mediaType};base64,${Buffer.from(data).toString("base64")}`;
+  }
+  return data.startsWith("data:") ? data : `data:${mediaType};base64,${data}`;
+};
+
+const toTurnFile = (
+  part: LanguageModelV2FilePart,
+  index: number
+): TurnFile => ({
+  filename: part.filename ?? nameFor(part.mediaType, index),
+  uri: fileUri(part),
+});
+
+/** Text stays text, files and tool calls keep their own shape, the rest is dropped and named. */
 export const convertPrompt = (
   prompt: LanguageModelV2Prompt
 ): ConvertedPrompt => {
@@ -80,9 +106,12 @@ export const convertPrompt = (
     }
     const text: string[] = [];
     const calls: ToolCall[] = [];
+    const files: TurnFile[] = [];
     for (const part of message.content) {
       if (part.type === "text" || part.type === "reasoning") {
         text.push(part.text);
+      } else if (part.type === "file") {
+        files.push(toTurnFile(part, files.length));
       } else if (part.type === "tool-call") {
         calls.push({
           id: part.toolCallId,
@@ -94,7 +123,8 @@ export const convertPrompt = (
       }
     }
     const turn: ChatTurn = { content: text.join(""), role: message.role };
-    turns.push(calls.length > 0 ? { ...turn, calls } : turn);
+    const withFiles = files.length > 0 ? { ...turn, files } : turn;
+    turns.push(calls.length > 0 ? { ...withFiles, calls } : withFiles);
   }
   return { turns, warnings: droppedWarning(dropped) };
 };

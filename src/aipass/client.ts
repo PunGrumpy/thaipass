@@ -3,8 +3,10 @@ import { log } from "evlog";
 import { config } from "../lib/config";
 import { isEdgeRefusal } from "./refusal";
 import { browserPostHeaders } from "./request";
-import type { AipassMessage } from "./stream";
+import type { AipassMessage, AipassPart } from "./stream";
 import type { ThinkingLevel } from "./thinking";
+import { uploadAttachment } from "./upload";
+import type { Attachment } from "./upload";
 
 const CONVERSATION_ID_LENGTH = 16;
 const TITLE_PREVIEW_LENGTH = 400;
@@ -99,9 +101,15 @@ export const deleteConversation = async (
 
 /** What the send-message body carries beyond the turn itself. */
 export interface SendOptions {
-  readonly thinkingLevel?: ThinkingLevel;
+  thinkingLevel?: ThinkingLevel;
   /** Read by the image models and ignored by the rest, exactly as the web UI sends it. */
-  readonly imageAspectRatio?: string;
+  imageAspectRatio?: string;
+  /**
+   * Files to put in the bucket before the turn is sent. They cannot be uploaded
+   * any earlier: `initiate` is scoped to a conversation, and the conversation
+   * does not exist until the create call above has run.
+   */
+  readonly attachments?: readonly Attachment[];
 }
 
 export interface SendResult {
@@ -138,6 +146,29 @@ const sendBody = (
   return body;
 };
 
+/** The conversation's title, which is the head of what the caller wrote. */
+const titleOf = (messages: readonly AipassMessage[]): string => {
+  const first = messages
+    .at(-1)
+    ?.parts.find((part) => part.type === "text")?.text;
+  return (first ?? "").slice(0, TITLE_PREVIEW_LENGTH);
+};
+
+/**
+ * Files ride on the turn the caller wrote, ahead of its text: the composer puts
+ * an attachment above the prompt, and a model reads what it was given before
+ * what it was asked.
+ */
+const withFiles = (
+  messages: readonly AipassMessage[],
+  files: readonly AipassPart[]
+): AipassMessage[] =>
+  messages.map((message, index) =>
+    index === messages.length - 1
+      ? { ...message, parts: [...files, ...message.parts] }
+      : message
+  );
+
 export const sendMessage = async (
   cookie: string,
   modelId: string,
@@ -146,10 +177,7 @@ export const sendMessage = async (
   options: SendOptions = {}
 ): Promise<SendResult> => {
   const reqUuid = crypto.randomUUID();
-  const preview = (messages.at(-1)?.parts[0]?.text ?? "").slice(
-    0,
-    TITLE_PREVIEW_LENGTH
-  );
+  const preview = titleOf(messages);
   const { conversationId, refusal } = await createConversation(
     cookie,
     reqUuid,
@@ -160,10 +188,30 @@ export const sendMessage = async (
   if (refusal) {
     return { conversationId, created: false, response: refusal };
   }
+  /** Each upload holds its own token and reserved key, so they do not queue. */
+  const uploaded: AipassPart[] = await Promise.all(
+    (options.attachments ?? []).map(async (attachment): Promise<AipassPart> => {
+      const file = await uploadAttachment(
+        cookie,
+        conversationId,
+        modelId,
+        attachment,
+        signal
+      );
+      return {
+        filename: file.filename,
+        mediaType: file.mediaType,
+        storageKey: file.storageKey,
+        type: "file",
+        url: file.storageKey,
+      };
+    })
+  );
+  const sent = uploaded.length > 0 ? withFiles(messages, uploaded) : messages;
   const response = await fetch(
     `${config.origin}/actions/send-message/${conversationId}`,
     {
-      body: JSON.stringify(sendBody(modelId, messages, options)),
+      body: JSON.stringify(sendBody(modelId, sent, options)),
       headers: browserPostHeaders(
         cookie,
         `${config.origin}/chat/${conversationId}`,

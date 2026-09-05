@@ -47,20 +47,53 @@ test("rejects a model that is not in the catalog", () => {
   expect(result.success).toBe(false);
 });
 
-test("joins the text blocks of a message and drops images", () => {
+test("joins the text blocks of a message and carries the image beside them", () => {
   const { turns } = parse({
     messages: [
       {
         content: [
           { text: "look", type: "text" },
-          { source: { data: "aGk=", type: "base64" }, type: "image" },
+          {
+            source: { data: "aGk=", media_type: "image/png", type: "base64" },
+            type: "image",
+          },
           { text: " here", type: "text" },
         ],
         role: "user",
       },
     ],
   });
-  expect(turns).toEqual([{ content: "look here", role: "user" }]);
+  expect(turns).toEqual([
+    {
+      content: "look here",
+      files: [{ filename: undefined, uri: "data:image/png;base64,aGk=" }],
+      role: "user",
+    },
+  ]);
+});
+
+test("carries a document block the same way an image is carried", () => {
+  const { turns } = parse({
+    messages: [
+      {
+        content: [
+          {
+            source: {
+              data: "JVBERi0=",
+              media_type: "application/pdf",
+              type: "base64",
+            },
+            title: "report.pdf",
+            type: "document",
+          },
+        ],
+        role: "user",
+      },
+    ],
+  });
+  expect(turns[0]?.files).toEqual([
+    { filename: "report.pdf", uri: "data:application/pdf;base64,JVBERi0=" },
+  ]);
 });
 
 test("keeps the calls an assistant turn made", () => {

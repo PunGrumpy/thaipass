@@ -3,9 +3,10 @@ import type { RequestLogger } from "evlog";
 import { fetchCatalog } from "./aipass/catalog";
 import type { Catalog } from "./aipass/catalog";
 import { deleteConversation, sendMessage } from "./aipass/client";
-import type { SendResult } from "./aipass/client";
+import type { SendOptions, SendResult } from "./aipass/client";
 import { fetchIdentity } from "./aipass/identity";
 import type { Identity } from "./aipass/identity";
+import { fromDataUri, InlineError } from "./aipass/inline";
 import type { ChatModel } from "./aipass/models";
 import { fetchCredits, settleCredits } from "./aipass/quotas";
 import type { CreditUsage, Credits } from "./aipass/quotas";
@@ -19,6 +20,8 @@ import { parseAipassSSE } from "./aipass/stream";
 import type { SSESkips } from "./aipass/stream";
 import { resolveThinking } from "./aipass/thinking";
 import type { ThinkingLevel } from "./aipass/thinking";
+import { UploadError } from "./aipass/upload";
+import type { Attachment } from "./aipass/upload";
 import type { DeferredEmit } from "./lib/logger";
 import { guardController } from "./lib/stream";
 import type { GuardedController } from "./lib/stream";
@@ -26,7 +29,7 @@ import { addText, charTokens, estimateTokens, newCharCount } from "./tokens";
 import type { CharCount } from "./tokens";
 import { renderCall, splitReply } from "./tools";
 import type { ReplyPart, ToolCall } from "./tools";
-import { flattenPrompt, toAipassMessages } from "./translate";
+import { filesOf, flattenPrompt, toAipassMessages } from "./translate";
 import type { Conversation } from "./translate";
 
 /**
@@ -436,6 +439,29 @@ const runTurn = async (
     log.set({ thinkingDropped: resolved.dropped, thinkingLevel });
   }
 
+  /**
+   * A file the proxy cannot read is the caller's to fix, so it fails the
+   * request rather than being dropped: a model answering about a document it
+   * never received is worse than an error naming the document.
+   */
+  let attachments: Attachment[];
+  try {
+    attachments = filesOf(conversation).map((file, index) =>
+      fromDataUri(file.uri, file.filename, index)
+    );
+  } catch (error) {
+    const message =
+      error instanceof InlineError ? error.message : String(error);
+    log.set({ status: 400 });
+    return wire.fail({ message, status: 400 });
+  }
+  log.set({ attachmentCount: attachments.length });
+
+  const sendOptions: SendOptions = { attachments };
+  if (thinkingLevel) {
+    sendOptions.thinkingLevel = thinkingLevel;
+  }
+
   let result: SendResult;
   try {
     result = await sendMessage(
@@ -443,10 +469,15 @@ const runTurn = async (
       model,
       toAipassMessages(prompt, model),
       signal,
-      thinkingLevel ? { thinkingLevel } : {}
+      sendOptions
     );
   } catch (error) {
     await recordUpstream(facts, model, log);
+    if (error instanceof UploadError) {
+      log.set({ status: 400 });
+      log.error(error);
+      return wire.fail({ message: error.message, status: 400 });
+    }
     return failUpstream(wire, log, error, `upstream fetch failed: ${error}`);
   }
 

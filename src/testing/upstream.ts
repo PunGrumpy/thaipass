@@ -5,6 +5,8 @@ import { sseStream } from "./sse";
 import type { SseStreamOptions } from "./sse";
 
 export const CREATE_PATH = "/chat.data";
+export const INITIATE_PATH = "/actions/upload-file/initiate";
+export const CONFIRM_PATH = "/actions/upload-file/confirm";
 export const DELETE_PATH = "/actions/update-conversation.data";
 export const SEND_PREFIX = "/actions/send-message/";
 export const QUOTA_PATH = "/loaders/get-usage-quota";
@@ -90,6 +92,30 @@ export const stubUpstream = (
       globalThis.fetch = realFetch;
     },
     sent,
+  };
+};
+
+/** Answers the three upload calls, with the signed PUT living off-origin. */
+export const uploadResponse = (
+  storageKey = "uploads/abc123"
+): ((path: string) => Response | undefined) => {
+  const uploadUrl = "https://storage.test/signed-put";
+  return (path: string): Response | undefined => {
+    if (path === INITIATE_PATH) {
+      return Response.json({
+        sizeBytes: 2,
+        storageKey,
+        uploadToken: "tok_1",
+        uploadUrl,
+      });
+    }
+    if (path === CONFIRM_PATH) {
+      return Response.json({ storageKey });
+    }
+    if (path === uploadUrl) {
+      return new Response("", { status: 200 });
+    }
+    return undefined;
   };
 };
 

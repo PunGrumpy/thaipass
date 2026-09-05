@@ -4,13 +4,16 @@ import { z } from "zod";
 
 import { app } from "../app";
 import {
+  CONFIRM_PATH,
   CREATE_PATH,
   DELETE_PATH,
+  INITIATE_PATH,
   quotaResponse,
   SEND_PREFIX,
   sseResponse,
   stubUpstream,
   textDeltas,
+  uploadResponse,
 } from "../testing/upstream";
 import type { Upstream } from "../testing/upstream";
 import { FENCE_CLOSE, FENCE_OPEN } from "../tools";
@@ -264,6 +267,118 @@ test("sends no thinking level when the caller asked for none", async () => {
   const response = await app.fetch(chatRequest(false, {}, freshCookie()));
   expect(response.status).toBe(200);
   expect(upstream.bodyOf(SEND_PREFIX, sentBody).thinkingLevel).toBeUndefined();
+});
+
+const PNG_DATA_URI = "data:image/png;base64,aGk=";
+
+const filePart = {
+  image_url: { url: PNG_DATA_URI },
+  type: "image_url",
+};
+
+const attachmentRequest = (): Request =>
+  new Request("https://proxy.test/v1/chat/completions", {
+    body: JSON.stringify({
+      messages: [
+        {
+          content: [{ text: "what is this", type: "text" }, filePart],
+          role: "user",
+        },
+      ],
+      stream: false,
+    }),
+    headers: {
+      authorization: `Bearer ${COOKIE}`,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+
+const partsSchema = z.object({
+  messages: z.array(
+    z.object({
+      parts: z.array(
+        z.object({
+          filename: z.string().optional(),
+          mediaType: z.string().optional(),
+          storageKey: z.string().optional(),
+          text: z.string().optional(),
+          type: z.string(),
+          url: z.string().optional(),
+        })
+      ),
+    })
+  ),
+});
+
+test("uploads an attachment and puts its storage key on the turn", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)), uploadResponse());
+  const response = await app.fetch(attachmentRequest());
+  expect(response.status).toBe(200);
+  expect(upstream.calls).toContain(INITIATE_PATH);
+  expect(upstream.calls).toContain(CONFIRM_PATH);
+  const parts = upstream.bodyOf(SEND_PREFIX, partsSchema).messages[0]?.parts;
+  expect(parts?.[0]).toEqual({
+    filename: "image-1.png",
+    mediaType: "image/png",
+    storageKey: "uploads/abc123",
+    type: "file",
+    url: "uploads/abc123",
+  });
+  expect(parts?.[1]?.text).toBe("what is this");
+});
+
+test("uploads only after the conversation exists, since initiate is scoped to it", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)), uploadResponse());
+  await app.fetch(attachmentRequest());
+  expect(upstream.calls.indexOf(CREATE_PATH)).toBeLessThan(
+    upstream.calls.indexOf(INITIATE_PATH)
+  );
+  expect(upstream.calls.indexOf(INITIATE_PATH)).toBeLessThan(
+    upstream.calls.findIndex((path) => path.startsWith(SEND_PREFIX))
+  );
+});
+
+test("refuses a remote attachment url rather than fetching it", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)), uploadResponse());
+  const response = await app.fetch(
+    new Request("https://proxy.test/v1/chat/completions", {
+      body: JSON.stringify({
+        messages: [
+          {
+            content: [
+              {
+                image_url: { url: "https://evil.test/x.png" },
+                type: "image_url",
+              },
+            ],
+            role: "user",
+          },
+        ],
+      }),
+      headers: {
+        authorization: `Bearer ${COOKIE}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+  );
+  expect(response.status).toBe(400);
+  const body = errorSchema.parse(await response.json());
+  expect(body.error.message).toContain("only inline data is accepted");
+  expect(upstream.calls).not.toContain(INITIATE_PATH);
+});
+
+test("fails the request when the upload is refused, naming the step", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)), (path) =>
+    path === INITIATE_PATH
+      ? new Response("no room", { status: 507 })
+      : uploadResponse()(path)
+  );
+  const response = await app.fetch(attachmentRequest());
+  expect(response.status).toBe(400);
+  const body = errorSchema.parse(await response.json());
+  expect(body.error.message).toContain("upload initiate returned 507");
 });
 
 const EDGE_REFUSAL_BODY = "<html>Request blocked</html>";

@@ -1,11 +1,26 @@
 import { parseJsonEventStream } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
+/**
+ * A file part addresses an object already in the bucket. The upstream composer
+ * reads `url` and the web client sends `storageKey` beside it, so both carry
+ * the same key rather than one being derived from the other.
+ */
+export type AipassPart =
+  | { readonly type: "text"; readonly text: string }
+  | {
+      readonly type: "file";
+      readonly mediaType: string;
+      readonly filename: string;
+      readonly url: string;
+      readonly storageKey: string;
+    };
+
 export interface AipassMessage {
   readonly id: string;
   readonly role: "user" | "assistant";
   readonly metadata: { readonly modelId: string };
-  readonly parts: readonly { readonly type: "text"; readonly text: string }[];
+  readonly parts: readonly AipassPart[];
 }
 
 export type StreamEvent =
