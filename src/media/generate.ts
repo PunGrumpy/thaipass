@@ -6,15 +6,8 @@ import { readReply } from "../reply";
 import { toAipassMessages } from "../translate";
 
 /**
- * One turn whose answer is a file rather than a sentence.
- *
- * Image and music models take the same send-message path the chat models take
- * and answer on the same stream; what differs is that the interesting frames
- * are `file` rather than `text-delta`. This runs that turn to the end, reads
- * every asset it produced, and leaves no conversation behind.
- *
- * Video does not come this way. It is a job the proxy submits and polls, so
- * media/video.ts serves it instead.
+ * Image and music models answer on the same send-message stream as chat, with
+ * `file` frames instead of text. Video is a polled job, served by video.ts.
  */
 
 export interface MediaRequest {
@@ -27,7 +20,6 @@ export interface MediaRequest {
 
 export interface MediaResult {
   readonly assets: readonly MediaAsset[];
-  /** Anything the model said alongside the file, which is usually nothing. */
   readonly text: string;
   readonly credits?: CreditUsage;
 }
@@ -96,7 +88,6 @@ export const generateMedia = async (
   return { assets, credits: usage, text };
 };
 
-/** What to say when a model answered with words where a file was asked for. */
 export const noAssetMessage = (result: MediaResult): string => {
   const said = result.text.trim();
   return said.length > 0

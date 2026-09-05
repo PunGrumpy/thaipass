@@ -8,12 +8,8 @@ import { assetDatum, createdNow, mediaFormatSchema } from "./media";
 import type { MediaFormat } from "./media";
 
 /**
- * The OpenAI images surface, over the one aspect ratio AI Pass accepts.
- *
- * OpenAI describes an image by its pixel size and AI Pass by its shape, so a
- * `size` is reduced to the nearest ratio the web UI offers rather than being
- * passed through. A caller who would rather say the shape can send
- * `aspect_ratio` and skip the guess.
+ * OpenAI describes an image by pixel size and AI Pass by shape, so `size` is
+ * rounded to the nearest offered ratio; `aspect_ratio` names it outright.
  */
 
 interface Ratio {
@@ -68,7 +64,7 @@ export const imageResponseSchema = z.object({
   data: z.array(
     z.object({
       b64_json: z.string().optional(),
-      /** Set instead of the bytes when the file was too big to carry, or unreadable. */
+      /** Carries the reason when the file stayed a link. */
       revised_prompt: z.string().optional(),
       url: z.string().optional(),
     })
@@ -81,10 +77,7 @@ export type ImageResponse = z.infer<typeof imageResponseSchema>;
 export const aspectRatioFor = (body: ImageRequest): string | undefined =>
   body.aspect_ratio ?? (body.size ? ratioForSize(body.size) : undefined);
 
-/**
- * The reason a file stayed a link goes in `revised_prompt`, which is the only
- * free text the OpenAI shape has room for.
- */
+/** `revised_prompt` is the only free text the OpenAI shape has room for. */
 export const toImageResponse = (
   assets: readonly MediaAsset[],
   format: MediaFormat,

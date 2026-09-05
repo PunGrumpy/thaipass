@@ -4,11 +4,7 @@ import { z } from "zod";
 import { fileEventSchema } from "./media";
 import type { FileEvent } from "./media";
 
-/**
- * A file part addresses an object already in the bucket. The upstream composer
- * reads `url` and the web client sends `storageKey` beside it, so both carry
- * the same key rather than one being derived from the other.
- */
+/** The composer reads `url` and the web client sends `storageKey`; both carry the same key. */
 export type AipassPart =
   | { readonly type: "text"; readonly text: string }
   | {
@@ -40,10 +36,7 @@ const optionalText = z
   ])
   .optional();
 
-/**
- * A generated file arrives with its fields at the top level on some models and
- * nested under `data` on others, so both are read and the outer one wins.
- */
+/** Some models put the file's fields at the top level, others under `data`; the outer wins. */
 const fileFrameSchema = fileEventSchema.extend({
   data: fileEventSchema.optional(),
   type: z.literal("file"),

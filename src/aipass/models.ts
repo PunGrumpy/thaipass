@@ -27,13 +27,9 @@ export const CHAT_MODELS = [
 ] as const;
 
 /**
- * The models that answer with a file rather than with text.
- *
- * AI Pass carries no category of its own on `/loaders/list-models` — the web
- * UI builds its tabs client-side — so the split has to be held here. Image and
- * music come back over the same streaming send-message path the chat models
- * use; video is a submitted job that is polled, which is why it is a list of
- * its own rather than a flag.
+ * AI Pass has no model category on `/loaders/list-models`; the web UI builds
+ * its tabs client-side, so the split lives here. Video is its own list
+ * because it is a polled job rather than a stream.
  */
 export const IMAGE_MODELS = [
   "gpt-image-2",
@@ -86,7 +82,6 @@ const KINDS = new Map<string, ModelKind>([
   ...MUSIC_MODELS.map((id): [string, ModelKind] => [id, "music"]),
 ]);
 
-/** What a model answers with. Anything the proxy does not place is chat. */
 export const kindOf = (modelId: string): ModelKind =>
   KINDS.get(modelId) ?? "chat";
 
@@ -98,7 +93,6 @@ export type ChatModel = z.infer<typeof chatModelSchema>;
 
 export const DEFAULT_MODEL: ChatModel = "gemini-3.1-flash-lite";
 
-/** Every id the proxy will route, whichever kind of reply it produces. */
 export const ANY_MODELS = [...CHAT_MODELS, ...MEDIA_MODELS] as const;
 
 export const anyModelSchema = z.enum(ANY_MODELS, {

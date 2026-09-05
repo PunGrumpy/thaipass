@@ -44,7 +44,6 @@ export const fetchCredits = async (
   };
 };
 
-/** The balance as a reply reports it: AI Pass meters credits, not tokens. */
 export const creditBalanceSchema = z.object({
   available: z.number(),
   limit: z.number(),
@@ -90,11 +89,7 @@ export interface Settlement {
   readonly usage: CreditUsage | undefined;
 }
 
-/**
- * Reads the balance again once the reply is in; the difference is what the
- * turn spent. The read has its own timeout because the request signal may
- * already be aborted by now.
- */
+/** The read has its own timeout because the request signal may already be aborted. */
 export const settleCredits = async (
   cookie: string,
   before: Promise<Credits | null>

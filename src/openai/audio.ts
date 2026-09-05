@@ -12,13 +12,7 @@ import {
 } from "./media";
 import type { MediaFormat } from "./media";
 
-/**
- * Music, in the same shape images come back in.
- *
- * OpenAI's own audio endpoint is text-to-speech, which is a different thing
- * with a different body, so matching its name would be a false friend. This
- * keeps the shape the rest of this proxy's media uses instead.
- */
+/** OpenAI's own audio endpoint is text-to-speech, so this keeps the shape of the other media responses. */
 
 export const audioRequestSchema = z.object({
   model: musicModelSchema,

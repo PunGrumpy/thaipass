@@ -29,12 +29,8 @@ import { toAipassMessages } from "./translate";
 import type { Conversation } from "./translate";
 
 /**
- * One turn against AI Pass, rendered through a protocol's wire.
- *
- * The turn is the same whichever protocol asked for it: open a throwaway
- * conversation, send the flattened prompt, read the reply, delete the
- * conversation, write one wide event. What differs is the shape of the bytes
- * going back, and that is all a `Wire` decides.
+ * One turn against AI Pass. The turn is the same whichever protocol asked for
+ * it; a `Wire` decides only the shape of the bytes going back.
  */
 
 export interface Failure {
@@ -80,7 +76,6 @@ export interface TurnRequest {
   readonly model: ChatModel;
   readonly request: Request;
   readonly stream: boolean;
-  /** The reasoning effort the caller asked for, dropped when the model will not take it. */
   readonly thinking?: ThinkingLevel;
   readonly wire: Wire;
 }
@@ -331,11 +326,7 @@ const runTurn = async (
     toolCount: conversation.tools.length,
   });
 
-  /**
-   * A file the proxy cannot read is the caller's to fix, so it fails the
-   * request rather than being dropped: a model answering about a document it
-   * never received is worse than an error naming the document.
-   */
+  /** A file the proxy cannot read fails the request rather than being dropped. */
   let prepared: PreparedTurn;
   try {
     prepared = await prepareTurn(
@@ -422,7 +413,6 @@ const runTurn = async (
     : await bufferedCompletion(completion);
 };
 
-/** Authenticates the request, then runs the turn it describes. */
 export const serveTurn = (turn: TurnRequest): Promise<Response> | Response => {
   const { log, request, wire } = turn;
   const lookup = cookieFromRequest(request);

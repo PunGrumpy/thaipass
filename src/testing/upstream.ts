@@ -20,7 +20,6 @@ const timeout = async (): Promise<false> => {
   return false;
 };
 
-/** One upstream call, so a test can assert what the proxy actually sent. */
 export interface UpstreamCall {
   readonly path: string;
   readonly body: string;
@@ -98,7 +97,6 @@ export const stubUpstream = (
   };
 };
 
-/** Answers the three upload calls, with the signed PUT living off-origin. */
 export const uploadResponse = (
   storageKey = "uploads/abc123"
 ): ((path: string) => Response | undefined) => {

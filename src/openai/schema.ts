@@ -7,11 +7,7 @@ import { toolInputSchema } from "../tools";
 import type { ToolCall, ToolDefinition, ToolInput } from "../tools";
 import type { ChatTurn, Conversation, TurnRole } from "../translate";
 
-/**
- * A content part is either words or a file. Files are collected rather than
- * flattened: they leave the turn and go to the bucket, and only the text is
- * left to join into the prompt.
- */
+/** Files are collected rather than flattened: they go to the bucket, only text joins the prompt. */
 type ContentPart =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "file"; readonly uri: string; readonly filename?: string };
@@ -136,11 +132,7 @@ const toolSchema = z
     name: tool.function.name,
   }));
 
-/**
- * OpenAI's own name for this is `reasoning_effort`, and its values line up with
- * the levels AI Pass takes but for `minimal`, which rounds to `low`. Both names
- * are accepted so a client that already sends one does not have to learn ours.
- */
+/** `minimal` rounds to `low`; the other values line up with the AI Pass levels. */
 const reasoningEffortSchema = z
   .enum(["minimal", "low", "medium", "high"])
   .transform((effort): ThinkingLevel =>

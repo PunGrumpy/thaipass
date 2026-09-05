@@ -70,11 +70,7 @@ const UNSUPPORTED_SETTINGS = [
 const toFinishReason = (reason: string): LanguageModelV2FinishReason =>
   FINISH_REASONS.get(reason) ?? "unknown";
 
-/**
- * AI Pass takes a reasoning level rather than a token budget, so the AI SDK's
- * own reasoning settings do not map onto it. A caller names one under this
- * provider's own options instead: `providerOptions.aipass.thinkingLevel`.
- */
+/** AI Pass takes a level, not a token budget, so the SDK's own reasoning settings do not map. */
 const askedThinking = (
   options: LanguageModelV2CallOptions
 ): ThinkingLevel | undefined => {
@@ -185,11 +181,7 @@ const startTurn = async (
   });
 };
 
-/**
- * The SDK carries a generated file natively, so an image comes back as an image
- * rather than as a link a caller has to notice and fetch. Only bytes fit that
- * shape: an asset too big to carry stays a link, as text, with the reason.
- */
+/** An inline asset becomes the SDK's file part; a link is rendered as text with the reason. */
 const assetPart = (
   asset: MediaAsset
 ): LanguageModelV2File | { readonly text: string } => {

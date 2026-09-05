@@ -3,14 +3,9 @@ import { z } from "zod";
 import { randomHex } from "./lib/id";
 
 /**
- * The text protocol tool calls travel in.
- *
- * AI Pass reads a model id and one message and answers with text, so a tool
- * call cannot cross the wire as a structured field. Instead the proxy tells the
- * model which tools exist and how to ask for one (a fenced `tool_call` block
- * holding one JSON object), renders past calls and results in the same shape,
- * and splits the reply back into text and calls. Both HTTP surfaces and the
- * AI SDK provider share this one protocol.
+ * AI Pass carries text only, so tools travel in the prompt: the model is told
+ * which tools exist and asked to call one with a fenced `tool_call` block
+ * holding one JSON object, and the reply is split back into text and calls.
  */
 
 export interface ToolDefinition {
@@ -19,7 +14,6 @@ export interface ToolDefinition {
   readonly inputSchema?: unknown;
 }
 
-/** A call's arguments: whatever JSON object the model wrote, shaped by the tool's own schema. */
 export const toolInputSchema = z.record(z.string(), z.unknown());
 
 export type ToolInput = z.infer<typeof toolInputSchema>;
@@ -103,11 +97,8 @@ const heldLength = (tail: string): number => {
 };
 
 /**
- * Splits a reply into text and tool calls as it streams.
- *
- * Text is released as soon as it can no longer be the start of a fence; a
- * fence that never closes, or holds something other than a call to an offered
- * tool, is released as the text it was. Without tools nothing is held back.
+ * Text is released as soon as it can no longer open a fence. A fence that
+ * never closes, or holds no call to an offered tool, is released as text.
  */
 export const splitReply = (tools: readonly ToolDefinition[]): ReplySplitter => {
   if (tools.length === 0) {

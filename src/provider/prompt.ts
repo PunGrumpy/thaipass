@@ -59,11 +59,7 @@ const droppedWarning = (
       ]
     : [];
 
-/**
- * The SDK hands a file's bytes three ways. Two are inline and become a data
- * URI; a URL is passed through as it stands so the one place that decodes
- * files can refuse it with the same reason every protocol gets.
- */
+/** Inline bytes become a data URI; a URL is passed through to be refused where every protocol's files decode. */
 const fileUri = (part: LanguageModelV2FilePart): string => {
   const { data, mediaType } = part;
   if (data instanceof URL) {
@@ -83,7 +79,6 @@ const toTurnFile = (
   uri: fileUri(part),
 });
 
-/** Text stays text, files and tool calls keep their own shape, the rest is dropped and named. */
 export const convertPrompt = (
   prompt: LanguageModelV2Prompt
 ): ConvertedPrompt => {

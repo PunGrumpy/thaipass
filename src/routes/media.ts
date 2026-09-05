@@ -7,11 +7,6 @@ import { apiError } from "../openai/errors";
 const UPSTREAM_ERROR = 502;
 const RENDER_TIMED_OUT = 504;
 
-/**
- * What every media route answers when the turn failed: a `MediaError` keeps
- * its own status when it is a timeout and is a bad gateway otherwise, and
- * anything else is a bad gateway named after what was being done.
- */
 export const failMedia = (
   cause: unknown,
   log: RequestLogger,

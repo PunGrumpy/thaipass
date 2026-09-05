@@ -15,14 +15,9 @@ import { filesOf, flattenPrompt } from "./translate";
 import type { Conversation } from "./translate";
 
 /**
- * The two halves of an AI Pass exchange that every caller shares.
- *
- * Before the turn goes out, `prepareTurn` flattens the conversation, decodes
- * its files and checks the reasoning level against the catalog. Once the reply
- * starts, `readReply` turns the stream into text, tool calls, reasoning and
- * files. The HTTP routes, the AI SDK provider and the media endpoints all do
- * both and differ only in how they render what comes out, so how a reply is
- * read lives here once.
+ * The two halves of an AI Pass exchange every caller shares: `prepareTurn`
+ * before the send and `readReply` after it. The HTTP routes, the AI SDK
+ * provider and the media endpoints differ only in how they render the events.
  */
 
 export interface PreparedTurn {
@@ -30,15 +25,10 @@ export interface PreparedTurn {
   readonly inputTokens: number;
   readonly sendOptions: SendOptions;
   readonly thinkingLevel: ThinkingLevel | null;
-  /** Why the asked-for level was dropped, when it was. */
   readonly thinkingDropped?: string;
 }
 
-/**
- * Only a request that asked for a level reads the catalog: on a cold cache
- * that is a round trip, and a caller who never mentioned thinking should not
- * pay for it. A file that cannot be decoded throws an `InlineError`.
- */
+/** Only a request that asked for a level reads the catalog; on a cold cache that is a round trip. */
 export const prepareTurn = async (
   conversation: Conversation,
   model: string,
@@ -74,17 +64,14 @@ export type ReplyEvent =
   | { readonly kind: "file"; readonly asset: MediaAsset }
   | { readonly kind: "error"; readonly message: string };
 
-/** What one reply amounted to, for the wide event and the usage figures. */
 export interface ReplyTally {
   calls: number;
   chars: number;
   deltas: number;
   files: number;
-  /** As upstream reported it, `stop` until it says otherwise. */
   finishReason: string;
   msToFirstChunk: number | undefined;
   reasoningChars: number;
-  /** The text the model wrote, tool calls included, for the token estimate. */
   readonly reply: CharCount;
   readonly skips: SSESkips;
 }
@@ -99,11 +86,9 @@ export interface ReadReplyOptions {
   readonly cookie: string;
   readonly signal: AbortSignal | undefined;
   readonly tools: readonly ToolDefinition[];
-  /** When the request began, for the time to the first chunk. */
   readonly startedAt?: number;
 }
 
-/** A reply with calls finished on tool calls unless upstream said otherwise. */
 export const finishReasonOf = (tally: ReplyTally): string =>
   tally.calls > 0 && tally.finishReason === "stop"
     ? "tool-calls"
@@ -113,10 +98,9 @@ export const replyTokens = (tally: ReplyTally): number =>
   charTokens(tally.reply);
 
 /**
- * Reads one reply. Text goes through the tool-call splitter, so a fenced call
- * comes out as a `call` event and never as text. The reader fetches a generated
- * file and yields it as an asset for the caller to render. It yields an
- * upstream error too, since what to do about one differs per caller.
+ * Text goes through the tool-call splitter, so a fenced call never reaches the
+ * caller as text. An upstream error is yielded rather than thrown, since each
+ * caller handles one differently.
  */
 export const readReply = (options: ReadReplyOptions): ReplyReader => {
   const { body, cookie, signal, tools } = options;

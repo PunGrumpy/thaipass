@@ -4,22 +4,11 @@ import { config } from "../lib/config";
 import type { VideoModel } from "./models";
 import { browserGetHeaders, conversationJsonHeaders } from "./request";
 
-/**
- * Video is a different protocol from everything else AI Pass serves.
- *
- * Chat, images and music stream back from send-message; a video is submitted
- * as a job to `/actions/video-generation`, then polled until it reports
- * completed. There is no streaming variant, so nothing here pretends there is.
- *
- * A job left running keeps burning the account's video quota, so one is
- * cancelled on the way out of a failure rather than abandoned.
- */
-
 const VIDEO_PATH = "/actions/video-generation";
 
 export const POLL_INTERVAL_MS = 2000;
 
-/** Which providers the video ids belong to, matched the way the web client does. */
+/** Matched the way the web client does. */
 const PROVIDERS: readonly (readonly [string, RegExp])[] = [
   ["seedance", /^seedance/iu],
   ["veo", /^veo/iu],
@@ -30,10 +19,7 @@ const PROVIDERS: readonly (readonly [string, RegExp])[] = [
 export const providerFor = (modelId: string): string | undefined =>
   PROVIDERS.find(([, pattern]) => pattern.test(modelId))?.[0];
 
-/**
- * The only option the app gates by model. Everything else it sends whenever
- * the caller set it, so this mirrors that rather than inventing stricter rules.
- */
+/** The only option the web UI gates by model. */
 const RESOLUTIONS = new Map<string, readonly string[]>([
   ["seedance-2.0-fast", ["480p", "720p"]],
   ["seedance-2.0-mini", ["480p", "720p"]],
@@ -54,7 +40,6 @@ export interface VideoOptions {
   readonly generateAudio?: boolean;
 }
 
-/** What this model will actually take, so a client can ask rather than guess. */
 export const optionsFor = (modelId: VideoModel) => ({
   aspectRatio: true,
   cameraFixed: isSeedance(modelId),
@@ -79,10 +64,8 @@ interface VideoBody {
 }
 
 /**
- * Only what the caller actually set, and only what this model takes. The route
- * validates the body as a whole and answers "Invalid request body" with no
- * field named, so sending an option a model does not accept costs a request
- * with nothing to go on.
+ * Only what the caller set and this model takes: the upstream rejects the
+ * whole body without naming the field it disliked.
  */
 export const videoBody = (
   conversationId: string,
@@ -136,10 +119,7 @@ export const jobStateSchema = z.object({
 
 export type JobState = z.infer<typeof jobStateSchema>;
 
-/**
- * The codes are terse and the web UI expands them in Thai. A caller reading
- * JSON gets neither, so the actionable part is spelled out.
- */
+/** The web UI expands these codes in Thai; a JSON caller gets the hint here. */
 const ERROR_HINTS = new Map([
   ["conflictActive", "another video job is still running on this conversation"],
   [
@@ -192,7 +172,7 @@ export const pollVideo = (
     }
   );
 
-/** Best effort: a job nobody is waiting for still spends the video quota. */
+/** Best effort: a job nobody waits for still spends the video quota. */
 export const cancelVideo = async (
   cookie: string,
   conversationId: string,

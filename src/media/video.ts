@@ -20,12 +20,8 @@ import type { VideoOptions } from "../aipass/video";
 import { DETAIL_LIMIT, MediaError } from "./generate";
 
 /**
- * A video, from submitted job to finished file.
- *
- * The upstream has no streaming variant, so this waits: it submits, polls
- * until the job reports completed, then reads the asset the way every other
- * generated file is read. A job that fails or is abandoned is cancelled rather
- * than left running, because a running job keeps spending the video quota.
+ * There is no streaming variant upstream: submit, poll, read. A failed or
+ * abandoned job is cancelled because a running one keeps spending the quota.
  */
 
 export interface VideoRequest {
@@ -34,7 +30,6 @@ export interface VideoRequest {
   readonly prompt: string;
   readonly options: VideoOptions;
   readonly signal: AbortSignal | undefined;
-  /** How long to wait before giving up on a job that never finishes. */
   readonly timeoutMs: number;
 }
 
@@ -68,7 +63,6 @@ const readJson = async <T>(
 
 const CALLER_GONE = 499;
 
-/** Waits between polls, and gives up early when the caller has gone. */
 const sleep = async (
   ms: number,
   signal: AbortSignal | undefined
@@ -124,10 +118,7 @@ export const generateVideo = async (
     jobId = startedJob;
 
     const deadline = Date.now() + timeoutMs;
-    /**
-     * Polling is sequential by nature: each read decides whether there is
-     * another, so there is no set of promises to run together here.
-     */
+    // Each poll decides whether there is another, so they cannot run together.
     // oxlint-disable no-await-in-loop
     for (;;) {
       await sleep(POLL_INTERVAL_MS, signal);

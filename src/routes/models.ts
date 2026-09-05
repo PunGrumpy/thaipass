@@ -22,13 +22,10 @@ export const modelListSchema = z.object({
   data: z.array(
     z.object({
       id: z.string(),
-      /** What this model answers with, and so which endpoint takes it. */
       kind: z.enum(["chat", "image", "video", "music"]),
       object: z.literal("model"),
-      /** What a video model accepts beyond a prompt; null for every other kind. */
       options: videoOptionsSchema.nullable(),
       owned_by: z.literal("aipass"),
-      /** The reasoning levels this model advertises, when the catalog could be read. */
       thinking: z.array(z.string()).readonly().nullable(),
     })
   ),
@@ -63,11 +60,7 @@ export const modelRoutes = new Elysia()
       response: "ModelList",
     },
     async ({ request, log }): Promise<ModelList> => {
-      /**
-       * The catalog is the account's, so it needs a cookie. Without one the
-       * list is still the truth about which ids route where — only the levels
-       * are unknown, and they say so by being null.
-       */
+      /** The catalog needs a cookie; without one only `thinking` is unknown and stays null. */
       const lookup = cookieFromRequest(request);
       const catalog = lookup.ok
         ? await fetchCatalog(

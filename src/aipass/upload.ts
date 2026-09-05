@@ -4,23 +4,15 @@ import { config } from "../lib/config";
 import { conversationJsonHeaders } from "./request";
 
 /**
- * Getting a file to AI Pass takes three calls, and the proxy makes all three.
- *
- * `initiate` reserves a place and answers with a signed URL owned by the
- * storage bucket, not by AI Pass; the bytes go there with a plain PUT, carrying
- * no cookie; `confirm` then tells AI Pass the object has landed. Only the
- * storage key it hands back travels on the message.
- *
- * Bytes have to arrive inline — a data URI, or base64 in the block that carries
- * them. A remote URL is refused rather than fetched: this proxy is meant to be
- * deployable, and a deployment that will fetch any URL a caller names is a
- * server-side request forgery hole pointed at whatever network it sits in.
+ * Three calls: `initiate` reserves a place and answers with a signed bucket
+ * URL, the bytes go there with a plain PUT and no cookie, and `confirm` tells
+ * AI Pass the object landed. Only the storage key travels on the message.
  */
 
 const INITIATE_PATH = "/actions/upload-file/initiate";
 const CONFIRM_PATH = "/actions/upload-file/confirm";
 
-/** What the upstream composer accepts; larger files are refused before the round trip. */
+/** What the upstream composer accepts. */
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 export interface Attachment {
@@ -70,10 +62,7 @@ const readJson = async <T>(
   return parsed.data;
 };
 
-/**
- * The bucket answers 412 when the object is already there, which happens when a
- * retry re-sends bytes that landed the first time. The upload is still good.
- */
+/** The bucket answers 412 when a retry re-sends bytes that already landed. */
 const PRECONDITION_FAILED = 412;
 
 export const uploadAttachment = async (
@@ -111,10 +100,7 @@ export const uploadAttachment = async (
     throw new UploadError(`upload initiate refused: ${initiated.error}`);
   }
 
-  /**
-   * The bucket enforces the reserved size and refuses an overwrite when it says
-   * how big the object must be; it says nothing when it does not care.
-   */
+  /** The bucket enforces the reserved size only when it named one. */
   interface PutHeaders {
     "content-type": string;
     "x-goog-content-length-range"?: string;

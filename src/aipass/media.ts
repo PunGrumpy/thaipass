@@ -3,17 +3,6 @@ import { z } from "zod";
 import { config } from "../lib/config";
 import { browserGetHeaders } from "./request";
 
-/**
- * What a model produced, on its way back to the caller.
- *
- * An image, a video and a music clip all arrive as one `file` frame in the same
- * stream the text arrives in. Its URL is usually same-origin and needs the
- * session cookie to read, which is a thing only the proxy has, so the bytes are
- * fetched here and carried back inline. Past a cap they stay a link, which the
- * caller can only open in a logged-in browser — said plainly rather than
- * returning a URL that quietly 401s.
- */
-
 export type MediaKind = "image" | "video" | "audio" | "file";
 
 const INLINE_CAP = {
@@ -23,11 +12,7 @@ const INLINE_CAP = {
   video: 50 * 1024 * 1024,
 } satisfies Record<MediaKind, number>;
 
-/**
- * A generated file. Music carries `url`; video carries no `url` at all, only
- * `snapshotUrl` beside its storage key, so reading one field alone loses every
- * video.
- */
+/** Music carries `url`; video carries only `snapshotUrl`, so both are read. */
 export const fileEventSchema = z.object({
   filename: z.string().optional(),
   mediaType: z.string().optional(),
@@ -41,10 +26,8 @@ export interface MediaAsset {
   readonly kind: MediaKind;
   readonly mediaType: string;
   readonly filename: string;
-  /** A data URI when the bytes came back, an absolute URL when they could not. */
   readonly href: string;
   readonly inline: boolean;
-  /** Why it is a link rather than bytes, when it is. */
   readonly note?: string;
 }
 
@@ -75,11 +58,9 @@ const toDataUri = (bytes: ArrayBuffer, mediaType: string): string =>
 
 const isAbsolute = (url: string): boolean => /^https?:\/\//iu.test(url);
 
-/** The base64 payload of an inline asset's data URI. */
 export const inlineBase64 = (asset: MediaAsset): string =>
   asset.href.slice(asset.href.indexOf(",") + 1);
 
-/** Renders the asset as its own paragraph, the way a chat client will show it. */
 export const renderAsset = (asset: MediaAsset): string => {
   const link = asset.kind === "image" ? "!" : "";
   const note = asset.note ? `\n\n_${asset.note}_` : "";
@@ -87,11 +68,8 @@ export const renderAsset = (asset: MediaAsset): string => {
 };
 
 /**
- * Reads a generated file, carrying its bytes where they fit.
- *
- * Only a same-origin asset is fetched. An absolute URL somewhere else is
- * already public, or already needs its own credential, and either way is not
- * this proxy's to go and get.
+ * Only a same-origin asset is fetched; an absolute URL elsewhere is public
+ * or needs its own credential, and is not this proxy's to get.
  */
 export const resolveAsset = async (
   cookie: string,

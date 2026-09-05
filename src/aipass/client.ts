@@ -42,7 +42,6 @@ export interface CreateResult {
   readonly refusal: Response | null;
 }
 
-/** The title is the head of what the caller wrote, and never empty. */
 const createConversation = async (
   cookie: string,
   reqUuid: string,
@@ -68,10 +67,8 @@ const createConversation = async (
     .replaceAll("-", "")
     .slice(0, CONVERSATION_ID_LENGTH);
   /**
-   * The title carries the head of the prompt, so the edge sees the caller's
-   * text here first and can refuse the conversation itself. Sending the turn
-   * anyway would address a conversation that was never opened, which reaches
-   * the caller as a vaguer error than the one the edge already gave.
+   * The title carries the head of the prompt, so the edge can refuse the
+   * conversation here before any turn is sent.
    */
   if (isEdgeRefusal(response.status)) {
     return { conversationId, refusal: response };
@@ -80,13 +77,6 @@ const createConversation = async (
   return { conversationId, refusal: null };
 };
 
-/**
- * Opens a conversation for work that does not go through send-message.
- *
- * A video job is submitted against a conversation the same way a turn is, so
- * it needs one opened first, and needs the edge's refusal handed back rather
- * than swallowed.
- */
 export const openConversation = (
   cookie: string,
   modelId: string,
@@ -116,16 +106,11 @@ export const deleteConversation = async (
   }
 };
 
-/** What the send-message body carries beyond the turn itself. */
 export interface SendOptions {
   thinkingLevel?: ThinkingLevel;
   /** Read by the image models and ignored by the rest, exactly as the web UI sends it. */
   imageAspectRatio?: string;
-  /**
-   * Files to put in the bucket before the turn is sent. They cannot be uploaded
-   * any earlier: `initiate` is scoped to a conversation, and the conversation
-   * does not exist until the create call above has run.
-   */
+  /** Uploaded after the create call: `initiate` is scoped to a conversation. */
   readonly attachments?: readonly Attachment[];
 }
 
@@ -136,11 +121,7 @@ export interface SendResult {
   readonly created: boolean;
 }
 
-/**
- * The send-message body. Each option is omitted rather than sent empty: the
- * upstream validates the body as a whole, so a field carrying a default nobody
- * asked for is a field that can fail the request.
- */
+/** Each option is omitted rather than sent empty; the upstream validates the whole body. */
 interface SendBody {
   messages: readonly AipassMessage[];
   modelId: string;
@@ -166,11 +147,7 @@ const sendBody = (
 const lastText = (messages: readonly AipassMessage[]): string =>
   messages.at(-1)?.parts.find((part) => part.type === "text")?.text ?? "";
 
-/**
- * Files ride on the turn the caller wrote, ahead of its text: the composer puts
- * an attachment above the prompt, and a model reads what it was given before
- * what it was asked.
- */
+/** The composer puts attachments above the prompt, so files go first. */
 const withFiles = (
   messages: readonly AipassMessage[],
   files: readonly AipassPart[]
@@ -198,7 +175,6 @@ export const sendMessage = async (
   if (refusal) {
     return { conversationId, created: false, response: refusal };
   }
-  /** Each upload holds its own token and reserved key, so they do not queue. */
   const uploaded: AipassPart[] = await Promise.all(
     (options.attachments ?? []).map(async (attachment): Promise<AipassPart> => {
       const file = await uploadAttachment(

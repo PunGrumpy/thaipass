@@ -12,11 +12,7 @@ import {
 } from "./media";
 import type { MediaFormat } from "./media";
 
-/**
- * The video surface. There is no OpenAI shape to copy that AI Pass fits, so
- * this is the images shape with the fields a video actually takes, and it says
- * plainly that the call blocks until the render is done.
- */
+/** The images shape with the fields a video takes; the call blocks until the render is done. */
 
 export const videoRequestSchema = z.object({
   aspect_ratio: z.string().optional(),

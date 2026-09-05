@@ -1,12 +1,8 @@
 import type { Attachment } from "./upload";
 
 /**
- * Bytes a caller sent inline, in the two shapes the protocols use.
- *
- * OpenAI carries a file as a data URI; Anthropic carries base64 beside a media
- * type. Both end up here, and a remote URL does not: fetching one server-side
- * would make this proxy a request forger for whatever network it is deployed
- * into, so it is refused with a reason instead.
+ * A remote URL is refused rather than fetched: a deployment that fetches any
+ * URL a caller names is a request forger for the network it sits in.
  */
 
 const DATA_URI = /^data:(?<mediaType>[^;,]*)(?<base64>;base64)?,/iu;
@@ -37,7 +33,6 @@ export const fromBase64 = (
   }
 };
 
-/** A default name for a file the caller did not name, from what it is. */
 export const nameFor = (mediaType: string, index: number): string => {
   const subtype = mediaType.split("/")[1]?.split(";")[0] ?? "bin";
   const extension = subtype === "jpeg" ? "jpg" : subtype;
@@ -45,12 +40,7 @@ export const nameFor = (mediaType: string, index: number): string => {
   return `${kind}-${index + 1}.${extension}`;
 };
 
-/**
- * A data URI becomes an attachment; anything else names why it cannot.
- *
- * A percent-encoded (non-base64) data URI is decoded too — small SVG and text
- * attachments arrive that way, and refusing them would be arbitrary.
- */
+/** Percent-encoded data URIs are decoded too; small SVG and text files arrive that way. */
 export const fromDataUri = (
   uri: string,
   filename?: string,
@@ -64,7 +54,6 @@ export const fromDataUri = (
   }
   const mediaType = match.groups?.mediaType || "application/octet-stream";
   const payload = uri.slice(match[0].length);
-  /** Named from what it turned out to be, which is only known once parsed. */
   const name = filename ?? nameFor(mediaType, index);
   if (match.groups?.base64) {
     return fromBase64(payload, mediaType, name);

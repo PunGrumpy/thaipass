@@ -11,7 +11,7 @@ const textBlockSchema = z
   .object({ text: z.string(), type: z.literal("text") })
   .transform((block) => block.text);
 
-/** Text blocks joined, anything else (images, documents) dropped. */
+/** System text blocks joined; other block types dropped. */
 const textOnlySchema = z
   .union([
     z.string(),
@@ -42,9 +42,8 @@ type Block =
   | { readonly kind: "skip" };
 
 /**
- * Anthropic carries a file as base64 beside its media type, so a data URI is
- * assembled here and decoded once, where every protocol's files meet. A `url`
- * source is left to fail there with the reason, rather than being dropped.
+ * A base64 source becomes a data URI so every protocol's files decode in one
+ * place. A `url` source is passed through to fail there with the reason.
  */
 const sourceSchema = z.union([
   z
@@ -107,9 +106,8 @@ const roleSchema = z.enum(["user", "assistant", "system"]);
 type Role = z.infer<typeof roleSchema>;
 
 /**
- * An Anthropic message can hold several things at once: a user turn carries
- * the results of the calls the assistant made, then the user's own words. Each
- * becomes its own turn so the flattened prompt keeps them apart.
+ * A user message can carry tool results and the user's own words at once;
+ * each becomes its own turn so the flattened prompt keeps them apart.
  */
 const toTurns = (role: Role, blocks: readonly Block[]): ChatTurn[] => {
   const text = blocks
@@ -159,11 +157,7 @@ const toolSchema = z
     name: tool.name,
   }));
 
-/**
- * Anthropic's own thinking block, whose `budget_tokens` is turned into one of
- * the levels AI Pass takes. `thinking_level` is accepted alongside it for a
- * caller that would rather name the level than a budget.
- */
+/** `budget_tokens` picks a level; `thinking_level` names one directly. */
 const thinkingBlockSchema = z.object({
   budget_tokens: z.number().int().optional(),
   type: z.enum(["enabled", "disabled"]),
