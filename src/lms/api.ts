@@ -43,7 +43,9 @@ const optionalFlagSchema = lenient(z.boolean());
 const completionFieldsSchema = z.looseObject({
   completed: optionalFlagSchema,
   isCompleted: optionalFlagSchema,
+  learnerLessonStatus: statusSchema,
   learnerStatus: statusSchema,
+  lessonProgressStatus: statusSchema,
   progress: progressSchema,
   status: optionalTextSchema,
   title: optionalTextSchema,
@@ -66,9 +68,30 @@ export const coursePageSchema = z.looseObject({
 
 export const lessonSchema = completionFieldsSchema.extend({
   durationInSeconds: optionalNumberSchema,
+  durationSeconds: optionalNumberSchema,
   enrollmentId: optionalIdSchema,
   lessonType: optionalTextSchema,
   lessonVersionId: optionalIdSchema,
+});
+
+/** What opening a lesson answers with; the video part is what a stamp is built from. */
+export const lessonContentSchema = z.looseObject({
+  durationSeconds: optionalNumberSchema,
+  lessonProgressId: optionalIdSchema,
+  lessonProgressStatus: optionalTextSchema,
+  videoContent: lenient(
+    z.looseObject({
+      durationSeconds: optionalNumberSchema,
+      videoContentId: optionalIdSchema,
+      watchedSeconds: optionalNumberSchema,
+    })
+  ),
+});
+
+/** What a stamp answers with: the progress record and where the LMS says the lesson stands. */
+export const stampResultSchema = z.looseObject({
+  lessonProgressId: optionalIdSchema,
+  status: optionalTextSchema,
 });
 
 export const lessonListSchema = z.looseObject({
@@ -122,17 +145,21 @@ export type CoursePage = z.infer<typeof coursePageSchema>;
 export type Lesson = z.infer<typeof lessonSchema>;
 export type LessonList = z.infer<typeof lessonListSchema>;
 export type SessionTier = z.infer<typeof sessionTierSchema>;
-export type LessonContent = Payload;
+export type LessonContent = z.infer<typeof lessonContentSchema>;
+export type StampResult = z.infer<typeof stampResultSchema>;
 
-/** The playhead and the seconds spent watching, as the lesson page stamps them. */
+/** What the lesson page sends as the video plays, field for field. */
 export interface VideoStamp extends LmsBody {
-  readonly currentSeconds: number;
+  readonly videoContentId: string;
   readonly watchedSeconds: number;
+  readonly durationSeconds: number;
+  readonly enrollmentId: string;
+  readonly lessonProgressId: string | null;
 }
 
-/** The time spent on a lesson, sent when it closes. */
-export interface LessonCompletion extends LmsBody {
-  readonly watchedSeconds: number;
+/** What the lesson page sends to close the course after a completed video. */
+export interface CourseCompletion extends LmsBody {
+  readonly enrollmentId: string;
 }
 export type Completion = Payload;
 export type SessionExp = Payload;
@@ -199,7 +226,7 @@ export const openLesson = (
     cookie,
     "POST",
     lessonPath(codeId, lessonVersionId),
-    inspectedSchema,
+    lessonContentSchema,
     { enrollmentId },
     signal
   );
@@ -210,28 +237,12 @@ export const stampVideo = (
   lessonVersionId: string,
   body: VideoStamp,
   signal?: AbortSignal
-): Promise<Payload> =>
+): Promise<StampResult> =>
   lmsRequest(
     cookie,
     "PUT",
     `${lessonPath(codeId, lessonVersionId)}/video-stamp`,
-    inspectedSchema,
-    body,
-    signal
-  );
-
-export const completeLesson = (
-  cookie: string,
-  codeId: string,
-  lessonVersionId: string,
-  body: LessonCompletion,
-  signal?: AbortSignal
-): Promise<Completion> =>
-  lmsRequest(
-    cookie,
-    "PUT",
-    `${lessonPath(codeId, lessonVersionId)}/lesson-completed`,
-    inspectedSchema,
+    stampResultSchema,
     body,
     signal
   );
@@ -240,6 +251,7 @@ export const completeCourse = (
   cookie: string,
   codeId: string,
   lessonVersionId: string,
+  body: CourseCompletion,
   signal?: AbortSignal
 ): Promise<Completion> =>
   lmsRequest(
@@ -247,7 +259,7 @@ export const completeCourse = (
     "PUT",
     `${lessonPath(codeId, lessonVersionId)}/course-completed`,
     inspectedSchema,
-    {},
+    body,
     signal
   );
 

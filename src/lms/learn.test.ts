@@ -4,7 +4,12 @@ import { z } from "zod";
 
 import { sseResponse, stubUpstream } from "../testing/upstream";
 import type { Upstream } from "../testing/upstream";
-import { courseSchema, enrollmentIdSchema, lessonSchema } from "./api";
+import {
+  courseSchema,
+  enrollmentIdSchema,
+  lessonContentSchema,
+  lessonSchema,
+} from "./api";
 import {
   courseCode,
   durationOf,
@@ -21,7 +26,8 @@ import type { Payload } from "./payload";
 const COOKIE = "__Secure-ai_passport_auth.session_token=abc.def";
 const LMS = "/lms/api/v1";
 const VIDEO_EXP = 30;
-const MONTHLY = 40;
+const MONTHLY = 25;
+const DURATION = 25;
 const NO_SLEEP = (): Promise<void> => Promise.resolve();
 
 let upstream: Upstream;
@@ -48,43 +54,83 @@ interface Fixture {
   readonly courses?: readonly Payload[];
   readonly lessons?: readonly Payload[];
   readonly content?: Payload;
-  readonly completion?: Payload;
+  /** What the LMS says after the stamp that reaches the end. */
+  readonly endStatus?: string;
+  /** Whether the period's EXP moves when a lesson completes. */
+  readonly expMoves?: boolean;
   readonly refuse?: string;
 }
 
 const asLesson = (value: Payload) => lessonSchema.parse(value);
 const asCourse = (value: Payload) => courseSchema.parse(value);
+const asContent = (value: Payload) => lessonContentSchema.parse(value);
 
 const DEFAULT_COURSES = [
   { code: "done-1", learnerStatus: "COMPLETED", title: "Old" },
   { code: "c-2", learnerStatus: "IN_PROGRESS", title: "New" },
 ];
 
+/** As the live listing answers: uppercase types, a rounded duration, its own status field. */
 const DEFAULT_LESSONS = [
   {
-    durationInSeconds: 25,
-    enrollmentId: "",
-    lessonType: "video",
+    durationSeconds: 30,
+    learnerLessonStatus: "IN_PROGRESS",
+    lessonType: "VIDEO",
     lessonVersionId: "l-1",
     title: "Intro",
   },
-  { lessonType: "article", lessonVersionId: "l-2", title: "Read" },
+  { lessonType: "ARTICLE", lessonVersionId: "l-2", title: "Read" },
 ];
 
+/** As opening a live lesson answers. */
 const DEFAULT_CONTENT = {
-  durationSeconds: 25,
+  durationSeconds: DURATION,
   lessonProgressId: "p-1",
+  lessonProgressStatus: "IN_PROGRESS",
+  lessonType: "VIDEO",
+  lessonVersionId: "l-1",
   videoContent: {
-    currentSeconds: null,
-    durationSeconds: 25,
+    durationSeconds: DURATION,
+    videoContentId: "vc-1",
     videoHlsMasterPlaylistUrl: "https://cdn.test/v.m3u8",
-    watchedSeconds: null,
+    watchedSeconds: 0,
   },
 };
 
+const stampSchema = z.object({
+  durationSeconds: z.number(),
+  enrollmentId: z.string(),
+  lessonProgressId: z.string().nullable(),
+  videoContentId: z.string(),
+  watchedSeconds: z.number(),
+});
+
+interface Progress {
+  completed: boolean;
+}
+
+/** Answers a stamp the way the LMS does: in progress until the end, then whatever the fixture says. */
+const stampReply = (fixture: Fixture, progress: Progress): Response => {
+  const sent = upstream.sent.at(-1);
+  const stamp = stampSchema.parse(JSON.parse(sent?.body ?? "{}"));
+  const atEnd = stamp.watchedSeconds >= stamp.durationSeconds;
+  const status = atEnd ? (fixture.endStatus ?? "COMPLETED") : "IN_PROGRESS";
+  progress.completed ||= status === "COMPLETED";
+  return ok({ lessonProgressId: "p-1", status });
+};
+
+const expReply = (fixture: Fixture, progress: Progress): Response => {
+  const paid = progress.completed && (fixture.expMoves ?? true);
+  return ok({
+    member: { expEarn: String(MONTHLY + (paid ? VIDEO_EXP : 0)) },
+    user: { name: "Grumpy" },
+  });
+};
+
 /** The LMS as the lesson page sees it: one course with one video and one article. */
-const lmsUpstream = (fixture: Fixture = {}): Upstream =>
-  stubUpstream(sseResponse([]), (path) => {
+const lmsUpstream = (fixture: Fixture = {}): Upstream => {
+  const progress: Progress = { completed: false };
+  return stubUpstream(sseResponse([]), (path) => {
     if (!path.startsWith(LMS)) {
       return;
     }
@@ -93,11 +139,11 @@ const lmsUpstream = (fixture: Fixture = {}): Upstream =>
       return refused();
     }
     if (route === "/session/session-exp") {
-      return ok({ monthlyExp: MONTHLY, tier: "silver" });
+      return expReply(fixture, progress);
     }
     if (route === "/session/session-tier") {
       return ok({
-        member: { lessonTypeExp: [{ exp: VIDEO_EXP, lessonType: "video" }] },
+        member: { lessonTypeExp: [{ exp: VIDEO_EXP, lessonType: "VIDEO" }] },
       });
     }
     if (route === "/course/v2") {
@@ -106,7 +152,10 @@ const lmsUpstream = (fixture: Fixture = {}): Upstream =>
       return ok({ courses, limit: 20, page: pages, total: courses.length });
     }
     if (route === "/course/c-2/lesson") {
-      return ok({ lessons: fixture.lessons ?? DEFAULT_LESSONS });
+      return ok({
+        enrollmentId: "",
+        lessons: fixture.lessons ?? DEFAULT_LESSONS,
+      });
     }
     if (route === "/course/c-2/enrollment") {
       return ok({ enrollmentId: "e-9" });
@@ -114,11 +163,12 @@ const lmsUpstream = (fixture: Fixture = {}): Upstream =>
     if (route === "/course/c-2/lesson/l-1") {
       return ok(fixture.content ?? DEFAULT_CONTENT);
     }
-    if (route.endsWith("/lesson-completed")) {
-      return ok(fixture.completion ?? { exp: VIDEO_EXP });
+    if (route.endsWith("/video-stamp")) {
+      return stampReply(fixture, progress);
     }
     return ok({});
   });
+};
 
 const collect = async (
   options: Parameters<typeof learn>[0]
@@ -146,70 +196,46 @@ const errorOf = (events: readonly LearnEvent[]) => {
   return error;
 };
 
-const stampSchema = z.record(z.string(), z.number());
+const lessonWith = (events: readonly LearnEvent[], status: string) => {
+  const found = events.find(
+    (event) => event.event === "lesson" && event.status === status
+  );
+  return found?.event === "lesson" ? found : undefined;
+};
 
-const stampsSent = (): Record<string, number>[] =>
+const stampsSent = () =>
   upstream.sent
     .filter((call) => call.path.endsWith("/video-stamp"))
     .map((call) => stampSchema.parse(JSON.parse(call.body)));
 
-test("stamps every ten seconds and the end, then completes the lesson", async () => {
+const bodyOf = (suffix: string): Payload | undefined => {
+  const call = upstream.sent.find((entry) => entry.path.endsWith(suffix));
+  return call ? JSON.parse(call.body) : undefined;
+};
+
+test("stamps what the player stamps, every ten seconds up to the end", async () => {
   upstream = lmsUpstream();
-  const events = await collect({
-    cookie: COOKIE,
-    sleep: NO_SLEEP,
-    target: 100,
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  const stamp = (watchedSeconds: number) => ({
+    durationSeconds: DURATION,
+    enrollmentId: "e-9",
+    lessonProgressId: "p-1",
+    videoContentId: "vc-1",
+    watchedSeconds,
   });
-  expect(stampsSent()).toEqual([
-    { currentSeconds: 10, watchedSeconds: 10 },
-    { currentSeconds: 20, watchedSeconds: 20 },
-    { currentSeconds: 25, watchedSeconds: 25 },
-  ]);
-  const puts = upstream.sent.filter((call) => call.method === "PUT");
-  expect(puts.map((call) => call.path)).toEqual([
-    `${LMS}/course/c-2/lesson/l-1/video-stamp`,
-    `${LMS}/course/c-2/lesson/l-1/video-stamp`,
-    `${LMS}/course/c-2/lesson/l-1/video-stamp`,
-    `${LMS}/course/c-2/lesson/l-1/lesson-completed`,
-  ]);
+  expect(stampsSent()).toEqual([stamp(10), stamp(20), stamp(25)]);
   expect(upstream.calls).toContain(`${LMS}/course/c-2/enrollment`);
   expect(upstream.calls).not.toContain(`${LMS}/course/done-1/lesson`);
-  const completion = upstream.sent.find((call) =>
-    call.path.endsWith("/lesson-completed")
-  );
-  expect(JSON.parse(completion?.body ?? "{}")).toEqual({ watchedSeconds: 25 });
+  expect(
+    upstream.calls.some((path) => path.endsWith("/lesson-completed"))
+  ).toBe(false);
   const done = doneOf(events);
   expect(done.earned).toBe(VIDEO_EXP);
   expect(done.lessons).toBe(1);
-  expect(done.reached).toBe(false);
   expect(done.reason).toContain("no more video lessons");
 });
 
-test("shows the video part of the content when a lesson starts", async () => {
-  upstream = lmsUpstream({
-    content: {
-      videoContent: { hls: "https://cdn.test/v.m3u8", lastSecond: 3 },
-    },
-    lessons: [
-      {
-        durationInSeconds: 25,
-        enrollmentId: "e-1",
-        lessonType: "video",
-        lessonVersionId: "l-1",
-      },
-    ],
-  });
-  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
-  const started = events.find(
-    (event) => event.event === "lesson" && event.status === "started"
-  );
-  expect(started?.event === "lesson" && started.content).toEqual({
-    hls: "https://cdn.test/v.m3u8",
-    lastSecond: 3,
-  });
-});
-
-test("sends the LMS headers the web client sends", async () => {
+test("opens the lesson with the enrolment id, as the page does", async () => {
   upstream = lmsUpstream();
   await collect({ cookie: COOKIE, sleep: NO_SLEEP });
   const open = upstream.sent.find(
@@ -219,25 +245,68 @@ test("sends the LMS headers the web client sends", async () => {
   expect(JSON.parse(open?.body ?? "{}")).toEqual({ enrollmentId: "e-9" });
 });
 
-test("leaves the course open while a non-video lesson is still pending", async () => {
+test("asks the course to close once a stamp reports the lesson complete", async () => {
   upstream = lmsUpstream();
-  await collect({ cookie: COOKIE, sleep: NO_SLEEP });
-  expect(
-    upstream.calls.some((path) => path.endsWith("/course-completed"))
-  ).toBe(false);
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  expect(bodyOf("/course-completed")).toEqual({ enrollmentId: "e-9" });
+  expect(events.some((event) => event.event === "course_completed")).toBe(true);
 });
 
-test("closes the course when its last open lesson was the video just watched", async () => {
+test("treats a lesson the LMS leaves in progress as not completed", async () => {
+  upstream = lmsUpstream({ endStatus: "IN_PROGRESS" });
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  expect(bodyOf("/course-completed")).toBeUndefined();
+  expect(lessonWith(events, "skipped")?.reason).toContain("IN_PROGRESS");
+  expect(doneOf(events).lessons).toBe(0);
+});
+
+test("prices a lesson by how much the period's EXP moved", async () => {
+  upstream = lmsUpstream();
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  expect(lessonWith(events, "completed")?.exp).toBe(VIDEO_EXP);
+  const monthly = events.flatMap((event) =>
+    event.event === "exp" ? [event.monthly] : []
+  );
+  expect(monthly).toEqual([MONTHLY, MONTHLY + VIDEO_EXP]);
+});
+
+test("counts nothing for a lesson the LMS did not pay for", async () => {
+  upstream = lmsUpstream({ expMoves: false });
+  const done = doneOf(await collect({ cookie: COOKIE, sleep: NO_SLEEP }));
+  expect(done.earned).toBe(0);
+  expect(done.lessons).toBe(1);
+});
+
+test("resumes from the seconds already watched", async () => {
+  upstream = lmsUpstream({
+    content: {
+      ...DEFAULT_CONTENT,
+      videoContent: { ...DEFAULT_CONTENT.videoContent, watchedSeconds: 12 },
+    },
+  });
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  expect(stampsSent().map((stamp) => stamp.watchedSeconds)).toEqual([22, 25]);
+  expect(lessonWith(events, "started")?.watched).toBe(12);
+});
+
+test("skips a lesson the content already marks complete", async () => {
+  upstream = lmsUpstream({
+    content: { ...DEFAULT_CONTENT, lessonProgressStatus: "COMPLETED" },
+  });
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  expect(stampsSent()).toHaveLength(0);
+  expect(lessonWith(events, "skipped")?.reason).toContain("already");
+});
+
+test("keeps the enrolment id the listing already carries", async () => {
   upstream = lmsUpstream({
     lessons: [
-      { enrollmentId: "e-1", lessonType: "video", lessonVersionId: "l-1" },
+      { enrollmentId: "e-1", lessonType: "VIDEO", lessonVersionId: "l-1" },
     ],
   });
   await collect({ cookie: COOKIE, sleep: NO_SLEEP });
-  expect(upstream.calls).toContain(
-    `${LMS}/course/c-2/lesson/l-1/course-completed`
-  );
   expect(upstream.calls).not.toContain(`${LMS}/course/c-2/enrollment`);
+  expect(stampsSent()[0]?.enrollmentId).toBe("e-1");
 });
 
 test("stops once the target is earned", async () => {
@@ -249,21 +318,6 @@ test("stops once the target is earned", async () => {
   expect(done.reason).toBe("target reached");
 });
 
-test("reports the month's EXP before and after", async () => {
-  upstream = lmsUpstream();
-  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
-  const monthly = events.flatMap((event) =>
-    event.event === "exp" ? [event.monthly] : []
-  );
-  expect(monthly).toEqual([MONTHLY, MONTHLY]);
-});
-
-test("falls back to the tier's per-lesson EXP when completion reports none", async () => {
-  upstream = lmsUpstream({ completion: { ok: true } });
-  const done = doneOf(await collect({ cookie: COOKIE, sleep: NO_SLEEP }));
-  expect(done.earned).toBe(VIDEO_EXP);
-});
-
 test("a dry run lists the plan and sends nothing that changes the account", async () => {
   upstream = lmsUpstream();
   const events = await collect({
@@ -271,10 +325,7 @@ test("a dry run lists the plan and sends nothing that changes the account", asyn
     dryRun: true,
     sleep: NO_SLEEP,
   });
-  const planned = events.filter(
-    (event) => event.event === "lesson" && event.status === "planned"
-  );
-  expect(planned).toHaveLength(1);
+  expect(lessonWith(events, "planned")?.duration).toBe(30);
   const writes = upstream.sent.filter(
     (call) => call.method === "PUT" || call.path.endsWith("/enrollment")
   );
@@ -283,16 +334,10 @@ test("a dry run lists the plan and sends nothing that changes the account", asyn
   expect(doneOf(events).earned).toBe(VIDEO_EXP);
 });
 
-test("skips a lesson whose content carries no duration", async () => {
-  upstream = lmsUpstream({
-    content: { title: "no video here" },
-    lessons: [{ lessonType: "video", lessonVersionId: "l-1" }],
-  });
+test("skips a lesson whose content carries no video", async () => {
+  upstream = lmsUpstream({ content: { title: "no video here" } });
   const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
-  const skipped = events.find(
-    (event) => event.event === "lesson" && event.status === "skipped"
-  );
-  expect(skipped).toBeDefined();
+  expect(lessonWith(events, "skipped")).toBeDefined();
   expect(stampsSent()).toHaveLength(0);
 });
 
@@ -356,18 +401,32 @@ test("stops when the caller goes away", async () => {
   expect(doneOf(events).reason).toContain("caller went away");
 });
 
-test("plans stamps on the interval and always ends on the duration", () => {
+test("plans stamps on the interval past what is watched, ending on the duration", () => {
   expect(planStamps(25, 10)).toEqual([10, 20, 25]);
   expect(planStamps(30, 10)).toEqual([10, 20, 30]);
   expect(planStamps(4, 10)).toEqual([4]);
+  expect(planStamps(25, 10, 12)).toEqual([22, 25]);
+  expect(planStamps(25, 10, 25)).toEqual([]);
 });
 
-test("stamps the playhead and the watched time under the names the LMS uses", () => {
-  expect(stampBody(15)).toEqual({ currentSeconds: 15, watchedSeconds: 15 });
+test("builds the stamp from the content, whole seconds only", () => {
+  expect(stampBody(asContent(DEFAULT_CONTENT), "e-9", 12.9, 281.36)).toEqual({
+    durationSeconds: 281,
+    enrollmentId: "e-9",
+    lessonProgressId: "p-1",
+    videoContentId: "vc-1",
+    watchedSeconds: 12,
+  });
+  expect(stampBody(asContent({}), "e-9", 5, 9).lessonProgressId).toBeNull();
+  expect(stampBody(asContent({}), "e-9", 5, 9, "p-2").lessonProgressId).toBe(
+    "p-2"
+  );
 });
 
 test("reads completion from the ways the LMS marks it", () => {
   expect(isDone(asLesson({ learnerStatus: "COMPLETED" }))).toBe(true);
+  expect(isDone(asLesson({ learnerLessonStatus: "COMPLETED" }))).toBe(true);
+  expect(isDone(asLesson({ lessonProgressStatus: "completed" }))).toBe(true);
   expect(isDone(asLesson({ learnerStatus: { status: "completed" } }))).toBe(
     true
   );
@@ -375,9 +434,7 @@ test("reads completion from the ways the LMS marks it", () => {
   expect(isDone(asLesson({ progress: 100 }))).toBe(true);
   expect(isDone(asLesson({ progress: "100" }))).toBe(true);
   expect(isDone(asLesson({ progress: { percent: 100 } }))).toBe(true);
-  expect(isDone(asLesson({ learnerStatus: "IN_PROGRESS", progress: 40 }))).toBe(
-    false
-  );
+  expect(isDone(asLesson({ learnerLessonStatus: "IN_PROGRESS" }))).toBe(false);
   expect(isDone(asLesson({ progress: "half" }))).toBe(false);
   expect(isDone(asLesson({}))).toBe(false);
 });
@@ -389,12 +446,13 @@ test("takes the course code, or the id without its prefix", () => {
   expect(courseCode(asCourse({}))).toBeUndefined();
 });
 
-test("finds a duration in the content before the lesson listing", () => {
-  expect(
-    durationOf({ video: { duration: 90 } }, asLesson({ durationInSeconds: 5 }))
-  ).toBe(90);
-  expect(durationOf({}, asLesson({ durationInSeconds: 5 }))).toBe(5);
-  expect(durationOf({}, asLesson({}))).toBeUndefined();
+test("takes the video's own duration before the listing's rounded one", () => {
+  const lesson = asLesson({ durationSeconds: 300 });
+  expect(durationOf(asContent(DEFAULT_CONTENT), lesson)).toBe(DURATION);
+  expect(durationOf(asContent({ durationSeconds: 90 }), lesson)).toBe(90);
+  expect(durationOf(asContent({}), lesson)).toBe(300);
+  expect(durationOf(asContent({}), asLesson({ durationInSeconds: 5 }))).toBe(5);
+  expect(durationOf(asContent({}), asLesson({}))).toBeUndefined();
 });
 
 test("reads an enrolment id from the shapes an enrolment can answer with", () => {
@@ -405,7 +463,7 @@ test("reads an enrolment id from the shapes an enrolment can answer with", () =>
   expect(enrollmentIdSchema.parse(null)).toBeUndefined();
 });
 
-test("reads the month's EXP only from a key that names the month", () => {
+test("reads the period's EXP from the key a live session carries", () => {
   expect(monthlyExpOf({ member: { expEarn: "25" }, user: {} })).toBe(25);
   expect(monthlyExpOf({ monthlyExp: 0 })).toBe(0);
   expect(monthlyExpOf({ summary: { currentMonthExp: 55 } })).toBe(55);

@@ -91,16 +91,16 @@ Both loaders go through `loadJson`, which **swallows every failure and returns `
 
 ### LMS endpoints
 
-The learning site at `/lms` is a separate Next.js app; its backend answers on the same origin under `/lms/api/v1`, with the same session cookie plus an `X-CSRF-Protection: 1` header. `src/lms/api.ts` holds the routes and `src/lms/learn.ts` the lesson-page sequence. Mapped from the client bundle (`3vvnepg1owi5i.js` is the generated API layer), not a spec; the stamp field names were read off a live lesson's `videoContent`, which echoes them back.
+The learning site at `/lms` is a separate Next.js app; its backend answers on the same origin under `/lms/api/v1`, with the same session cookie plus an `X-CSRF-Protection: 1` header. `src/lms/api.ts` holds the routes and `src/lms/learn.ts` the lesson-page sequence. Mapped from the client bundle (`3vvnepg1owi5i.js` is the generated API layer), not a spec; the stamp was read off the lesson page's own chunk (`0z-hm15ewyw1c.js`) and confirmed against a live session.
 
 | path | method | notes |
 | --- | --- | --- |
 | `/course/v2` | POST json | catalogue, `{page, limit}` |
-| `/course/<code>/lesson` | GET | lessons with `lessonVersionId`, `lessonType`, `enrollmentId` |
+| `/course/<code>/lesson` | GET | `enrollmentId` plus lessons with `lessonVersionId`, `lessonType` (`VIDEO`), `learnerLessonStatus`, `durationSeconds` |
 | `/course/<code>/enrollment` | POST | enrol |
 | `/course/<code>/lesson/<lessonVersionId>` | POST json | open, `{enrollmentId}`; answers `durationSeconds`, `lessonProgressId`, `videoContent`; 403 inside a 200 when not enrolled |
-| `.../video-stamp` | PUT json | `{currentSeconds, watchedSeconds}`, the names `videoContent` echoes back |
-| `.../lesson-completed`, `.../course-completed` | PUT json | close the lesson (`{watchedSeconds}`), the course (`{}`, unverified) |
+| `.../video-stamp` | PUT json | `{videoContentId, watchedSeconds, durationSeconds, enrollmentId, lessonProgressId}`; answers `{lessonProgressId, status}`; the player caps each advance at +10 s |
+| `.../course-completed` | PUT json | `{enrollmentId}`, sent after a stamp reports `COMPLETED`; `lesson-completed` is for non-video lessons |
 | `/session/session-exp`, `/session/session-tier` | GET | `member.expEarn` is the period's EXP as a string; the tier carries `member.lessonTypeExp[]` |
 | `/achievement` | GET | the achievements page |
 

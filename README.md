@@ -239,7 +239,7 @@ curl -sN localhost:3789/v1/lms/learn \
   -d '{"target":100,"pace":1}'
 ```
 
-The reply is one JSON object per line as the run goes: the month's EXP before, a `course` line per course it enters, a `lesson` line when a lesson starts and when it completes, a `stamp` line per ten seconds of video, the EXP after, and a `done` line saying how much was earned and why it stopped. The run enrols in a course that still has an unwatched video, opens the lesson, stamps the playhead as it advances, marks the lesson complete, and closes the course when that was its last open lesson. A course whose remaining lessons are articles or quizzes stays open, because the proxy only watches video.
+The reply is one JSON object per line as the run goes: the month's EXP before, a `course` line per course it enters, a `lesson` line when a lesson starts and when it completes, a `stamp` line per ten seconds of video, the EXP after, and a `done` line saying how much was earned and why it stopped. The run enrols in a course that still has an unwatched video, opens the lesson, stamps the seconds watched as the video would play, and asks the course to close once the LMS reports the lesson complete. Articles and quizzes are left alone, because the proxy only watches video.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -254,7 +254,7 @@ Send `dry_run` first. It reads the catalogue and reports each lesson it would wa
 
 Three things to know before relying on it:
 
-- **The LMS protocol was mapped from the web client's bundle and one live lesson.** The routes and the order of calls are the lesson page's own. A video stamp carries `currentSeconds` and `watchedSeconds`, the names the lesson content echoes back, and closing a lesson sends the time spent on it. The `error` line carries the backend's own body when a call is refused.
+- **The stamp is the player's own, read off the lesson page and confirmed against a live session.** Each stamp carries the video content id, the enrolment, the progress record and the whole seconds watched, never more than ten past the last one, and the LMS answers with the lesson's status. A stamp that reports `COMPLETED` is what earns the EXP; the proxy then asks the course to close, as the page does, and prices the lesson by how much the period's EXP moved.
 - **The LMS needs its own cookies.** Copy the `Cookie` header from a request made while the browser is on a `/lms` page, not from the chat, so the tenant cookie the LMS sets travels with the session token. A `401` from the LMS says the cookie is stale or came from the wrong page.
 - **Keep the pace at 1.** The player blocks seeking on a first watch, so the backend expects the stamps to arrive as slowly as the video plays. A run at pace 1 holds the connection for as long as the videos take; run it locally, not on Vercel, and pass `-N` to curl so the lines show as they come.
 

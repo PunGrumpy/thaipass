@@ -1,6 +1,5 @@
 import {
   completeCourse,
-  completeLesson,
   enrollCourse,
   listCourses,
   listLessons,
@@ -10,24 +9,24 @@ import {
   stampVideo,
 } from "./api";
 import type {
-  Completion,
   Course,
   Lesson,
-  LessonCompletion,
   LessonContent,
   SessionExp,
   VideoStamp,
 } from "./api";
-import { findNumber, findPayload } from "./payload";
+import { findNumber } from "./payload";
 import { LmsError } from "./request";
 
 /**
  * Replays what the lesson page does for a video lesson: open it, stamp the
- * playhead as it advances, mark the lesson complete. The LMS awards EXP per
- * completed lesson, and the run stops once it has earned the target.
+ * seconds watched as the video plays, and close the course once a stamp
+ * reports the lesson complete. The LMS awards EXP per completed lesson, and
+ * the run stops once it has earned the target.
  */
 
 export const DEFAULT_TARGET = 100;
+/** The player never lets a stamp advance more than this over the last one the LMS confirmed. */
 export const STAMP_INTERVAL_S = 10;
 const DEFAULT_MAX_LESSONS = 50;
 const DEFAULT_PACE = 1;
@@ -38,24 +37,7 @@ const MS_PER_S = 1000;
 const FORBIDDEN = 403;
 const NOT_FOUND = 404;
 const VIDEO = "video";
-
-const DURATION_KEYS = [
-  "durationInSeconds",
-  "videoDuration",
-  "durationSeconds",
-  "duration",
-] as const;
-
-/** Where a live lesson keeps its video and its progress. */
-const VIDEO_KEYS = ["videoContent", "lessonProgress", "video"] as const;
-
-const EXP_KEYS = [
-  "earnedExp",
-  "expEarned",
-  "exp",
-  "earnedPoints",
-  "points",
-] as const;
+const COMPLETED = "COMPLETED";
 
 /** `member.expEarn` is what a live session-exp carries; the rest are the names the bundle hints at. */
 const MONTHLY_KEYS = [
@@ -68,14 +50,18 @@ const MONTHLY_KEYS = [
   "monthlyPoints",
 ] as const;
 
-const DONE_STATUSES = new Set(["COMPLETED", "COMPLETE", "DONE", "PASSED"]);
+const DONE_STATUSES = new Set([COMPLETED, "COMPLETE", "DONE", "PASSED"]);
 
 /** A course or a lesson the account has already finished; the LMS marks both the same ways. */
 export const isDone = (record: Course | Lesson): boolean => {
   if (record.isCompleted === true || record.completed === true) {
     return true;
   }
-  const status = record.learnerStatus ?? record.status;
+  const status =
+    record.learnerStatus ??
+    record.learnerLessonStatus ??
+    record.lessonProgressStatus ??
+    record.status;
   if (status && DONE_STATUSES.has(status.toUpperCase())) {
     return true;
   }
@@ -94,46 +80,50 @@ export const isVideo = (lesson: Lesson): boolean =>
 const positive = (value: number | undefined): number | undefined =>
   value !== undefined && value > 0 ? value : undefined;
 
+/** The video's own length first; the listing rounds it. */
 export const durationOf = (
   content: LessonContent,
   lesson: Lesson
 ): number | undefined =>
-  findNumber(content, DURATION_KEYS) ?? positive(lesson.durationInSeconds);
+  positive(content.videoContent?.durationSeconds) ??
+  positive(content.durationSeconds) ??
+  positive(lesson.durationSeconds) ??
+  positive(lesson.durationInSeconds);
 
-/**
- * What the lesson page sends as the video plays: the playhead, and the
- * seconds spent watching since the lesson opened. A live lesson's
- * videoContent carries both back under these names.
- */
-export const stampBody = (seconds: number): VideoStamp => ({
-  currentSeconds: seconds,
-  watchedSeconds: seconds,
+/** What the player sends as the video plays, field for field. */
+export const stampBody = (
+  content: LessonContent,
+  enrollmentId: string,
+  watchedSeconds: number,
+  durationSeconds: number,
+  lessonProgressId?: string
+): VideoStamp => ({
+  durationSeconds: Math.floor(durationSeconds),
+  enrollmentId,
+  lessonProgressId: lessonProgressId ?? content.lessonProgressId ?? null,
+  videoContentId: content.videoContent?.videoContentId ?? "",
+  watchedSeconds: Math.floor(watchedSeconds),
 });
 
-/** What closes a lesson: the time spent on it. */
-export const completionBody = (seconds: number): LessonCompletion => ({
-  watchedSeconds: seconds,
-});
-
-/** Every `interval` seconds of playback, and the end of the video last. */
+/** Every `interval` seconds of playback past what is already watched, and the end of the video last. */
 export const planStamps = (
   duration: number,
-  interval = STAMP_INTERVAL_S
+  interval = STAMP_INTERVAL_S,
+  from = 0
 ): number[] => {
   const stamps: number[] = [];
-  for (let at = interval; at < duration; at += interval) {
+  for (let at = from + interval; at < duration; at += interval) {
     stamps.push(at);
   }
-  stamps.push(duration);
+  if (from < duration) {
+    stamps.push(duration);
+  }
   return stamps;
 };
 
-/** The month's figure, only from a key that names the period's earnings. */
+/** The period's figure, from the key a live session-exp carries. */
 export const monthlyExpOf = (payload: SessionExp): number | undefined =>
   findNumber(payload, MONTHLY_KEYS, true);
-
-export const expOf = (completion: Completion): number | undefined =>
-  findNumber(completion, EXP_KEYS, true);
 
 /** Waits, and returns early when the caller goes away. */
 export const pause = async (
@@ -178,10 +168,8 @@ export type LearnEvent =
       readonly title: string | null;
       readonly status: LessonStatus;
       readonly duration?: number;
+      readonly watched?: number;
       readonly stamp?: VideoStamp;
-      readonly keys?: readonly string[];
-      /** The video and progress parts of the content, for reading the stamp's field names off a live lesson. */
-      readonly content?: LessonContent;
       readonly reason?: string;
       readonly exp?: number;
       readonly earned?: number;
@@ -192,6 +180,7 @@ export type LearnEvent =
       readonly lesson: string;
       readonly at: number;
       readonly duration: number;
+      readonly status: string | null;
     }
   | { readonly event: "course_completed"; readonly code: string }
   | {
@@ -238,6 +227,8 @@ interface Run {
   readonly signal: AbortSignal | undefined;
   readonly sleep: Sleep;
   videoExp: number | undefined;
+  /** The period's EXP as last read, so a lesson's worth is what the LMS actually added. */
+  monthly: number | undefined;
   earned: number;
   lessons: number;
 }
@@ -290,6 +281,75 @@ const isAuthFailure = (cause: unknown): boolean =>
 const titleOf = (record: Course | Lesson): string | null =>
   record.title ?? null;
 
+/** Best effort: the figure prices a lesson and is reported, the run does not depend on it. */
+const readMonthly = async (run: Run): Promise<number | undefined> => {
+  try {
+    return monthlyExpOf(await readSessionExp(run.cookie, run.signal));
+  } catch {
+    return undefined;
+  }
+};
+
+/** What the LMS added for the lesson, or the tier's figure when it cannot be read. */
+const settleLesson = async (run: Run): Promise<number> => {
+  const before = run.monthly;
+  const after = await readMonthly(run);
+  if (after !== undefined) {
+    run.monthly = after;
+  }
+  if (before !== undefined && after !== undefined) {
+    return Math.max(0, after - before);
+  }
+  return run.videoExp ?? 0;
+};
+
+interface Playback {
+  readonly duration: number;
+  readonly watched: number;
+}
+
+// Stamps the seconds watched as the video would play; returns the status the LMS last reported.
+const stampLesson = async function* stampLesson(
+  run: Run,
+  code: string,
+  id: string,
+  content: LessonContent,
+  enrollmentId: string,
+  playback: Playback
+): AsyncGenerator<LearnEvent, string | undefined> {
+  const { duration, watched } = playback;
+  let previous = watched;
+  let progressId = content.lessonProgressId;
+  let status: string | undefined;
+  // oxlint-disable no-await-in-loop
+  for (const at of planStamps(duration, run.interval, watched)) {
+    await run.sleep(((at - previous) / run.pace) * MS_PER_S, run.signal);
+    if (run.signal?.aborted) {
+      return status;
+    }
+    const result = await stampVideo(
+      run.cookie,
+      code,
+      id,
+      stampBody(content, enrollmentId, at, duration, progressId),
+      run.signal
+    );
+    progressId = result.lessonProgressId ?? progressId;
+    status = result.status ?? status;
+    yield {
+      at,
+      code,
+      duration,
+      event: "stamp",
+      lesson: id,
+      status: status ?? null,
+    };
+    previous = at;
+  }
+  // oxlint-enable no-await-in-loop
+  return status;
+};
+
 // Learns one video lesson; true when the lesson was completed.
 const learnLesson = async function* learnLesson(
   run: Run,
@@ -304,7 +364,7 @@ const learnLesson = async function* learnLesson(
     run.earned += run.videoExp ?? 0;
     yield {
       code,
-      duration: positive(lesson.durationInSeconds),
+      duration: positive(lesson.durationSeconds ?? lesson.durationInSeconds),
       earned: run.earned,
       event: "lesson",
       exp: run.videoExp,
@@ -321,50 +381,62 @@ const learnLesson = async function* learnLesson(
     enrollmentId,
     run.signal
   );
+  const skip = (reason: string): LearnEvent => ({
+    code,
+    event: "lesson",
+    lesson: id,
+    reason,
+    status: "skipped",
+    title,
+  });
   const duration = durationOf(content, lesson);
   if (!duration) {
-    yield {
-      code,
-      event: "lesson",
-      keys: Object.keys(content),
-      lesson: id,
-      reason: "no video duration in the lesson content",
-      status: "skipped",
-      title,
-    };
+    yield skip("no video duration in the lesson content");
     return false;
   }
+  if (!content.videoContent?.videoContentId) {
+    yield skip("no video content id in the lesson content");
+    return false;
+  }
+  if (content.lessonProgressStatus?.toUpperCase() === COMPLETED) {
+    yield skip("the LMS already marks this lesson complete");
+    return false;
+  }
+  const watched = Math.min(
+    duration,
+    positive(content.videoContent.watchedSeconds) ?? 0
+  );
   yield {
     code,
-    content: findPayload(content, VIDEO_KEYS) ?? {},
     duration,
     event: "lesson",
-    keys: Object.keys(content),
     lesson: id,
-    stamp: stampBody(0),
+    stamp: stampBody(content, enrollmentId, watched, duration),
     status: "started",
     title,
+    watched,
   };
-  let previous = 0;
-  // oxlint-disable no-await-in-loop
-  for (const at of planStamps(duration, run.interval)) {
-    await run.sleep(((at - previous) / run.pace) * MS_PER_S, run.signal);
-    if (run.signal?.aborted) {
-      return false;
-    }
-    await stampVideo(run.cookie, code, id, stampBody(at), run.signal);
-    yield { at, code, duration, event: "stamp", lesson: id };
-    previous = at;
+  const status = yield* stampLesson(run, code, id, content, enrollmentId, {
+    duration,
+    watched,
+  });
+  if (run.signal?.aborted) {
+    return false;
   }
-  // oxlint-enable no-await-in-loop
-  const completion = await completeLesson(
-    run.cookie,
-    code,
-    id,
-    completionBody(duration),
-    run.signal
-  );
-  const exp = expOf(completion) ?? run.videoExp ?? 0;
+  if (status?.toUpperCase() !== COMPLETED) {
+    yield skip(
+      `the LMS left the lesson ${status ?? "without a status"} after the last stamp`
+    );
+    return false;
+  }
+  // The page asks the course to close after every completed video; the LMS decides whether it can.
+  try {
+    await completeCourse(run.cookie, code, id, { enrollmentId }, run.signal);
+    yield { code, event: "course_completed" };
+  } catch (error) {
+    yield failure(error, "course", false);
+  }
+  const exp = await settleLesson(run);
   run.earned += exp;
   run.lessons += 1;
   yield {
@@ -395,7 +467,7 @@ const enrol = async (run: Run, code: string): Promise<string | undefined> => {
   return enrollmentFrom(again.lessons, again.enrollmentId);
 };
 
-// Learns every open video lesson of one course, then closes the course.
+// Learns every open video lesson of one course.
 const learnCourse = async function* learnCourse(
   run: Run,
   course: Course
@@ -415,8 +487,9 @@ const learnCourse = async function* learnCourse(
     throw error;
   }
   const lessons = listing.lessons.filter((lesson) => lesson.lessonVersionId);
-  const open = lessons.filter((lesson) => !isDone(lesson));
-  const pending = open.filter(isVideo);
+  const pending = lessons.filter(
+    (lesson) => isVideo(lesson) && !isDone(lesson)
+  );
   if (pending.length === 0) {
     return;
   }
@@ -438,29 +511,11 @@ const learnCourse = async function* learnCourse(
     title: titleOf(course),
     videos: pending.length,
   };
-  let completed = 0;
-  let last = "";
-  // oxlint-disable no-await-in-loop
   for (const lesson of pending) {
     if (limitReached(run)) {
       return;
     }
-    const done = yield* learnLesson(run, code, enrollmentId ?? "", lesson);
-    if (done) {
-      completed += 1;
-      last = lesson.lessonVersionId ?? "";
-    }
-  }
-  // oxlint-enable no-await-in-loop
-  // Only the last lesson of a course closes it, and only when nothing else is open.
-  if (run.dryRun || completed !== open.length) {
-    return;
-  }
-  try {
-    await completeCourse(run.cookie, code, last, run.signal);
-    yield { code, event: "course_completed" };
-  } catch (error) {
-    yield failure(error, "course", false);
+    yield* learnLesson(run, code, enrollmentId ?? "", lesson);
   }
 };
 
@@ -470,18 +525,17 @@ const expEvent = async (
 ): Promise<LearnEvent> => {
   try {
     const payload = await readSessionExp(run.cookie, run.signal);
-    return {
-      event: "exp",
-      monthly: monthlyExpOf(payload) ?? null,
-      payload,
-      phase,
-    };
+    const monthly = monthlyExpOf(payload);
+    if (monthly !== undefined) {
+      run.monthly = monthly;
+    }
+    return { event: "exp", monthly: monthly ?? null, payload, phase };
   } catch (error) {
     return failure(error, "session", phase === "before");
   }
 };
 
-/** The tier names what a video lesson pays, for when a completion does not. */
+/** The tier names what a video lesson pays, for when the period's figure cannot be read. */
 const videoExpOf = async (run: Run): Promise<number | undefined> => {
   try {
     const tier = await readSessionTier(run.cookie, run.signal);
@@ -532,6 +586,7 @@ export const learn = async function* learn(
     interval: options.stampIntervalS ?? STAMP_INTERVAL_S,
     lessons: 0,
     maxLessons: options.maxLessons ?? DEFAULT_MAX_LESSONS,
+    monthly: undefined,
     pace: options.pace ?? DEFAULT_PACE,
     signal: options.signal,
     sleep: options.sleep ?? pause,
