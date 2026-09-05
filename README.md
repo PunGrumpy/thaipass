@@ -244,12 +244,25 @@ The reply is one JSON object per line as the run goes: the month's EXP before, a
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `target` | 100 | The period's EXP to reach, as the LMS reports it; a run whose period already has it touches nothing |
+| `earn` | none | Earn this much EXP in this run, whatever the period already has; overrides `target` |
 | `pace` | 1 | Playback speed, up to 16. At 1 a ten minute video takes ten minutes |
 | `max_lessons` | 50 | Stop after this many lessons regardless |
 | `dry_run` | false | List what would be learned and change nothing |
 | `budget_seconds` | none, 270 on Vercel | End the run cleanly before this much wall-clock has passed; the `done` line then has `paused: true` and the next call resumes from the last stamp |
 
 Send `dry_run` first. It reads the catalogue and reports each lesson it would watch, with the tier's EXP per video lesson, without enrolling or stamping anything.
+
+### One command, on your machine
+
+The route is for a client that already talks to the proxy. For the monthly chore itself there is a command that runs the learner in-process, with no function limit and no loop to write:
+
+```bash
+AIPASS_COOKIE='<the Cookie header>' bun run lms            # reach 100 this period
+AIPASS_COOKIE='<the Cookie header>' bun run lms --earn 200  # earn 200 more, whatever the period has
+bun run lms --cookie-file ~/.aipass-cookie --dry-run        # see what it would watch
+```
+
+It prints one line per course and lesson, redraws the stamp progress in place, and exits 0 when the goal is there, 1 when it is not, 2 on a usage error. `--json` prints the same lines the route streams. This command is the one place in the repo that reads a cookie from the environment; the server never does.
 
 `GET /v1/lms/exp` returns the session's EXP payload, the tier and the achievement summary as the LMS reports them, with the period's figure as `monthly`. A cron line that runs the learn call once a month is the whole automation: the run reads the figure first and ends at once when the target is already there.
 
