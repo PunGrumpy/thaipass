@@ -34,7 +34,7 @@ export const messageRoutes = new Elysia()
     {
       body: "MessagesRequest",
       detail: {
-        description: `Buffered by default, as the Anthropic API is. Send stream: true for the event stream. The system prompt and the conversation are flattened into a single role-labelled turn before they reach AI Pass, images and documents are dropped, max_tokens and the sampling settings are accepted and ignored, and the token counts in usage are estimated from the text because the upstream reports none. usage.credits reports the account's credit balance and what this reply spent instead; on a stream it is on message_delta. Omitting model uses ${DEFAULT_MODEL}. Tools are offered to the model through the prompt and its calls come back as tool_use blocks, since AI Pass carries text only; how well that works depends on the model following the format.`,
+        description: `Buffered by default, as the Anthropic API is. Send stream: true for the event stream. The system prompt and the conversation are flattened into a single role-labelled turn before they reach AI Pass, images and documents are uploaded as attachments, max_tokens and the sampling settings are accepted and ignored, and the token counts in usage are estimated from the text because the upstream reports none. usage.credits reports the account's credit balance and what this reply spent instead; on a stream it is on message_delta. Omitting model uses ${DEFAULT_MODEL}. Tools are offered to the model through the prompt and its calls come back as tool_use blocks, since AI Pass carries text only; how well that works depends on the model following the format.`,
         responses: {
           "200": jsonOrStream(
             "Message",

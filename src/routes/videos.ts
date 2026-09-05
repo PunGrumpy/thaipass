@@ -28,7 +28,7 @@ export const videoRoutes = new Elysia()
       body: "VideoRequest",
       detail: {
         description:
-          "Renders one video, and blocks until it is done — AI Pass submits a job and polls it, and offers no streaming variant, so neither does this. A render takes minutes. Which options a model takes differs: every model accepts aspect_ratio and style_preprompt, only seedance accepts duration, camera_fixed and generate_audio, and only seedance-2.0-fast and seedance-2.0-mini accept a resolution; an option a model does not take is dropped rather than sent, since the upstream rejects the whole body without naming a field. model is echoed back when AI Pass ran the job on a different one, which it does when the asked-for model is busy.",
+          "Renders one video, and blocks until it is done: AI Pass submits a job and polls it, and offers no streaming variant, so neither does this. A render takes minutes. Which options a model takes differs: every model accepts aspect_ratio and style_preprompt, only seedance accepts duration, camera_fixed and generate_audio, and only seedance-2.0-fast and seedance-2.0-mini accept a resolution; an option a model does not take is dropped rather than sent, since the upstream rejects the whole body without naming a field. model is echoed back when AI Pass ran the job on a different one, which it does when the asked-for model is busy.",
         responses: {
           "200": json("VideoResponse", "The rendered video"),
           "400": json(
