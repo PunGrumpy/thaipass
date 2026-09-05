@@ -68,6 +68,7 @@ test("documents every route the app serves", async () => {
   expect(Object.keys(spec.paths).toSorted()).toEqual([
     "/health",
     "/v1/chat/completions",
+    "/v1/images/generations",
     "/v1/messages",
     "/v1/messages/count_tokens",
     "/v1/models",
@@ -128,6 +129,7 @@ test("marks the model routes and the usage route as needing the cookie", async (
   expect(secured).toEqual([
     "/v1/chat/completions",
     "/v1/messages",
+    "/v1/images/generations",
     "/v1/usage",
   ]);
 });

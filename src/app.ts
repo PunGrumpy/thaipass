@@ -7,6 +7,7 @@ import { apiError } from "./openai/errors";
 import { chatRoutes } from "./routes/chat";
 import { docsRoutes } from "./routes/docs";
 import { healthRoutes } from "./routes/health";
+import { imageRoutes } from "./routes/images";
 import { messageRoutes } from "./routes/messages";
 import { modelRoutes } from "./routes/models";
 import { usageRoutes } from "./routes/usage";
@@ -46,6 +47,7 @@ export const app = new Elysia()
   .use(requestLogger)
   .use(chatRoutes)
   .use(messageRoutes)
+  .use(imageRoutes)
   .use(modelRoutes)
   .use(healthRoutes)
   .use(usageRoutes)

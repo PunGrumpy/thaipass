@@ -111,6 +111,10 @@ export const docsRoutes = (host: AnyElysia) =>
             { description: "OpenAI-compatible endpoints", name: "Chat" },
             { description: "Anthropic-compatible endpoint", name: "Messages" },
             {
+              description: "Images, video and music, which answer with a file",
+              name: "Media",
+            },
+            {
               description: "Documentation, health and credit usage",
               name: "Meta",
             },
