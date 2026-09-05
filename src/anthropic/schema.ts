@@ -157,16 +157,24 @@ const toolSchema = z
     name: tool.name,
   }));
 
-/** `budget_tokens` picks a level; `thinking_level` names one directly. */
+/** `enabled` picks a level from `budget_tokens`; `adaptive` takes `output_config.effort`. */
 const thinkingBlockSchema = z.object({
   budget_tokens: z.number().int().optional(),
-  type: z.enum(["enabled", "disabled"]),
+  type: z.enum(["adaptive", "disabled", "enabled"]),
 });
+
+/** `xhigh` rounds down to `high`; the other values line up with the AI Pass levels. */
+const effortSchema = z
+  .enum(["low", "medium", "high", "xhigh", "max"])
+  .transform((effort): ThinkingLevel => (effort === "xhigh" ? "high" : effort));
+
+const outputConfigSchema = z.object({ effort: effortSchema.optional() });
 
 export const messagesRequestSchema = z.object({
   max_tokens: z.number().int().optional(),
   messages: z.array(messageSchema).optional(),
   model: chatModelSchema.optional(),
+  output_config: outputConfigSchema.optional(),
   stream: z.boolean().optional(),
   system: textOnlySchema,
   thinking: thinkingBlockSchema.optional(),
@@ -182,10 +190,15 @@ export const toThinking = (
   if (body.thinking_level) {
     return body.thinking_level;
   }
-  if (body.thinking?.type !== "enabled") {
+  const type = body.thinking?.type;
+  if (type === undefined || type === "disabled") {
     return undefined;
   }
-  const budget = body.thinking.budget_tokens;
+  const effort = body.output_config?.effort;
+  if (effort !== undefined) {
+    return effort;
+  }
+  const budget = body.thinking?.budget_tokens;
   return budget === undefined ? "medium" : levelForBudget(budget);
 };
 
