@@ -42,13 +42,15 @@ export interface CreateResult {
   readonly refusal: Response | null;
 }
 
+/** The title is the head of what the caller wrote, and never empty. */
 const createConversation = async (
   cookie: string,
   reqUuid: string,
   modelId: string,
-  title: string,
+  text: string,
   signal: AbortSignal | undefined
 ): Promise<CreateResult> => {
+  const title = text.slice(0, TITLE_PREVIEW_LENGTH) || "hi";
   const response = await postAction(
     cookie,
     "/chat.data",
@@ -91,13 +93,7 @@ export const openConversation = (
   title: string,
   signal: AbortSignal | undefined
 ): Promise<CreateResult> =>
-  createConversation(
-    cookie,
-    crypto.randomUUID(),
-    modelId,
-    title.slice(0, TITLE_PREVIEW_LENGTH) || "hi",
-    signal
-  );
+  createConversation(cookie, crypto.randomUUID(), modelId, title, signal);
 
 export const deleteConversation = async (
   cookie: string,
@@ -167,13 +163,8 @@ const sendBody = (
   return body;
 };
 
-/** The conversation's title, which is the head of what the caller wrote. */
-const titleOf = (messages: readonly AipassMessage[]): string => {
-  const first = messages
-    .at(-1)
-    ?.parts.find((part) => part.type === "text")?.text;
-  return (first ?? "").slice(0, TITLE_PREVIEW_LENGTH);
-};
+const lastText = (messages: readonly AipassMessage[]): string =>
+  messages.at(-1)?.parts.find((part) => part.type === "text")?.text ?? "";
 
 /**
  * Files ride on the turn the caller wrote, ahead of its text: the composer puts
@@ -197,13 +188,11 @@ export const sendMessage = async (
   signal: AbortSignal | undefined,
   options: SendOptions = {}
 ): Promise<SendResult> => {
-  const reqUuid = crypto.randomUUID();
-  const preview = titleOf(messages);
   const { conversationId, refusal } = await createConversation(
     cookie,
-    reqUuid,
+    crypto.randomUUID(),
     modelId,
-    preview.length > 0 ? preview : "hi",
+    lastText(messages),
     signal
   );
   if (refusal) {
