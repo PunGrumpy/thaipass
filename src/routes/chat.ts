@@ -44,7 +44,7 @@ export const chatRoutes = new Elysia()
           ),
           "400": json(
             "RequestError",
-            "Malformed body, a model outside the catalog, or a prompt the AI Pass edge refused before the model ran"
+            "Malformed body, a model the account's catalog does not list, or a prompt the AI Pass edge refused before the model ran"
           ),
           "401": json("ApiError", "Missing or malformed session cookie"),
           "502": json(

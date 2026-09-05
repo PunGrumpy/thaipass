@@ -1,4 +1,4 @@
-import { APICallError } from "@ai-sdk/provider";
+import { APICallError, NoSuchModelError } from "@ai-sdk/provider";
 import type {
   LanguageModelV2,
   LanguageModelV2File,
@@ -12,11 +12,10 @@ import type {
   SharedV2ProviderMetadata,
 } from "@ai-sdk/provider";
 
-import { fetchCatalog } from "../aipass/catalog";
+import { chatModelProblem, fetchCatalog } from "../aipass/catalog";
 import { deleteConversation, sendMessage } from "../aipass/client";
 import { inlineBase64, renderAsset } from "../aipass/media";
 import type { MediaAsset } from "../aipass/media";
-import type { ChatModel } from "../aipass/models";
 import { fetchCredits, settleCredits } from "../aipass/quotas";
 import type { Credits, CreditUsage } from "../aipass/quotas";
 import { EDGE_REFUSAL_HINT, isEdgeRefusal } from "../aipass/refusal";
@@ -121,18 +120,31 @@ interface Turn {
 
 const startTurn = async (
   cookie: string,
-  modelId: ChatModel,
+  modelId: string,
   options: LanguageModelV2CallOptions
 ): Promise<Turn> => {
   const prompt = convertPrompt(options.prompt);
   const offered = convertTools(options);
   const { tools } = offered;
+  const catalog = fetchCatalog(
+    clientIdFromCookie(cookie),
+    cookie,
+    options.abortSignal
+  );
+  const problem = chatModelProblem(modelId, await catalog);
+  if (problem) {
+    throw new NoSuchModelError({
+      message: problem,
+      modelId,
+      modelType: "languageModel",
+    });
+  }
   const credits = fetchCredits(cookie, options.abortSignal);
   const prepared = await prepareTurn(
     { tools, turns: prompt.turns },
     modelId,
     askedThinking(options),
-    () => fetchCatalog(clientIdFromCookie(cookie), cookie, options.abortSignal)
+    () => catalog
   );
   const body = toAipassMessages(prepared.prompt, modelId);
   const { conversationId, created, response } = await sendMessage(
@@ -277,7 +289,7 @@ const streamTurn = (
 
 export const aipassModel = (
   cookie: string,
-  modelId: ChatModel
+  modelId: string
 ): LanguageModelV2 => ({
   doGenerate: async (options) => {
     const turn = await startTurn(cookie, modelId, options);

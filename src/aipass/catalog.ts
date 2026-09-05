@@ -2,7 +2,8 @@ import { log } from "evlog";
 import { z } from "zod";
 
 import { ttlCache } from "../lib/cache";
-import { CHAT_MODELS, MEDIA_MODELS } from "./models";
+import { CHAT_MODELS, kindOf, MEDIA_MODELS } from "./models";
+import type { ModelKind } from "./models";
 import { loadJson } from "./request";
 
 const CATALOG_PATH = "/loaders/list-models";
@@ -31,10 +32,42 @@ export type Catalog = ReadonlyMap<string, CatalogEntry>;
 
 const cache = ttlCache<Catalog>(CACHE_TTL_MS);
 
+const knownChat: ReadonlySet<string> = new Set<string>(CHAT_MODELS);
+
 const served: ReadonlySet<string> = new Set<string>([
   ...CHAT_MODELS,
   ...MEDIA_MODELS,
 ]);
+
+const MEDIA_ROUTES = {
+  image: "/v1/images/generations",
+  music: "/v1/audio/generations",
+  video: "/v1/videos",
+} as const satisfies Record<Exclude<ModelKind, "chat">, string>;
+
+/**
+ * Why a chat request may not name the model, or null when it may. The
+ * account's catalog decides: an id upstream added after the build passes,
+ * and one upstream retired does not. When the catalog cannot be read the
+ * built-in list stands in rather than refusing everything.
+ */
+export const chatModelProblem = (
+  model: string,
+  catalog: Catalog | null
+): string | null => {
+  const kind = kindOf(model);
+  if (kind !== "chat") {
+    return `${model} makes ${kind}, send it to ${MEDIA_ROUTES[kind]}`;
+  }
+  if (catalog) {
+    return catalog.has(model)
+      ? null
+      : `unknown model ${model}, the account's catalog does not list it, see GET /v1/models`;
+  }
+  return knownChat.has(model)
+    ? null
+    : `unknown model ${model}, see GET /v1/models`;
+};
 
 const reportDrift = (catalog: Catalog): void => {
   const unknown = [...catalog.keys()].filter((id) => !served.has(id));

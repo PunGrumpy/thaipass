@@ -211,16 +211,84 @@ const catalogEntry = (
   return entry;
 };
 
+/**
+ * The catalog gates the model, so the stub lists the default alongside the
+ * Claude entry under test; a cached catalog missing it would refuse the plain
+ * requests that share the cookie.
+ */
 const catalogResponse =
   (thinking: readonly string[] | null) =>
   (path: string): Response | undefined =>
     path === MODELS_PATH
-      ? Response.json({ data: [catalogEntry(thinking)] })
+      ? Response.json({
+          data: [catalogEntry(thinking), { id: "gemini-3.1-flash-lite" }],
+        })
       : undefined;
 
 const sentBody = z.object({
   modelId: z.string(),
   thinkingLevel: z.string().optional(),
+});
+
+const catalogOf =
+  (...ids: readonly string[]) =>
+  (path: string): Response | undefined =>
+    path === MODELS_PATH
+      ? Response.json({ data: ids.map((id) => ({ id })) })
+      : undefined;
+
+test("takes a model the catalog lists even when the proxy does not know it", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(1)),
+    catalogOf("brand-new-model")
+  );
+  const response = await app.fetch(
+    chatRequest(false, { model: "brand-new-model" }, freshCookie())
+  );
+  expect(response.status).toBe(200);
+  expect(upstream.bodyOf(SEND_PREFIX, sentBody).modelId).toBe(
+    "brand-new-model"
+  );
+});
+
+test("refuses a model the catalog does not list, before anything is sent", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(1)),
+    catalogOf("claude-opus-5@azure")
+  );
+  const response = await app.fetch(
+    chatRequest(false, { model: "gpt-5.6-terra" }, freshCookie())
+  );
+  const body = errorSchema.parse(await response.json());
+  expect(response.status).toBe(400);
+  expect(body.error.message).toContain("catalog does not list it");
+  expect(upstream.calls).not.toContain(CREATE_PATH);
+});
+
+test("falls back to the models it knows when the catalog cannot be read", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)));
+  const refused = await app.fetch(
+    chatRequest(false, { model: "gpt-4o" }, freshCookie())
+  );
+  expect(refused.status).toBe(400);
+  expect(errorSchema.parse(await refused.json()).error.message).toContain(
+    "unknown model gpt-4o"
+  );
+  const served = await app.fetch(
+    chatRequest(false, { model: "gpt-5.6-terra" }, freshCookie())
+  );
+  expect(served.status).toBe(200);
+});
+
+test("points an image model at the images route", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)));
+  const response = await app.fetch(
+    chatRequest(false, { model: "gpt-image-2" }, freshCookie())
+  );
+  const body = errorSchema.parse(await response.json());
+  expect(response.status).toBe(400);
+  expect(body.error.message).toContain("/v1/images/generations");
+  expect(upstream.calls).not.toContain(CREATE_PATH);
 });
 
 test("sends a thinking level the model advertises", async () => {

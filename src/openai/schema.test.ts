@@ -12,11 +12,17 @@ test("accepts a minimal streaming request", () => {
   expect(result.data?.messages?.[0]?.content).toBe("hi");
 });
 
-test("rejects a model that is not in the catalog", () => {
+test("leaves a model it does not know to the catalog", () => {
   const result = chatRequestSchema.safeParse({ model: "gpt-4o" });
+  expect(result.success).toBe(true);
+  expect(result.data?.model).toBe("gpt-4o");
+});
+
+test("rejects an empty model", () => {
+  const result = chatRequestSchema.safeParse({ model: "" });
   expect(result.success).toBe(false);
   expect(result.error?.issues[0]?.message).toBe(
-    "unknown model, see GET /v1/models"
+    "model must not be empty, see GET /v1/models"
   );
 });
 

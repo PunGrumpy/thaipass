@@ -1,28 +1,35 @@
 import { NoSuchModelError } from "@ai-sdk/provider";
 import type { LanguageModelV2 } from "@ai-sdk/provider";
 
-import { chatModelSchema, DEFAULT_MODEL } from "../aipass/models";
-import type { ChatModel } from "../aipass/models";
+import { DEFAULT_MODEL, kindOf } from "../aipass/models";
+import type { KnownChatModel } from "../aipass/models";
 import { aipassModel } from "./model";
+
+/** The known ids complete in an editor; any other string is left to the catalog. */
+export type AipassModelId = KnownChatModel | (string & Record<never, never>);
 
 export interface AipassProviderSettings {
   readonly cookie: string;
 }
 
 export interface AipassProvider {
-  (modelId?: ChatModel): LanguageModelV2;
+  (modelId?: AipassModelId): LanguageModelV2;
   readonly languageModel: (modelId?: string) => LanguageModelV2;
 }
 
 export const createAipass = (
   settings: AipassProviderSettings
 ): AipassProvider => {
+  /**
+   * Whether the account's catalog lists the id is only known once a call
+   * carries the cookie upstream, so that check is made on the first call.
+   * What can be refused here is an empty id or one that makes media.
+   */
   const languageModel = (modelId: string = DEFAULT_MODEL): LanguageModelV2 => {
-    const known = chatModelSchema.safeParse(modelId);
-    if (!known.success) {
+    if (modelId.length === 0 || kindOf(modelId) !== "chat") {
       throw new NoSuchModelError({ modelId, modelType: "languageModel" });
     }
-    return aipassModel(settings.cookie, known.data);
+    return aipassModel(settings.cookie, modelId);
   };
   return Object.assign(languageModel, { languageModel });
 };

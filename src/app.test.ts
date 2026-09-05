@@ -38,7 +38,7 @@ test("answers 400 when a body without a content type is malformed json", async (
 
 test("answers 400 naming the field when the body fails validation", async () => {
   const response = await app.fetch(
-    post(JSON.stringify({ model: "gpt-4o" }), {
+    post(JSON.stringify({ messages: "hi" }), {
       "content-type": "application/json",
     })
   );

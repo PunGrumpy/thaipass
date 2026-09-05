@@ -43,7 +43,7 @@ export const messageRoutes = new Elysia()
           ),
           "400": json(
             "AnthropicError",
-            "Malformed body, a model outside the catalog, or a prompt the AI Pass edge refused before the model ran"
+            "Malformed body, a model the account's catalog does not list, or a prompt the AI Pass edge refused before the model ran"
           ),
           "401": json("AnthropicError", "Missing or malformed session cookie"),
           "502": json(
@@ -80,10 +80,7 @@ export const messageRoutes = new Elysia()
           "The tokens the prompt would cost, counted on the flattened prompt the proxy would send: the system prompt, the tool guide and the role-labelled turns. AI Pass reports no token counts, so this is an estimate from the text rather than a tokeniser, and it reaches no upstream and needs no credential.",
         responses: {
           "200": json("TokenCount", "The estimated size of the prompt"),
-          "400": json(
-            "AnthropicError",
-            "Malformed body, or a model outside the catalog"
-          ),
+          "400": json("AnthropicError", "Malformed body"),
         },
         summary: "Count message tokens",
         tags: ["Messages"],
