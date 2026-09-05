@@ -46,14 +46,10 @@ test("answers 400 naming the field when the body fails validation", async () => 
   expect(await messageOf(response)).toContain("invalid request body");
 });
 
-test("lists the catalog without a credential", async () => {
+test("refuses to list the catalog without a credential", async () => {
   const response = await app.fetch(new Request("https://proxy.test/v1/models"));
-  const listing = z
-    .object({ data: z.array(z.object({ id: z.string() })), object: z.string() })
-    .parse(await response.json());
-  expect(response.status).toBe(200);
-  expect(listing.object).toBe("list");
-  expect(listing.data.length).toBeGreaterThan(0);
+  expect(response.status).toBe(401);
+  expect(await messageOf(response)).toContain("missing Authorization header");
 });
 
 test("reports health without a credential", async () => {

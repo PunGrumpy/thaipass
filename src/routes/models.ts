@@ -1,12 +1,17 @@
-import { Elysia } from "elysia";
+import { Elysia, status } from "elysia";
 import { z } from "zod";
 
 import { fetchCatalog } from "../aipass/catalog";
-import { ANY_MODELS, kindOf, VIDEO_MODELS } from "../aipass/models";
+import { kindOf, VIDEO_MODELS } from "../aipass/models";
 import type { VideoModel } from "../aipass/models";
 import { clientIdFromCookie, cookieFromRequest } from "../aipass/session";
 import { optionsFor } from "../aipass/video";
 import { requestLogger } from "../lib/logger";
+import { json } from "../lib/openapi";
+import { apiError, apiErrorSchema } from "../openai/errors";
+
+const NO_CATALOG =
+  "AI Pass reported no model catalog; the cookie is likely stale";
 
 const videoOptionsSchema = z.object({
   aspectRatio: z.boolean(),
@@ -21,11 +26,13 @@ const videoOptionsSchema = z.object({
 export const modelListSchema = z.object({
   data: z.array(
     z.object({
+      free: z.boolean(),
       id: z.string(),
       kind: z.enum(["chat", "image", "video", "music"]),
       object: z.literal("model"),
       options: videoOptionsSchema.nullable(),
       owned_by: z.literal("aipass"),
+      ready: z.boolean(),
       thinking: z.array(z.string()).readonly().nullable(),
     })
   ),
@@ -45,41 +52,55 @@ const optionsOf = (id: string): VideoOptionSurface | null =>
 
 export const modelRoutes = new Elysia()
   .use(requestLogger)
-  .model({ ModelList: modelListSchema })
+  .model({ ApiError: apiErrorSchema, ModelList: modelListSchema })
   .get(
     "/v1/models",
     {
       detail: {
         description:
-          "Every model the proxy routes, with what it answers with. kind says which endpoint takes it: chat goes to /v1/chat/completions and /v1/messages, image to /v1/images/generations, video to /v1/videos, music to /v1/audio/generations. options reports what a video model accepts beyond a prompt, which differs per model, so a client can ask rather than guess. thinking reports the reasoning levels a model advertises and is filled in only when a cookie is sent, since reading it needs the account's catalog. Ids are case-sensitive and Claude carries a @provider suffix.",
-        responses: undefined,
+          "The account's catalog as AI Pass lists it, so a model upstream adds shows up without a proxy release. kind says which endpoint takes the model: chat goes to /v1/chat/completions and /v1/messages, image to /v1/images/generations, video to /v1/videos, music to /v1/audio/generations. An id the proxy has not met counts as chat. free says the model spends no credits. ready says upstream reports it as serving. options reports what a video model accepts beyond a prompt, which differs per model, so a client can ask rather than guess. thinking reports the reasoning levels a model advertises. Ids are case-sensitive and Claude carries a @provider suffix.",
+        responses: {
+          "200": json("ModelList", "The account's model catalog"),
+          "401": json("ApiError", "Missing or malformed session cookie"),
+          "502": json(
+            "ApiError",
+            "AI Pass reported no catalog, often a stale cookie"
+          ),
+        },
         security: [{ aipassCookie: [] }, { aipassCookieKey: [] }],
         summary: "List models",
         tags: ["Chat"],
       },
-      response: "ModelList",
+      response: { 200: "ModelList", 401: "ApiError", 502: "ApiError" },
     },
-    async ({ request, log }): Promise<ModelList> => {
-      /** The catalog needs a cookie; without one only `thinking` is unknown and stays null. */
+    async ({ request, log }) => {
       const lookup = cookieFromRequest(request);
-      const catalog = lookup.ok
-        ? await fetchCatalog(
-            clientIdFromCookie(lookup.cookie),
-            lookup.cookie,
-            request.signal
-          )
-        : null;
-      log.set({ authenticated: lookup.ok });
-      return {
-        data: ANY_MODELS.map((modelId) => ({
+      if (!lookup.ok) {
+        log.set({ authReason: lookup.reason, status: 401 });
+        return status(401, apiError(lookup.reason));
+      }
+      const { cookie } = lookup;
+      const clientId = clientIdFromCookie(cookie);
+      log.set({ clientId });
+      const catalog = await fetchCatalog(clientId, cookie, request.signal);
+      if (!catalog) {
+        log.set({ status: 502 });
+        return status(502, apiError(NO_CATALOG));
+      }
+      log.set({ modelCount: catalog.size });
+      const listing: ModelList = {
+        data: [...catalog].map(([modelId, entry]) => ({
+          free: entry.free,
           id: modelId,
           kind: kindOf(modelId),
           object: "model" as const,
           options: optionsOf(modelId),
           owned_by: "aipass" as const,
-          thinking: catalog?.get(modelId)?.thinking ?? null,
+          ready: entry.ready,
+          thinking: entry.thinking,
         })),
         object: "list" as const,
       };
+      return listing;
     }
   );
