@@ -117,6 +117,9 @@ export const docsRoutes = (host: AnyElysia) =>
           ],
         },
         path: "/",
+        scalar: {
+          customCss: "",
+        },
         specPath: SPEC_PATH,
       })
     );
