@@ -11,12 +11,16 @@ import type {
   SharedV2ProviderMetadata,
 } from "@ai-sdk/provider";
 
+import { fetchCatalog } from "../aipass/catalog";
 import { deleteConversation, sendMessage } from "../aipass/client";
 import type { ChatModel } from "../aipass/models";
 import { fetchCredits, settleCredits } from "../aipass/quotas";
 import type { Credits, CreditUsage } from "../aipass/quotas";
 import { EDGE_REFUSAL_HINT, isEdgeRefusal } from "../aipass/refusal";
+import { clientIdFromCookie } from "../aipass/session";
 import { parseAipassSSE } from "../aipass/stream";
+import { resolveThinking, thinkingLevelSchema } from "../aipass/thinking";
+import type { ThinkingLevel } from "../aipass/thinking";
 import { config } from "../lib/config";
 import { guardController } from "../lib/stream";
 import { addText, charTokens, estimateTokens, newCharCount } from "../tokens";
@@ -63,6 +67,19 @@ const UNSUPPORTED_SETTINGS = [
 
 const toFinishReason = (reason: string): LanguageModelV2FinishReason =>
   FINISH_REASONS.get(reason) ?? "unknown";
+
+/**
+ * AI Pass takes a reasoning level rather than a token budget, so the AI SDK's
+ * own reasoning settings do not map onto it. A caller names one under this
+ * provider's own options instead: `providerOptions.aipass.thinkingLevel`.
+ */
+const askedThinking = (
+  options: LanguageModelV2CallOptions
+): ThinkingLevel | undefined => {
+  const asked = options.providerOptions?.aipass?.thinkingLevel;
+  const parsed = thinkingLevelSchema.safeParse(asked);
+  return parsed.success ? parsed.data : undefined;
+};
 
 const settingWarnings = (
   options: LanguageModelV2CallOptions
@@ -117,11 +134,27 @@ const startTurn = async (
   const inputTokens = estimateTokens(text);
   const body = toAipassMessages(text, modelId);
   const credits = fetchCredits(cookie, options.abortSignal);
+  const asked = askedThinking(options);
+  const thinkingWarnings: LanguageModelV2CallWarning[] = [];
+  let thinkingLevel: ThinkingLevel | null = null;
+  if (asked !== undefined) {
+    const catalog = await fetchCatalog(
+      clientIdFromCookie(cookie),
+      cookie,
+      options.abortSignal
+    );
+    const resolved = resolveThinking(asked, catalog?.get(modelId));
+    thinkingLevel = resolved.level;
+    if (resolved.dropped) {
+      thinkingWarnings.push({ message: resolved.dropped, type: "other" });
+    }
+  }
   const { conversationId, created, response } = await sendMessage(
     cookie,
     modelId,
     body,
-    options.abortSignal
+    options.abortSignal,
+    thinkingLevel ? { thinkingLevel } : {}
   );
   const contentType = response.headers.get("content-type") ?? "";
   if (response.ok && response.body && contentType.includes("event-stream")) {
@@ -135,6 +168,7 @@ const startTurn = async (
         ...prompt.warnings,
         ...offered.warnings,
         ...settingWarnings(options),
+        ...thinkingWarnings,
       ],
     };
   }

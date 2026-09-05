@@ -4,6 +4,7 @@ import { config } from "../lib/config";
 import { isEdgeRefusal } from "./refusal";
 import { browserPostHeaders } from "./request";
 import type { AipassMessage } from "./stream";
+import type { ThinkingLevel } from "./thinking";
 
 const CONVERSATION_ID_LENGTH = 16;
 const TITLE_PREVIEW_LENGTH = 400;
@@ -96,6 +97,13 @@ export const deleteConversation = async (
   }
 };
 
+/** What the send-message body carries beyond the turn itself. */
+export interface SendOptions {
+  readonly thinkingLevel?: ThinkingLevel;
+  /** Read by the image models and ignored by the rest, exactly as the web UI sends it. */
+  readonly imageAspectRatio?: string;
+}
+
 export interface SendResult {
   readonly response: Response;
   readonly conversationId: string;
@@ -103,11 +111,39 @@ export interface SendResult {
   readonly created: boolean;
 }
 
+/**
+ * The send-message body. Each option is omitted rather than sent empty: the
+ * upstream validates the body as a whole, so a field carrying a default nobody
+ * asked for is a field that can fail the request.
+ */
+interface SendBody {
+  messages: readonly AipassMessage[];
+  modelId: string;
+  imageAspectRatio?: string;
+  thinkingLevel?: ThinkingLevel;
+}
+
+const sendBody = (
+  modelId: string,
+  messages: readonly AipassMessage[],
+  options: SendOptions
+): SendBody => {
+  const body: SendBody = { messages, modelId };
+  if (options.imageAspectRatio) {
+    body.imageAspectRatio = options.imageAspectRatio;
+  }
+  if (options.thinkingLevel) {
+    body.thinkingLevel = options.thinkingLevel;
+  }
+  return body;
+};
+
 export const sendMessage = async (
   cookie: string,
   modelId: string,
   messages: readonly AipassMessage[],
-  signal: AbortSignal | undefined
+  signal: AbortSignal | undefined,
+  options: SendOptions = {}
 ): Promise<SendResult> => {
   const reqUuid = crypto.randomUUID();
   const preview = (messages.at(-1)?.parts[0]?.text ?? "").slice(
@@ -127,7 +163,7 @@ export const sendMessage = async (
   const response = await fetch(
     `${config.origin}/actions/send-message/${conversationId}`,
     {
-      body: JSON.stringify({ messages, modelId }),
+      body: JSON.stringify(sendBody(modelId, messages, options)),
       headers: browserPostHeaders(
         cookie,
         `${config.origin}/chat/${conversationId}`,

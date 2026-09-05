@@ -17,6 +17,8 @@ import {
 import { clientIdFromCookie, cookieFromRequest } from "./aipass/session";
 import { parseAipassSSE } from "./aipass/stream";
 import type { SSESkips } from "./aipass/stream";
+import { resolveThinking } from "./aipass/thinking";
+import type { ThinkingLevel } from "./aipass/thinking";
 import type { DeferredEmit } from "./lib/logger";
 import { guardController } from "./lib/stream";
 import type { GuardedController } from "./lib/stream";
@@ -79,6 +81,8 @@ export interface TurnRequest {
   readonly model: ChatModel;
   readonly request: Request;
   readonly stream: boolean;
+  /** The reasoning effort the caller asked for, dropped when the model will not take it. */
+  readonly thinking?: ThinkingLevel;
   readonly wire: Wire;
 }
 
@@ -419,13 +423,27 @@ const runTurn = async (
     toolCount: tools.length,
   });
 
+  /**
+   * Only a request that asked for a level waits on the catalog. The read is
+   * cached and already in flight, but on a cold cache it is a round trip, and
+   * a caller who never mentioned thinking should not pay for it.
+   */
+  let thinkingLevel: ThinkingLevel | null = null;
+  if (turn.thinking !== undefined) {
+    const catalog = await facts.catalog;
+    const resolved = resolveThinking(turn.thinking, catalog?.get(model));
+    thinkingLevel = resolved.level;
+    log.set({ thinkingDropped: resolved.dropped, thinkingLevel });
+  }
+
   let result: SendResult;
   try {
     result = await sendMessage(
       cookie,
       model,
       toAipassMessages(prompt, model),
-      signal
+      signal,
+      thinkingLevel ? { thinkingLevel } : {}
     );
   } catch (error) {
     await recordUpstream(facts, model, log);

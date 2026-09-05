@@ -14,6 +14,10 @@ const catalogSchema = z.object({
       id: z.string(),
       isFreeCredit: z.boolean().optional(),
       ready: z.boolean().optional(),
+      /** The reasoning effort a model accepts; absent on a model that reasons at one setting. */
+      thinkingConfig: z
+        .object({ supportedLevels: z.array(z.string()).optional() })
+        .optional(),
     })
   ),
 });
@@ -21,6 +25,8 @@ const catalogSchema = z.object({
 export interface CatalogEntry {
   readonly free: boolean;
   readonly ready: boolean;
+  /** The levels this model advertises, or null when it advertises none. */
+  readonly thinking: readonly string[] | null;
 }
 
 export type Catalog = ReadonlyMap<string, CatalogEntry>;
@@ -53,7 +59,11 @@ const load = async (
   return new Map(
     listed.data.map((entry) => [
       entry.id,
-      { free: entry.isFreeCredit ?? false, ready: entry.ready ?? true },
+      {
+        free: entry.isFreeCredit ?? false,
+        ready: entry.ready ?? true,
+        thinking: entry.thinkingConfig?.supportedLevels ?? null,
+      },
     ])
   );
 };

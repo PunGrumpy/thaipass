@@ -1,3 +1,5 @@
+import type { z } from "zod";
+
 import { config } from "../lib/config";
 import { sseStream } from "./sse";
 import type { SseStreamOptions } from "./sse";
@@ -16,8 +18,18 @@ const timeout = async (): Promise<false> => {
   return false;
 };
 
+/** One upstream call, so a test can assert what the proxy actually sent. */
+export interface UpstreamCall {
+  readonly path: string;
+  readonly body: string;
+  readonly method: string;
+}
+
 export interface Upstream {
   readonly calls: string[];
+  readonly sent: UpstreamCall[];
+  /** The body of the last call whose path starts with the prefix, read through a schema. */
+  readonly bodyOf: <T>(prefix: string, schema: z.ZodType<T>) => T;
   readonly deleted: () => Promise<boolean>;
   readonly restore: () => void;
 }
@@ -33,10 +45,19 @@ export const stubUpstream = (
 ): Upstream => {
   const realFetch = globalThis.fetch;
   const calls: string[] = [];
+  const sent: UpstreamCall[] = [];
   const deletion = Promise.withResolvers<true>();
-  const handler = (input: string | URL | Request): Promise<Response> => {
+  const handler = (
+    input: string | URL | Request,
+    init?: RequestInit
+  ): Promise<Response> => {
     const path = pathOf(input);
     calls.push(path);
+    sent.push({
+      body: String(init?.body ?? ""),
+      method: init?.method ?? "GET",
+      path,
+    });
     if (path === DELETE_PATH) {
       deletion.resolve(true);
     }
@@ -56,11 +77,19 @@ export const stubUpstream = (
     preconnect: realFetch.preconnect,
   });
   return {
+    bodyOf: <T>(prefix: string, schema: z.ZodType<T>): T => {
+      const call = sent.findLast((entry) => entry.path.startsWith(prefix));
+      if (!call) {
+        throw new Error(`no upstream call to ${prefix}`);
+      }
+      return schema.parse(JSON.parse(call.body));
+    },
     calls,
     deleted: () => Promise.race([deletion.promise, timeout()]),
     restore: () => {
       globalThis.fetch = realFetch;
     },
+    sent,
   };
 };
 

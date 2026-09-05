@@ -8,7 +8,11 @@ import {
   requestErrorSchema,
   upstreamErrorSchema,
 } from "../openai/errors";
-import { chatRequestSchema, toConversation } from "../openai/schema";
+import {
+  chatRequestSchema,
+  toConversation,
+  toThinking,
+} from "../openai/schema";
 import {
   chatCompletionChunkSchema,
   chatCompletionSchema,
@@ -63,6 +67,7 @@ export const chatRoutes = new Elysia()
         model,
         request,
         stream: body.stream !== false,
+        thinking: toThinking(body),
         wire: openaiWire(model),
       });
     }

@@ -202,3 +202,9 @@ The trigger set is undocumented, so the proxy names the shape of the problem and
 ## Personal use only
 
 This is a reverse-engineered adapter over an undocumented private API. Keep it to a single account you own. Don’t publish it as a service, point it at accounts that aren’t yours, or run it at a scale that would burden the shared program.
+
+That is a request, not a licence term: the code is [MIT](LICENSE), and the paragraph above asks you to be a good guest of a free public programme rather than restricting what you may do with the software.
+
+## Credits
+
+The upstream protocol this proxy speaks — the upload handshake, the fields `send-message` accepts, and the shape of the video job — was mapped by [aipass-bridge](https://github.com/niawjunior/aipass-bridge) (MIT) first. The implementation here is its own, but the map is theirs.

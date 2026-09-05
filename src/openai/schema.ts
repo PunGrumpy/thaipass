@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { chatModelSchema } from "../aipass/models";
+import { thinkingLevelSchema } from "../aipass/thinking";
+import type { ThinkingLevel } from "../aipass/thinking";
 import { toolInputSchema } from "../tools";
 import type { ToolCall, ToolDefinition, ToolInput } from "../tools";
 import type { ChatTurn, Conversation, TurnRole } from "../translate";
@@ -86,14 +88,30 @@ const toolSchema = z
     name: tool.function.name,
   }));
 
+/**
+ * OpenAI's own name for this is `reasoning_effort`, and its values line up with
+ * the levels AI Pass takes but for `minimal`, which rounds to `low`. Both names
+ * are accepted so a client that already sends one does not have to learn ours.
+ */
+const reasoningEffortSchema = z
+  .enum(["minimal", "low", "medium", "high"])
+  .transform((effort): ThinkingLevel =>
+    effort === "minimal" ? "low" : effort
+  );
+
 export const chatRequestSchema = z.object({
   messages: z.array(messageSchema).optional(),
   model: chatModelSchema.optional(),
+  reasoning_effort: reasoningEffortSchema.optional(),
   stream: z.boolean().optional(),
+  thinking_level: thinkingLevelSchema.optional(),
   tools: z.array(toolSchema).optional(),
 });
 
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
+
+export const toThinking = (body: ChatRequest): ThinkingLevel | undefined =>
+  body.thinking_level ?? body.reasoning_effort;
 
 export const toConversation = (body: ChatRequest): Conversation => ({
   tools: body.tools ?? [],

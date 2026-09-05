@@ -21,18 +21,40 @@ const SECOND_CROSSING_MS = 700;
 
 let upstream: Upstream;
 
-const chatRequest = (stream: boolean): Request =>
+/** The request fields a test varies on top of a plain one-message body. */
+interface ChatBodyExtras {
+  model?: string;
+  reasoning_effort?: string;
+  thinking_level?: string;
+}
+
+const chatRequest = (
+  stream: boolean,
+  extra: ChatBodyExtras = {},
+  cookie: string = COOKIE
+): Request =>
   new Request("https://proxy.test/v1/chat/completions", {
     body: JSON.stringify({
       messages: [{ content: "hi", role: "user" }],
       stream,
+      ...extra,
     }),
     headers: {
-      authorization: `Bearer ${COOKIE}`,
+      authorization: `Bearer ${cookie}`,
       "content-type": "application/json",
     },
     method: "POST",
   });
+
+/**
+ * The catalog is cached per account for five minutes, so a test that depends on
+ * what the catalog said needs an account of its own or it reads the last one's.
+ */
+let accounts = 0;
+const freshCookie = (): string => {
+  accounts += 1;
+  return `__Secure-ai_passport_auth.session_token=catalog${accounts}.def`;
+};
 
 const errorSchema = z.object({
   error: z.object({ message: z.string() }),
@@ -167,6 +189,81 @@ test("returns 502 and deletes the conversation when upstream is not a stream", a
   const response = await app.fetch(chatRequest(true));
   expect(response.status).toBe(502);
   expect(upstream.calls).toContain(DELETE_PATH);
+});
+
+const MODELS_PATH = "/loaders/list-models";
+
+interface CatalogEntryPayload {
+  id: string;
+  thinkingConfig?: { supportedLevels: readonly string[] };
+}
+
+const catalogEntry = (
+  thinking: readonly string[] | null
+): CatalogEntryPayload => {
+  const entry: CatalogEntryPayload = { id: "claude-opus-5@azure" };
+  if (thinking) {
+    entry.thinkingConfig = { supportedLevels: thinking };
+  }
+  return entry;
+};
+
+const catalogResponse =
+  (thinking: readonly string[] | null) =>
+  (path: string): Response | undefined =>
+    path === MODELS_PATH
+      ? Response.json({ data: [catalogEntry(thinking)] })
+      : undefined;
+
+const sentBody = z.object({
+  modelId: z.string(),
+  thinkingLevel: z.string().optional(),
+});
+
+test("sends a thinking level the model advertises", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(1)),
+    catalogResponse(["low", "medium", "high", "max"])
+  );
+  const response = await app.fetch(
+    chatRequest(false, { model: "claude-opus-5@azure", thinking_level: "max" })
+  );
+  expect(response.status).toBe(200);
+  expect(upstream.bodyOf(SEND_PREFIX, sentBody).thinkingLevel).toBe("max");
+});
+
+test("drops a thinking level the model does not advertise, and answers anyway", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(1)),
+    catalogResponse(["low", "medium"])
+  );
+  const response = await app.fetch(
+    chatRequest(
+      false,
+      { model: "claude-opus-5@azure", thinking_level: "max" },
+      freshCookie()
+    )
+  );
+  expect(response.status).toBe(200);
+  expect(upstream.bodyOf(SEND_PREFIX, sentBody).thinkingLevel).toBeUndefined();
+});
+
+test("accepts reasoning_effort as the name an OpenAI client already sends", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)), catalogResponse(null));
+  await app.fetch(
+    chatRequest(false, { reasoning_effort: "minimal" }, freshCookie())
+  );
+  expect(upstream.bodyOf(SEND_PREFIX, sentBody).thinkingLevel).toBe("low");
+});
+
+test("sends no thinking level when the caller asked for none", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(1)),
+    catalogResponse(["low", "medium", "high"])
+  );
+  const response = await app.fetch(chatRequest(false, {}, freshCookie()));
+  expect(response.status).toBe(200);
+  expect(upstream.bodyOf(SEND_PREFIX, sentBody).thinkingLevel).toBeUndefined();
 });
 
 const EDGE_REFUSAL_BODY = "<html>Request blocked</html>";

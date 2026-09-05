@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { chatModelSchema } from "../aipass/models";
+import { levelForBudget, thinkingLevelSchema } from "../aipass/thinking";
+import type { ThinkingLevel } from "../aipass/thinking";
 import { toolInputSchema } from "../tools";
 import type { ToolDefinition, ToolInput } from "../tools";
 import type { ChatTurn, Conversation } from "../translate";
@@ -116,16 +118,41 @@ const toolSchema = z
     name: tool.name,
   }));
 
+/**
+ * Anthropic's own thinking block, whose `budget_tokens` is turned into one of
+ * the levels AI Pass takes. `thinking_level` is accepted alongside it for a
+ * caller that would rather name the level than a budget.
+ */
+const thinkingBlockSchema = z.object({
+  budget_tokens: z.number().int().optional(),
+  type: z.enum(["enabled", "disabled"]),
+});
+
 export const messagesRequestSchema = z.object({
   max_tokens: z.number().int().optional(),
   messages: z.array(messageSchema).optional(),
   model: chatModelSchema.optional(),
   stream: z.boolean().optional(),
   system: textOnlySchema,
+  thinking: thinkingBlockSchema.optional(),
+  thinking_level: thinkingLevelSchema.optional(),
   tools: z.array(toolSchema).optional(),
 });
 
 export type MessagesRequest = z.infer<typeof messagesRequestSchema>;
+
+export const toThinking = (
+  body: MessagesRequest
+): ThinkingLevel | undefined => {
+  if (body.thinking_level) {
+    return body.thinking_level;
+  }
+  if (body.thinking?.type !== "enabled") {
+    return undefined;
+  }
+  const budget = body.thinking.budget_tokens;
+  return budget === undefined ? "medium" : levelForBudget(budget);
+};
 
 export const toConversation = (body: MessagesRequest): Conversation => {
   const turns: ChatTurn[] = [];

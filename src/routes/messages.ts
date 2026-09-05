@@ -2,7 +2,11 @@ import { Elysia } from "elysia";
 
 import { DEFAULT_MODEL } from "../aipass/models";
 import { anthropicErrorSchema } from "../anthropic/errors";
-import { messagesRequestSchema, toConversation } from "../anthropic/schema";
+import {
+  messagesRequestSchema,
+  toConversation,
+  toThinking,
+} from "../anthropic/schema";
 import {
   anthropicWire,
   messageSchema,
@@ -62,6 +66,7 @@ export const messageRoutes = new Elysia()
         model,
         request,
         stream: body.stream === true,
+        thinking: toThinking(body),
         wire: anthropicWire(model),
       });
     }
