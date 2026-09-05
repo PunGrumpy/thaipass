@@ -17,11 +17,7 @@ const withToken = (cookie: string): CookieLookup =>
     ? { cookie, ok: true }
     : { ok: false, reason: NO_TOKEN };
 
-/**
- * The cookie travels as a bearer token, or in `x-api-key`, which is where an
- * Anthropic client puts its key. The two never both need reading: a client
- * sends one or the other.
- */
+/** A client sends the cookie as a bearer token or, from an Anthropic client, in `x-api-key`. */
 export const cookieFromRequest = (request: Request): CookieLookup => {
   const apiKey = request.headers.get("x-api-key");
   if (apiKey) {

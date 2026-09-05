@@ -222,6 +222,22 @@ test("returns 502 in the anthropic error shape when upstream is not a stream", a
   expect(upstream.calls).toContain(DELETE_PATH);
 });
 
+test("reports an edge refusal as an invalid_request_error rather than a bad gateway", async () => {
+  upstream = stubUpstream(
+    () =>
+      new Response("<html>Request blocked</html>", {
+        headers: { "content-type": "text/html" },
+        status: 403,
+      })
+  );
+  const response = await app.fetch(messagesRequest({}));
+  const body = errorSchema.parse(await response.json());
+  expect(response.status).toBe(400);
+  expect(body.error.type).toBe("invalid_request_error");
+  expect(body.error.message).toContain("before the model ran");
+  expect(upstream.calls).toContain(DELETE_PATH);
+});
+
 const usageSchema = z.object({
   usage: z.object({
     credits: z

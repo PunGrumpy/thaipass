@@ -6,29 +6,31 @@ import { deleteConversation, sendMessage } from "./aipass/client";
 import type { SendResult } from "./aipass/client";
 import { fetchIdentity } from "./aipass/identity";
 import type { Identity } from "./aipass/identity";
+import { InlineError } from "./aipass/inline";
+import { renderAsset } from "./aipass/media";
 import type { ChatModel } from "./aipass/models";
 import { fetchCredits, settleCredits } from "./aipass/quotas";
 import type { CreditUsage, Credits } from "./aipass/quotas";
+import {
+  EDGE_REFUSAL_CLIENT_STATUS,
+  EDGE_REFUSAL_HINT,
+  isEdgeRefusal,
+} from "./aipass/refusal";
 import { clientIdFromCookie, cookieFromRequest } from "./aipass/session";
-import { parseAipassSSE } from "./aipass/stream";
-import type { SSESkips } from "./aipass/stream";
+import type { ThinkingLevel } from "./aipass/thinking";
+import { UploadError } from "./aipass/upload";
 import type { DeferredEmit } from "./lib/logger";
 import { guardController } from "./lib/stream";
 import type { GuardedController } from "./lib/stream";
-import { addText, charTokens, estimateTokens, newCharCount } from "./tokens";
-import type { CharCount } from "./tokens";
-import { renderCall, splitReply } from "./tools";
-import type { ReplyPart, ToolCall } from "./tools";
-import { flattenPrompt, toAipassMessages } from "./translate";
+import { finishReasonOf, prepareTurn, readReply, replyTokens } from "./reply";
+import type { PreparedTurn, ReplyReader, ReplyTally } from "./reply";
+import type { ToolCall } from "./tools";
+import { toAipassMessages } from "./translate";
 import type { Conversation } from "./translate";
 
 /**
- * One turn against AI Pass, rendered through a protocol's wire.
- *
- * The turn is the same whichever protocol asked for it: open a throwaway
- * conversation, send the flattened prompt, split the reply into text and tool
- * calls, delete the conversation, write one wide event. What differs is the
- * shape of the bytes going back, and that is all a `Wire` decides.
+ * One turn against AI Pass. The turn is the same whichever protocol asked for
+ * it; a `Wire` decides only the shape of the bytes going back.
  */
 
 export interface Failure {
@@ -74,13 +76,13 @@ export interface TurnRequest {
   readonly model: ChatModel;
   readonly request: Request;
   readonly stream: boolean;
+  readonly thinking?: ThinkingLevel;
   readonly wire: Wire;
 }
 
 const encoder = new TextEncoder();
 const DETAIL_LIMIT = 300;
 const CLIENT_CLOSED_STATUS = 499;
-const TOOL_CALLS = "tool-calls";
 
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
@@ -126,25 +128,37 @@ const recordUpstream = async (
   }
 };
 
+const hintFor = (staleCookie: boolean, edgeRefused: boolean): string => {
+  if (staleCookie) {
+    return "; cookie is stale, re-auth needed";
+  }
+  return edgeRefused ? EDGE_REFUSAL_HINT : "";
+};
+
 const upstreamError = async (
   wire: Wire,
   cookie: string,
   response: Response,
-  conversationId: string,
+  conversation: { readonly id: string; readonly created: boolean },
   log: RequestLogger
 ): Promise<Response> => {
   const contentType = response.headers.get("content-type") ?? "";
   const location = response.headers.get("location");
   const detail = response.body ? await response.text().catch(() => "") : "";
-  await deleteConversation(cookie, conversationId);
+  if (conversation.created) {
+    await deleteConversation(cookie, conversation.id);
+  }
   const staleCookie =
     response.status >= 300 &&
     response.status < 400 &&
     (location ?? "").includes("sign-in");
-  const hint = staleCookie ? "; cookie is stale, re-auth needed" : "";
+  const edgeRefused = isEdgeRefusal(response.status);
+  const status = edgeRefused ? EDGE_REFUSAL_CLIENT_STATUS : 502;
+  const hint = hintFor(staleCookie, edgeRefused);
   log.set({
+    edgeRefused,
     staleCookie,
-    status: 502,
+    status,
     upstreamContentType: contentType,
     upstreamStatus: response.status,
   });
@@ -153,79 +167,41 @@ const upstreamError = async (
     detail: detail.slice(0, DETAIL_LIMIT),
     location: location ?? undefined,
     message: `upstream ${response.status} (${contentType || "no content-type"})${hint}`,
-    status: 502,
+    status,
   });
 };
 
 interface Completion {
-  readonly body: ReadableStream<Uint8Array>;
-  readonly conversation: Conversation;
-  readonly inputTokens: number;
   readonly conversationId: string;
   readonly cookie: string;
   readonly facts: UpstreamFacts;
+  readonly inputTokens: number;
   readonly log: RequestLogger;
   readonly model: string;
-  readonly startedAt: number;
+  readonly reader: ReplyReader;
   readonly wire: Wire;
 }
 
-/** What one reply amounted to, for the wide event. */
-interface Tally {
-  calls: number;
-  chars: number;
-  deltas: number;
-  finishReason: string;
-  msToFirstChunk: number | undefined;
-  reasoningChars: number;
-  readonly reply: CharCount;
-  readonly skips: SSESkips;
-}
-
-const newTally = (): Tally => ({
-  calls: 0,
-  chars: 0,
-  deltas: 0,
-  finishReason: "stop",
-  msToFirstChunk: undefined,
-  reasoningChars: 0,
-  reply: newCharCount(),
-  skips: { count: 0, types: new Set() },
-});
-
-const tallyFields = (tally: Tally) => ({
+const tallyFields = (tally: ReplyTally) => ({
   deltas: tally.deltas,
-  finishReason: tally.finishReason,
+  files: tally.files,
+  finishReason: finishReasonOf(tally),
   msToFirstChunk: tally.msToFirstChunk,
   reasoningChars: tally.reasoningChars,
   replyChars: tally.chars,
-  replyTokens: charTokens(tally.reply),
+  replyTokens: replyTokens(tally),
   toolCalls: tally.calls,
   undecodedEvents: tally.skips.count,
   undecodedTypes: [...tally.skips.types].join(","),
 });
 
-const settle = (tally: Tally): void => {
-  if (tally.calls > 0 && tally.finishReason === "stop") {
-    tally.finishReason = TOOL_CALLS;
-  }
-};
-
 const streamCompletion = (
   completion: Completion,
   deferEmit: DeferredEmit
 ): Response => {
-  const {
-    body,
-    conversation,
-    conversationId,
-    cookie,
-    facts,
-    log,
-    model,
-    startedAt,
-    wire,
-  } = completion;
+  const { conversationId, cookie, facts, log, model, reader, wire } =
+    completion;
+  const { tally } = reader;
   deferEmit.value = true;
   let guarded: GuardedController<Uint8Array> | undefined;
   const stream = new ReadableStream<Uint8Array>({
@@ -239,49 +215,30 @@ const streamCompletion = (
       const send = (text: string): void => {
         out.enqueue(encoder.encode(text));
       };
-      const tally = newTally();
-      const emit = (parts: readonly ReplyPart[]): void => {
-        for (const part of parts) {
-          if (part.type === "text") {
-            tally.chars += part.text.length;
-            addText(tally.reply, part.text);
-            send(frames.text(part.text));
-          } else {
-            tally.calls += 1;
-            addText(tally.reply, renderCall(part.call));
-            send(frames.call(part.call));
-          }
-        }
-      };
-      const splitter = splitReply(conversation.tools);
       try {
         send(frames.open());
-        for await (const event of parseAipassSSE(body, tally.skips)) {
-          if (event.kind === "delta") {
-            tally.msToFirstChunk ??= Date.now() - startedAt;
-            tally.deltas += 1;
-            emit(splitter.push(event.text));
-          } else if (event.kind === "reasoning") {
-            tally.reasoningChars += event.text.length;
-          } else if (event.kind === "finish") {
-            tally.finishReason = event.reason;
-          } else {
+        for await (const event of reader.events) {
+          if (event.kind === "text") {
+            send(frames.text(event.text));
+          } else if (event.kind === "call") {
+            send(frames.call(event.call));
+          } else if (event.kind === "file") {
+            send(frames.text(renderAsset(event.asset)));
+          } else if (event.kind === "error") {
             log.error(new Error(`upstream stream: ${event.message}`));
             send(frames.text(`\n[proxy: ${event.message}]`));
           }
         }
-        emit(splitter.flush());
       } catch (error) {
         log.error(asError(error));
         tally.finishReason = "error";
         send(frames.text(`\n[proxy error: ${error}]`));
       } finally {
-        settle(tally);
         const [{ after, usage }] = await Promise.all([
           settleCredits(cookie, facts.credits),
           deleteConversation(cookie, conversationId),
         ]);
-        send(frames.close(tally.finishReason, charTokens(tally.reply), usage));
+        send(frames.close(finishReasonOf(tally), replyTokens(tally), usage));
         log.set({
           ...tallyFields(tally),
           clientAborted: !out.isOpen(),
@@ -306,43 +263,20 @@ const streamCompletion = (
 const bufferedCompletion = async (
   completion: Completion
 ): Promise<Response> => {
-  const {
-    body,
-    conversation,
-    conversationId,
-    cookie,
-    facts,
-    log,
-    model,
-    startedAt,
-    wire,
-  } = completion;
-  const tally = newTally();
+  const { conversationId, cookie, facts, log, model, reader, wire } =
+    completion;
+  const { tally } = reader;
   const calls: ToolCall[] = [];
   let text = "";
-  const collect = (parts: readonly ReplyPart[]): void => {
-    for (const part of parts) {
-      if (part.type === "text") {
-        text += part.text;
-        addText(tally.reply, part.text);
-      } else {
-        calls.push(part.call);
-        addText(tally.reply, renderCall(part.call));
-      }
-    }
-  };
-  const splitter = splitReply(conversation.tools);
   try {
-    for await (const event of parseAipassSSE(body, tally.skips)) {
-      if (event.kind === "delta") {
-        tally.msToFirstChunk ??= Date.now() - startedAt;
-        tally.deltas += 1;
-        collect(splitter.push(event.text));
-      } else if (event.kind === "reasoning") {
-        tally.reasoningChars += event.text.length;
-      } else if (event.kind === "finish") {
-        tally.finishReason = event.reason;
-      } else {
+    for await (const event of reader.events) {
+      if (event.kind === "text") {
+        text += event.text;
+      } else if (event.kind === "call") {
+        calls.push(event.call);
+      } else if (event.kind === "file") {
+        text += renderAsset(event.asset);
+      } else if (event.kind === "error") {
         return failUpstream(
           wire,
           log,
@@ -351,14 +285,10 @@ const bufferedCompletion = async (
         );
       }
     }
-    collect(splitter.flush());
   } catch (error) {
     return failUpstream(wire, log, error, `stream error: ${error}`);
   } finally {
     await deleteConversation(cookie, conversationId);
-    tally.calls = calls.length;
-    tally.chars = text.length;
-    settle(tally);
     log.set(tallyFields(tally));
   }
   const { after, usage } = await settleCredits(cookie, facts.credits);
@@ -367,9 +297,9 @@ const bufferedCompletion = async (
   return wire.reply({
     calls,
     credits: usage,
-    finishReason: tally.finishReason,
+    finishReason: finishReasonOf(tally),
     inputTokens: completion.inputTokens,
-    outputTokens: charTokens(tally.reply),
+    outputTokens: replyTokens(tally),
     text,
   });
 };
@@ -387,20 +317,42 @@ const runTurn = async (
     credits: fetchCredits(cookie, signal),
     identity: fetchIdentity(clientId, cookie, signal),
   };
-  const { turns, tools } = conversation;
-  const prompt = flattenPrompt(conversation);
-  const inputTokens = estimateTokens(prompt);
-
   log.set({
     completionId: wire.id,
-    messageCount: turns.length,
+    messageCount: conversation.turns.length,
     model,
-    promptChars: prompt.length,
-    promptTokens: inputTokens,
     protocol: wire.protocol,
     streaming: stream,
-    toolCount: tools.length,
+    toolCount: conversation.tools.length,
   });
+
+  /** A file the proxy cannot read fails the request rather than being dropped. */
+  let prepared: PreparedTurn;
+  try {
+    prepared = await prepareTurn(
+      conversation,
+      model,
+      turn.thinking,
+      () => facts.catalog
+    );
+  } catch (error) {
+    const message =
+      error instanceof InlineError ? error.message : String(error);
+    log.set({ status: 400 });
+    return wire.fail({ message, status: 400 });
+  }
+  const { inputTokens, prompt, sendOptions } = prepared;
+  log.set({
+    attachmentCount: sendOptions.attachments?.length ?? 0,
+    promptChars: prompt.length,
+    promptTokens: inputTokens,
+  });
+  if (turn.thinking !== undefined) {
+    log.set({
+      thinkingDropped: prepared.thinkingDropped,
+      thinkingLevel: prepared.thinkingLevel,
+    });
+  }
 
   let result: SendResult;
   try {
@@ -408,14 +360,20 @@ const runTurn = async (
       cookie,
       model,
       toAipassMessages(prompt, model),
-      signal
+      signal,
+      sendOptions
     );
   } catch (error) {
     await recordUpstream(facts, model, log);
+    if (error instanceof UploadError) {
+      log.set({ status: 400 });
+      log.error(error);
+      return wire.fail({ message: error.message, status: 400 });
+    }
     return failUpstream(wire, log, error, `upstream fetch failed: ${error}`);
   }
 
-  const { response: upstream, conversationId } = result;
+  const { response: upstream, conversationId, created } = result;
   const contentType = upstream.headers.get("content-type") ?? "";
   const upstreamBody = upstream.ok ? upstream.body : null;
   log.set({
@@ -425,19 +383,29 @@ const runTurn = async (
   });
   if (!upstreamBody || !contentType.includes("event-stream")) {
     await recordUpstream(facts, model, log);
-    return await upstreamError(wire, cookie, upstream, conversationId, log);
+    return await upstreamError(
+      wire,
+      cookie,
+      upstream,
+      { created, id: conversationId },
+      log
+    );
   }
 
   const completion: Completion = {
-    body: upstreamBody,
-    conversation,
     conversationId,
     cookie,
     facts,
     inputTokens,
     log,
     model,
-    startedAt,
+    reader: readReply({
+      body: upstreamBody,
+      cookie,
+      signal,
+      startedAt,
+      tools: conversation.tools,
+    }),
     wire,
   };
   return stream
@@ -445,7 +413,6 @@ const runTurn = async (
     : await bufferedCompletion(completion);
 };
 
-/** Authenticates the request, then runs the turn it describes. */
 export const serveTurn = (turn: TurnRequest): Promise<Response> | Response => {
   const { log, request, wire } = turn;
   const lookup = cookieFromRequest(request);

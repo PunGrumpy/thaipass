@@ -1,6 +1,7 @@
 import { APICallError } from "@ai-sdk/provider";
 import type {
   LanguageModelV2,
+  LanguageModelV2File,
   LanguageModelV2CallOptions,
   LanguageModelV2CallWarning,
   LanguageModelV2Content,
@@ -11,17 +12,23 @@ import type {
   SharedV2ProviderMetadata,
 } from "@ai-sdk/provider";
 
+import { fetchCatalog } from "../aipass/catalog";
 import { deleteConversation, sendMessage } from "../aipass/client";
+import { inlineBase64, renderAsset } from "../aipass/media";
+import type { MediaAsset } from "../aipass/media";
 import type { ChatModel } from "../aipass/models";
 import { fetchCredits, settleCredits } from "../aipass/quotas";
 import type { Credits, CreditUsage } from "../aipass/quotas";
-import { parseAipassSSE } from "../aipass/stream";
+import { EDGE_REFUSAL_HINT, isEdgeRefusal } from "../aipass/refusal";
+import { clientIdFromCookie } from "../aipass/session";
+import { thinkingLevelSchema } from "../aipass/thinking";
+import type { ThinkingLevel } from "../aipass/thinking";
 import { config } from "../lib/config";
 import { guardController } from "../lib/stream";
-import { addText, charTokens, estimateTokens, newCharCount } from "../tokens";
-import { renderCall, splitReply } from "../tools";
-import type { ReplyPart, ToolCall, ToolDefinition } from "../tools";
-import { flattenPrompt, toAipassMessages } from "../translate";
+import { finishReasonOf, prepareTurn, readReply, replyTokens } from "../reply";
+import type { ReplyReader } from "../reply";
+import type { ToolCall } from "../tools";
+import { toAipassMessages } from "../translate";
 import { convertPrompt, convertTools } from "./prompt";
 
 const PROVIDER = "aipass";
@@ -63,6 +70,15 @@ const UNSUPPORTED_SETTINGS = [
 const toFinishReason = (reason: string): LanguageModelV2FinishReason =>
   FINISH_REASONS.get(reason) ?? "unknown";
 
+/** AI Pass takes a level, not a token budget, so the SDK's own reasoning settings do not map. */
+const askedThinking = (
+  options: LanguageModelV2CallOptions
+): ThinkingLevel | undefined => {
+  const asked = options.providerOptions?.aipass?.thinkingLevel;
+  const parsed = thinkingLevelSchema.safeParse(asked);
+  return parsed.success ? parsed.data : undefined;
+};
+
 const settingWarnings = (
   options: LanguageModelV2CallOptions
 ): LanguageModelV2CallWarning[] => {
@@ -96,11 +112,10 @@ const toolCallPart = (call: ToolCall): LanguageModelV2ToolCall => ({
 });
 
 interface Turn {
-  readonly body: ReadableStream<Uint8Array>;
+  readonly reader: ReplyReader;
   readonly conversationId: string;
   readonly credits: Promise<Credits | null>;
   readonly inputTokens: number;
-  readonly tools: readonly ToolDefinition[];
   readonly warnings: LanguageModelV2CallWarning[];
 }
 
@@ -112,48 +127,73 @@ const startTurn = async (
   const prompt = convertPrompt(options.prompt);
   const offered = convertTools(options);
   const { tools } = offered;
-  const text = flattenPrompt({ tools, turns: prompt.turns });
-  const inputTokens = estimateTokens(text);
-  const body = toAipassMessages(text, modelId);
   const credits = fetchCredits(cookie, options.abortSignal);
-  const { conversationId, response } = await sendMessage(
+  const prepared = await prepareTurn(
+    { tools, turns: prompt.turns },
+    modelId,
+    askedThinking(options),
+    () => fetchCatalog(clientIdFromCookie(cookie), cookie, options.abortSignal)
+  );
+  const body = toAipassMessages(prepared.prompt, modelId);
+  const { conversationId, created, response } = await sendMessage(
     cookie,
     modelId,
     body,
-    options.abortSignal
+    options.abortSignal,
+    prepared.sendOptions
   );
   const contentType = response.headers.get("content-type") ?? "";
   if (response.ok && response.body && contentType.includes("event-stream")) {
+    const warnings = [
+      ...prompt.warnings,
+      ...offered.warnings,
+      ...settingWarnings(options),
+    ];
+    if (prepared.thinkingDropped) {
+      warnings.push({ message: prepared.thinkingDropped, type: "other" });
+    }
     return {
-      body: response.body,
       conversationId,
       credits,
-      inputTokens,
-      tools,
-      warnings: [
-        ...prompt.warnings,
-        ...offered.warnings,
-        ...settingWarnings(options),
-      ],
+      inputTokens: prepared.inputTokens,
+      reader: readReply({
+        body: response.body,
+        cookie,
+        signal: options.abortSignal,
+        tools,
+      }),
+      warnings,
     };
   }
   const detail = response.body ? await response.text().catch(() => "") : "";
-  await deleteConversation(cookie, conversationId);
+  if (created) {
+    await deleteConversation(cookie, conversationId);
+  }
+  const hint = isEdgeRefusal(response.status) ? EDGE_REFUSAL_HINT : "";
   throw new APICallError({
-    message: `AI Pass answered ${response.status} (${contentType || "no content-type"})`,
+    message: `AI Pass answered ${response.status} (${contentType || "no content-type"})${hint}`,
     requestBodyValues: { messages: body, modelId },
     responseBody: detail.slice(0, DETAIL_LIMIT),
     statusCode: response.status,
-    url: `${config.origin}/actions/send-message/${conversationId}`,
+    url: created
+      ? `${config.origin}/actions/send-message/${conversationId}`
+      : `${config.origin}/chat.data`,
   });
 };
 
-/** A reply with calls finishes as tool-calls unless upstream said otherwise. */
-const settle = (
-  finishReason: LanguageModelV2FinishReason,
-  calls: number
-): LanguageModelV2FinishReason =>
-  calls > 0 && finishReason === "stop" ? "tool-calls" : finishReason;
+/** An inline asset becomes the SDK's file part; a link is rendered as text with the reason. */
+const assetPart = (
+  asset: MediaAsset
+): LanguageModelV2File | { readonly text: string } => {
+  if (!asset.inline) {
+    return { text: renderAsset(asset) };
+  }
+  return {
+    data: inlineBase64(asset),
+    mediaType: asset.mediaType,
+    type: "file",
+  };
+};
 
 const streamTurn = (
   cookie: string,
@@ -162,11 +202,11 @@ const streamTurn = (
   new ReadableStream<LanguageModelV2StreamPart>({
     async start(raw) {
       const out = guardController(raw);
+      const { reader } = turn;
+      const { tally } = reader;
       out.enqueue({ type: "stream-start", warnings: turn.warnings });
-      let finishReason: LanguageModelV2FinishReason = "stop";
       let textId: string | undefined;
       let textBlocks = 0;
-      let calls = 0;
       let reasoningOpen = false;
       const closeText = (): void => {
         if (textId !== undefined) {
@@ -174,30 +214,21 @@ const streamTurn = (
           textId = undefined;
         }
       };
-      const replyCount = newCharCount();
-      const emit = (parts: readonly ReplyPart[]): void => {
-        for (const part of parts) {
-          if (part.type === "call") {
-            closeText();
-            calls += 1;
-            addText(replyCount, renderCall(part.call));
-            out.enqueue(toolCallPart(part.call));
-            continue;
-          }
-          addText(replyCount, part.text);
-          if (textId === undefined) {
-            textId = `text-${textBlocks}`;
-            textBlocks += 1;
-            out.enqueue({ id: textId, type: "text-start" });
-          }
-          out.enqueue({ delta: part.text, id: textId, type: "text-delta" });
+      const text = (delta: string): void => {
+        if (textId === undefined) {
+          textId = `text-${textBlocks}`;
+          textBlocks += 1;
+          out.enqueue({ id: textId, type: "text-start" });
         }
+        out.enqueue({ delta, id: textId, type: "text-delta" });
       };
-      const splitter = splitReply(turn.tools);
       try {
-        for await (const event of parseAipassSSE(turn.body)) {
-          if (event.kind === "delta") {
-            emit(splitter.push(event.text));
+        for await (const event of reader.events) {
+          if (event.kind === "text") {
+            text(event.text);
+          } else if (event.kind === "call") {
+            closeText();
+            out.enqueue(toolCallPart(event.call));
           } else if (event.kind === "reasoning") {
             if (!reasoningOpen) {
               out.enqueue({ id: REASONING_ID, type: "reasoning-start" });
@@ -208,16 +239,21 @@ const streamTurn = (
               id: REASONING_ID,
               type: "reasoning-delta",
             });
-          } else if (event.kind === "finish") {
-            finishReason = toFinishReason(event.reason);
+          } else if (event.kind === "file") {
+            const part = assetPart(event.asset);
+            if ("type" in part) {
+              closeText();
+              out.enqueue(part);
+            } else {
+              text(part.text);
+            }
           } else {
-            finishReason = "error";
+            tally.finishReason = "error";
             out.enqueue({ error: new Error(event.message), type: "error" });
           }
         }
-        emit(splitter.flush());
       } catch (error) {
-        finishReason = "error";
+        tally.finishReason = "error";
         out.enqueue({ error, type: "error" });
       } finally {
         if (reasoningOpen) {
@@ -229,10 +265,10 @@ const streamTurn = (
           deleteConversation(cookie, turn.conversationId),
         ]);
         out.enqueue({
-          finishReason: settle(finishReason, calls),
+          finishReason: toFinishReason(finishReasonOf(tally)),
           providerMetadata: creditMetadata(usage),
           type: "finish",
-          usage: estimatedUsage(turn.inputTokens, charTokens(replyCount)),
+          usage: estimatedUsage(turn.inputTokens, replyTokens(tally)),
         });
         out.close();
       }
@@ -245,36 +281,31 @@ export const aipassModel = (
 ): LanguageModelV2 => ({
   doGenerate: async (options) => {
     const turn = await startTurn(cookie, modelId, options);
+    const { reader } = turn;
+    const { tally } = reader;
     const calls: ToolCall[] = [];
+    const files: LanguageModelV2File[] = [];
     let text = "";
     let reasoning = "";
-    let finishReason: LanguageModelV2FinishReason = "stop";
-    const replyCount = newCharCount();
-    const collect = (parts: readonly ReplyPart[]): void => {
-      for (const part of parts) {
-        if (part.type === "text") {
-          text += part.text;
-          addText(replyCount, part.text);
-        } else {
-          calls.push(part.call);
-          addText(replyCount, renderCall(part.call));
-        }
-      }
-    };
-    const splitter = splitReply(turn.tools);
     try {
-      for await (const event of parseAipassSSE(turn.body)) {
-        if (event.kind === "delta") {
-          collect(splitter.push(event.text));
+      for await (const event of reader.events) {
+        if (event.kind === "text") {
+          text += event.text;
+        } else if (event.kind === "call") {
+          calls.push(event.call);
         } else if (event.kind === "reasoning") {
           reasoning += event.text;
-        } else if (event.kind === "finish") {
-          finishReason = toFinishReason(event.reason);
+        } else if (event.kind === "file") {
+          const part = assetPart(event.asset);
+          if ("type" in part) {
+            files.push(part);
+          } else {
+            text += part.text;
+          }
         } else {
-          finishReason = "error";
+          tally.finishReason = "error";
         }
       }
-      collect(splitter.flush());
     } finally {
       await deleteConversation(cookie, turn.conversationId);
     }
@@ -286,12 +317,12 @@ export const aipassModel = (
     if (text.length > 0) {
       content.push({ text, type: "text" });
     }
-    content.push(...calls.map(toolCallPart));
+    content.push(...files, ...calls.map(toolCallPart));
     return {
       content,
-      finishReason: settle(finishReason, calls.length),
+      finishReason: toFinishReason(finishReasonOf(tally)),
       providerMetadata: creditMetadata(usage),
-      usage: estimatedUsage(turn.inputTokens, charTokens(replyCount)),
+      usage: estimatedUsage(turn.inputTokens, replyTokens(tally)),
       warnings: turn.warnings,
     };
   },

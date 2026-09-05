@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { chatModelSchema } from "../aipass/models";
+import { levelForBudget, thinkingLevelSchema } from "../aipass/thinking";
+import type { ThinkingLevel } from "../aipass/thinking";
 import { toolInputSchema } from "../tools";
 import type { ToolDefinition, ToolInput } from "../tools";
 import type { ChatTurn, Conversation } from "../translate";
@@ -9,7 +11,7 @@ const textBlockSchema = z
   .object({ text: z.string(), type: z.literal("text") })
   .transform((block) => block.text);
 
-/** Text blocks joined, anything else (images, documents) dropped. */
+/** System text blocks joined; other block types dropped. */
 const textOnlySchema = z
   .union([
     z.string(),
@@ -26,6 +28,11 @@ const textOnlySchema = z
 type Block =
   | { readonly kind: "text"; readonly text: string }
   | {
+      readonly kind: "file";
+      readonly uri: string;
+      readonly filename?: string;
+    }
+  | {
       readonly kind: "call";
       readonly id: string;
       readonly name: string;
@@ -34,8 +41,39 @@ type Block =
   | { readonly kind: "result"; readonly callId: string; readonly text: string }
   | { readonly kind: "skip" };
 
+/**
+ * A base64 source becomes a data URI so every protocol's files decode in one
+ * place. A `url` source is passed through to fail there with the reason.
+ */
+const sourceSchema = z.union([
+  z
+    .object({
+      data: z.string(),
+      /** Anthropic requires it; a caller that omits it should still be carried. */
+      media_type: z.string().default("application/octet-stream"),
+      type: z.literal("base64"),
+    })
+    .transform((source) => `data:${source.media_type};base64,${source.data}`),
+  z
+    .object({ type: z.literal("url"), url: z.string() })
+    .transform((source) => source.url),
+]);
+
+const fileBlockSchema = z
+  .object({
+    source: sourceSchema,
+    title: z.string().optional(),
+    type: z.enum(["image", "document"]),
+  })
+  .transform((block): Block => ({
+    filename: block.title,
+    kind: "file",
+    uri: block.source,
+  }));
+
 const blockSchema = z.union([
   textBlockSchema.transform((text): Block => ({ kind: "text", text })),
+  fileBlockSchema,
   z
     .object({
       id: z.string(),
@@ -68,9 +106,8 @@ const roleSchema = z.enum(["user", "assistant", "system"]);
 type Role = z.infer<typeof roleSchema>;
 
 /**
- * An Anthropic message can hold several things at once: a user turn carries
- * the results of the calls the assistant made, then the user's own words. Each
- * becomes its own turn so the flattened prompt keeps them apart.
+ * A user message can carry tool results and the user's own words at once;
+ * each becomes its own turn so the flattened prompt keeps them apart.
  */
 const toTurns = (role: Role, blocks: readonly Block[]): ChatTurn[] => {
   const text = blocks
@@ -87,10 +124,14 @@ const toTurns = (role: Role, blocks: readonly Block[]): ChatTurn[] => {
   const calls = blocks
     .filter((block) => block.kind === "call")
     .map(({ id, input, name }) => ({ id, input, name }));
+  const files = blocks
+    .filter((block) => block.kind === "file")
+    .map(({ filename, uri }) => ({ filename, uri }));
+  const attached = files.length > 0 ? { files } : {};
   if (calls.length > 0 && role === "assistant") {
-    turns.push({ calls, content: text, role });
-  } else if (text.length > 0 || turns.length === 0) {
-    turns.push({ content: text, role });
+    turns.push({ calls, content: text, role, ...attached });
+  } else if (text.length > 0 || files.length > 0 || turns.length === 0) {
+    turns.push({ content: text, role, ...attached });
   }
   return turns;
 };
@@ -116,16 +157,37 @@ const toolSchema = z
     name: tool.name,
   }));
 
+/** `budget_tokens` picks a level; `thinking_level` names one directly. */
+const thinkingBlockSchema = z.object({
+  budget_tokens: z.number().int().optional(),
+  type: z.enum(["enabled", "disabled"]),
+});
+
 export const messagesRequestSchema = z.object({
   max_tokens: z.number().int().optional(),
   messages: z.array(messageSchema).optional(),
   model: chatModelSchema.optional(),
   stream: z.boolean().optional(),
   system: textOnlySchema,
+  thinking: thinkingBlockSchema.optional(),
+  thinking_level: thinkingLevelSchema.optional(),
   tools: z.array(toolSchema).optional(),
 });
 
 export type MessagesRequest = z.infer<typeof messagesRequestSchema>;
+
+export const toThinking = (
+  body: MessagesRequest
+): ThinkingLevel | undefined => {
+  if (body.thinking_level) {
+    return body.thinking_level;
+  }
+  if (body.thinking?.type !== "enabled") {
+    return undefined;
+  }
+  const budget = body.thinking.budget_tokens;
+  return budget === undefined ? "medium" : levelForBudget(budget);
+};
 
 export const toConversation = (body: MessagesRequest): Conversation => {
   const turns: ChatTurn[] = [];

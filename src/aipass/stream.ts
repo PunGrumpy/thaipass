@@ -1,16 +1,31 @@
 import { parseJsonEventStream } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
+import { fileEventSchema } from "./media";
+import type { FileEvent } from "./media";
+
+/** The composer reads `url` and the web client sends `storageKey`; both carry the same key. */
+export type AipassPart =
+  | { readonly type: "text"; readonly text: string }
+  | {
+      readonly type: "file";
+      readonly mediaType: string;
+      readonly filename: string;
+      readonly url: string;
+      readonly storageKey: string;
+    };
+
 export interface AipassMessage {
   readonly id: string;
   readonly role: "user" | "assistant";
   readonly metadata: { readonly modelId: string };
-  readonly parts: readonly { readonly type: "text"; readonly text: string }[];
+  readonly parts: readonly AipassPart[];
 }
 
 export type StreamEvent =
   | { readonly kind: "delta"; readonly text: string }
   | { readonly kind: "reasoning"; readonly text: string }
+  | { readonly kind: "file"; readonly file: FileEvent }
   | { readonly kind: "finish"; readonly reason: string }
   | { readonly kind: "error"; readonly message: string };
 
@@ -21,9 +36,16 @@ const optionalText = z
   ])
   .optional();
 
+/** Some models put the file's fields at the top level, others under `data`; the outer wins. */
+const fileFrameSchema = fileEventSchema.extend({
+  data: fileEventSchema.optional(),
+  type: z.literal("file"),
+});
+
 const upstreamEventSchema = z.discriminatedUnion("type", [
   z.object({ delta: z.string(), type: z.literal("text-delta") }),
   z.object({ delta: z.string(), type: z.literal("reasoning-delta") }),
+  fileFrameSchema,
   z.object({ finishReason: optionalText, type: z.literal("finish") }),
   z.object({
     error: optionalText,
@@ -66,6 +88,19 @@ export const parseAipassSSE = async function* parseAipassSSE(
       }
       case "reasoning-delta": {
         yield { kind: "reasoning", text: event.delta };
+        break;
+      }
+      case "file": {
+        const { data } = event;
+        yield {
+          file: {
+            filename: event.filename ?? data?.filename,
+            mediaType: event.mediaType ?? data?.mediaType,
+            snapshotUrl: event.snapshotUrl ?? data?.snapshotUrl,
+            url: event.url ?? data?.url,
+          },
+          kind: "file",
+        };
         break;
       }
       case "finish": {

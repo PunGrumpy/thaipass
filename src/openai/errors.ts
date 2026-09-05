@@ -14,6 +14,12 @@ export const upstreamErrorSchema = z.object({
   }),
 });
 
+/** A 400 carries the upstream shape when the edge refused, and the bare one otherwise. */
+export const requestErrorSchema = z.union([
+  upstreamErrorSchema,
+  apiErrorSchema,
+]);
+
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type UpstreamError = z.infer<typeof upstreamErrorSchema>;
 

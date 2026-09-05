@@ -2,7 +2,11 @@ import { Elysia } from "elysia";
 
 import { DEFAULT_MODEL } from "../aipass/models";
 import { anthropicErrorSchema } from "../anthropic/errors";
-import { messagesRequestSchema, toConversation } from "../anthropic/schema";
+import {
+  messagesRequestSchema,
+  toConversation,
+  toThinking,
+} from "../anthropic/schema";
 import {
   anthropicWire,
   messageSchema,
@@ -30,7 +34,7 @@ export const messageRoutes = new Elysia()
     {
       body: "MessagesRequest",
       detail: {
-        description: `Buffered by default, as the Anthropic API is. Send stream: true for the event stream. The system prompt and the conversation are flattened into a single role-labelled turn before they reach AI Pass, images and documents are dropped, max_tokens and the sampling settings are accepted and ignored, and the token counts in usage are estimated from the text because the upstream reports none. usage.credits reports the account's credit balance and what this reply spent instead; on a stream it is on message_delta. Omitting model uses ${DEFAULT_MODEL}. Tools are offered to the model through the prompt and its calls come back as tool_use blocks, since AI Pass carries text only; how well that works depends on the model following the format.`,
+        description: `Buffered by default, as the Anthropic API is. Send stream: true for the event stream. The proxy flattens the system prompt and the conversation into a single role-labelled turn before they reach AI Pass, uploads images and documents as attachments, accepts and ignores max_tokens and the sampling settings, and estimates the token counts in usage from the text because the upstream reports none. usage.credits reports the account's credit balance and what this reply spent instead; on a stream it is on message_delta. Omitting model uses ${DEFAULT_MODEL}. The proxy offers tools to the model through the prompt and their calls come back as tool_use blocks, since AI Pass carries text only; how well that works depends on the model following the format.`,
         responses: {
           "200": jsonOrStream(
             "Message",
@@ -39,12 +43,12 @@ export const messageRoutes = new Elysia()
           ),
           "400": json(
             "AnthropicError",
-            "Malformed body, or a model outside the catalog"
+            "Malformed body, a model outside the catalog, or a prompt the AI Pass edge refused before the model ran"
           ),
           "401": json("AnthropicError", "Missing or malformed session cookie"),
           "502": json(
             "AnthropicError",
-            "AI Pass refused the request, often a stale cookie"
+            "AI Pass failed the request, often a stale cookie"
           ),
         },
         security: [{ aipassCookieKey: [] }, { aipassCookie: [] }],
@@ -62,6 +66,7 @@ export const messageRoutes = new Elysia()
         model,
         request,
         stream: body.stream === true,
+        thinking: toThinking(body),
         wire: anthropicWire(model),
       });
     }

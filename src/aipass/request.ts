@@ -2,7 +2,7 @@ import type { z } from "zod";
 
 import { config } from "../lib/config";
 
-const browserHeaders = (cookie: string, referer: string) => ({
+export const browserGetHeaders = (cookie: string, referer: string) => ({
   accept: "*/*",
   "accept-language": "th-TH,th;q=0.9,en;q=0.8",
   cookie,
@@ -19,9 +19,20 @@ export const browserPostHeaders = (
   referer: string,
   contentType: string
 ) => ({
-  ...browserHeaders(cookie, referer),
+  ...browserGetHeaders(cookie, referer),
   "content-type": contentType,
 });
+
+/** Headers for a JSON action made from inside one conversation's page. */
+export const conversationJsonHeaders = (
+  cookie: string,
+  conversationId: string
+) =>
+  browserPostHeaders(
+    cookie,
+    `${config.origin}/chat/${conversationId}`,
+    "application/json"
+  );
 
 export const loadJson = async <T>(
   path: string,
@@ -32,7 +43,7 @@ export const loadJson = async <T>(
   let payload: unknown;
   try {
     const response = await fetch(`${config.origin}${path}`, {
-      headers: browserHeaders(cookie, `${config.origin}/chat`),
+      headers: browserGetHeaders(cookie, `${config.origin}/chat`),
       redirect: "manual",
       signal,
     });

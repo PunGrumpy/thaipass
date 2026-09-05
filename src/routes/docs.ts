@@ -59,12 +59,8 @@ const withJsonBodies = (host: AnyElysia, document: Document): Document => {
 };
 
 /**
- * The OpenAPI document and the Scalar page that renders it.
- *
- * Paths, request bodies and component schemas come from the routes: each
- * route registers its Zod schemas as models and names them in `body` and
- * `response`, and describes in `detail` what the plugin cannot see. Only what
- * belongs to the document as a whole is set here.
+ * Each route registers its Zod schemas as models and describes in `detail`
+ * what the plugin cannot see; only document-wide settings live here.
  */
 export const docsRoutes = (host: AnyElysia) =>
   host
@@ -110,6 +106,10 @@ export const docsRoutes = (host: AnyElysia) =>
           tags: [
             { description: "OpenAI-compatible endpoints", name: "Chat" },
             { description: "Anthropic-compatible endpoint", name: "Messages" },
+            {
+              description: "Images, video and music, which answer with a file",
+              name: "Media",
+            },
             {
               description: "Documentation, health and credit usage",
               name: "Meta",
