@@ -35,7 +35,7 @@ export const chatRoutes = new Elysia()
     {
       body: "ChatRequest",
       detail: {
-        description: `Streams by default. Send stream: false for one buffered reply. Multi-turn conversations are flattened into a single role-labelled turn before they reach AI Pass, and the token counts in usage are estimated from the text because the upstream reports none. usage.credits reports the account's credit balance and what this reply spent instead; on a stream it is on the final chunk. Omitting model uses ${DEFAULT_MODEL}. Tools are offered to the model through the prompt and its calls are parsed back out of the reply, since AI Pass carries text only; how well that works depends on the model following the format.`,
+        description: `Streams by default. Send stream: false for one buffered reply. The proxy flattens a multi-turn conversation into a single role-labelled turn before it reaches AI Pass, and estimates the token counts in usage from the text because the upstream reports none. usage.credits reports the account's credit balance and what this reply spent instead; on a stream it is on the final chunk. Omitting model uses ${DEFAULT_MODEL}. The proxy offers tools to the model through the prompt and parses its calls back out of the reply, since AI Pass carries text only; how well that works depends on the model following the format.`,
         responses: {
           "200": jsonOrStream(
             "ChatCompletion",

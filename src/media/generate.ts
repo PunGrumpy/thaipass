@@ -13,8 +13,8 @@ import { toAipassMessages } from "../translate";
  * are `file` rather than `text-delta`. This runs that turn to the end, reads
  * every asset it produced, and leaves no conversation behind.
  *
- * Video does not come this way — it is a job that is submitted and polled — so
- * it is not served from here.
+ * Video does not come this way. It is a job the proxy submits and polls, so
+ * media/video.ts serves it instead.
  */
 
 export interface MediaRequest {

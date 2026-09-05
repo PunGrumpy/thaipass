@@ -98,12 +98,9 @@ const result = streamText({
 });
 ```
 
-The provider implements `LanguageModelV2` for `ai` v5. An app on `ai` v7 should use `/v1/messages` over HTTP instead. What the provider carries:
+The provider implements `LanguageModelV2` for `ai` v5. An app on `ai` v7 should use `/v1/messages` over HTTP instead.
 
-- **Files**: file parts are uploaded as attachments, and a generated file comes back as the SDK's own file part
-- **Reasoning**: `providerOptions.aipass.thinkingLevel` picks a level
-- **Sampling settings**: returned as `unsupported-setting` warnings
-- **Usage**: token counts are estimated from the text, and `providerMetadata.aipass.credits` holds the credit balance
+The provider uploads file parts as attachments, and a generated file comes back as the SDK's own file part. `providerOptions.aipass.thinkingLevel` picks a reasoning level. Sampling settings come back as `unsupported-setting` warnings. Token counts in `usage` are estimates from the text, and `providerMetadata.aipass.credits` holds the credit balance.
 
 ## Attachments
 
@@ -122,7 +119,7 @@ curl -s localhost:3789/v1/chat/completions \
   }'
 ```
 
-The bytes have to arrive inline, as a data URI or as base64 in the block that names them. The proxy refuses a remote URL with a `400` rather than fetching it: a deployment that fetches any URL a caller names is a request forger pointed at whatever network it sits in. Fetch the file yourself and send the bytes.
+The bytes have to arrive inline, as a data URI or as base64 in the block that names them. The proxy refuses a remote URL with a `400` rather than fetching it, because a deployment that fetches any URL a caller names is a request forger pointed at whatever network it sits in. Fetch the file yourself and send the bytes.
 
 The proxy accepts files up to 20 MB. Uploading one takes three calls before the turn is sent: the proxy reserves a slot, puts the bytes at a signed storage URL, then confirms the object. A file the proxy cannot read fails the request instead of being dropped, because a model answering about a document it never received is worse than an error naming the document.
 
@@ -136,7 +133,7 @@ AI Pass takes a reasoning level, not a token budget, and each model advertises t
 | Anthropic | `thinking_level`, or a `thinking` block whose `budget_tokens` picks a level |
 | AI SDK | `providerOptions.aipass.thinkingLevel` |
 
-The levels are `low`, `medium` and `high`, plus `max` on Claude Opus. Asking for a level a model does not offer is not an error: the proxy drops the level, names it in the wide event, and the reply still comes. `GET /v1/models` reports each model's levels when you send the cookie.
+The levels are `low`, `medium` and `high`, plus `max` on Claude Opus. Asking for a level a model does not offer is not an error. The proxy drops the level, names it in the wide event, and the reply still comes. `GET /v1/models` reports each model's levels when you send the cookie.
 
 The Anthropic budget thresholds are the proxy's own, because AI Pass publishes no token figure for a level. Under 4096 is `low`, under 16384 is `medium`, and above that is `high`.
 
@@ -173,7 +170,7 @@ The generated file sits behind the session cookie on the AI Pass origin, so the 
 
 ## Tool calling over text
 
-AI Pass answers with plain text, so tools are emulated. The proxy describes each offered tool in the prompt and asks the model to call one with a fenced block:
+AI Pass answers with plain text, so the proxy emulates tools. The proxy describes each offered tool in the prompt and asks the model to call one with a fenced block:
 
 ````markdown
 ```tool_call
@@ -190,7 +187,7 @@ Each proxied request does four things:
 1. **Create a throwaway conversation** with `POST /chat.data`.
 2. **Send one flattened turn**: the backend ignores multi-message bodies, so the whole conversation becomes a single role-labelled user message.
 3. **Stream the reply**: `text-delta` events become OpenAI chunks or Anthropic events.
-4. **Delete the conversation**: the account’s chat list stays clean.
+4. **Delete the conversation**: the account's chat list stays clean.
 
 Every agent round is one more conversation upstream, so tool-heavy loops spend the daily credit allowance fast.
 
@@ -231,17 +228,17 @@ curl -s localhost:3789/v1/usage -H "authorization: Bearer $AIPASS_COOKIE"
 
 ## Deploy to Vercel
 
-`src/index.ts` default-exports the Elysia app and `vercel.json` sets `bunVersion`, so the repo deploys as is. Keep Deployment Protection on: the deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
+`src/index.ts` default-exports the Elysia app and `vercel.json` sets `bunVersion`, so the repo deploys as is. Keep Deployment Protection on. The deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
 
 The function duration bounds a stream on Vercel, not the 240s idle timeout, so a slow model can be cut off mid-reply. `POST /v1/videos` holds the connection for a render that takes minutes, so it will not survive on Vercel at all. Run the proxy locally for video.
 
 ## Logging
 
-Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, the account’s credit balance, and the credits the reply spent. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
+Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, the account's credit balance, and the credits the reply spent. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
 
 ## When the edge refuses a prompt
 
-AI Pass sits behind an edge that answers some requests itself with a `403`, before the chat backend runs. The edge scores what a request contains rather than how long it is: prose of one length passes where an agent-style prompt of the same length is refused. A shell path or an environment variable in the prompt can be enough on its own.
+AI Pass sits behind an edge that answers some requests itself with a `403`, before the chat backend runs. The edge scores what a request contains rather than how long it is, so it passes prose of one length and refuses an agent-style prompt of the same length. A shell path or an environment variable in the prompt can be enough on its own.
 
 The proxy reports that as a `400`, not a `502`, because a bad gateway invites a retry and a retry of the identical body reaches the identical verdict:
 
@@ -260,13 +257,13 @@ The trigger set is undocumented, so the proxy names the shape of the problem and
 
 ## Limits
 
-- **Token counts are estimated**: AI Pass reports none, so the proxy counts characters. Credits are the exact figure, see [Usage in credits](#usage-in-credits).
-- **Cookies expire**: a 502 whose message says the cookie is stale means you need a fresh one.
-- **The edge can refuse a prompt outright**: see [When the edge refuses a prompt](#when-the-edge-refuses-a-prompt).
-- **Unknown model ids return 400**: the proxy does not forward them.
-- **Attachments must be inline**: a URL is refused, not fetched. See [Attachments](#attachments).
-- **Video holds the connection open**: for the whole render, so it cannot run behind a function timeout.
-- **Media and attachments are untested against a live account**: they are built from the upstream protocol and covered by tests against a stubbed upstream. Nothing here has run against de.aipass.net, so expect to fix something the first time you use them for real.
+- **Token counts are estimates.** AI Pass reports none, so the proxy counts characters. Credits are the exact figure, see [Usage in credits](#usage-in-credits).
+- **Cookies expire.** A 502 whose message says the cookie is stale means you need a fresh one.
+- **The edge can refuse a prompt outright.** See [When the edge refuses a prompt](#when-the-edge-refuses-a-prompt).
+- **Unknown model ids return 400.** The proxy does not forward them.
+- **Attachments must be inline.** The proxy refuses a URL rather than fetching it. See [Attachments](#attachments).
+- **Video holds the connection open** for the whole render, so it cannot run behind a function timeout.
+- **Media and attachments have not met a live account.** I built them from the upstream protocol and tested them against a stubbed upstream. Nothing here has run against de.aipass.net, so expect to fix something the first time you use them for real.
 
 ## Development scripts
 
@@ -278,9 +275,9 @@ The trigger set is undocumented, so the proxy names the shape of the problem and
 
 ## Personal use only
 
-This is a reverse-engineered adapter over an undocumented private API. Keep it to a single account you own. Don’t publish it as a service, point it at accounts that aren’t yours, or run it at a scale that would burden the shared programme.
+This is a reverse-engineered adapter over an undocumented private API. Keep it to a single account you own. Don't publish it as a service, point it at accounts that aren't yours, or run it at a scale that would burden the shared programme.
 
-That is a request, not a licence term: the code is [MIT](LICENSE), and the paragraph above asks you to be a good guest of a free public programme rather than restricting what you may do with the software.
+That is a request, not a licence term. The code is [MIT](LICENSE), and the paragraph above asks you to be a good guest of a free public programme rather than restricting what you may do with the software.
 
 ## Credits
 
