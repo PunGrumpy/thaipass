@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 import type { z } from "zod";
 
-import { messagesRequestSchema, toConversation } from "./schema";
+import { messagesRequestSchema, toConversation, toThinking } from "./schema";
 
 type MessagesInput = z.input<typeof messagesRequestSchema>;
 
@@ -212,4 +212,83 @@ test("keeps a system message from the middle of the conversation", () => {
     { content: "hi", role: "user" },
     { content: "<system-reminder>", role: "system" },
   ]);
+});
+
+const thinkingOf = (body: MessagesInput) => {
+  const result = messagesRequestSchema.safeParse(body);
+  if (!result.success) {
+    throw new Error(result.error.message);
+  }
+  return toThinking(result.data);
+};
+
+test("takes an adaptive thinking block with the effort as its level", () => {
+  expect(
+    thinkingOf({
+      messages: [],
+      output_config: { effort: "high" },
+      thinking: { type: "adaptive" },
+    })
+  ).toBe("high");
+});
+
+test("rounds xhigh down to high and passes max through", () => {
+  expect(
+    thinkingOf({
+      messages: [],
+      output_config: { effort: "xhigh" },
+      thinking: { type: "adaptive" },
+    })
+  ).toBe("high");
+  expect(
+    thinkingOf({
+      messages: [],
+      output_config: { effort: "max" },
+      thinking: { type: "adaptive" },
+    })
+  ).toBe("max");
+});
+
+test("defaults an adaptive block without an effort to medium", () => {
+  expect(thinkingOf({ messages: [], thinking: { type: "adaptive" } })).toBe(
+    "medium"
+  );
+});
+
+test("lets the effort win over a budget on an enabled block", () => {
+  expect(
+    thinkingOf({
+      messages: [],
+      output_config: { effort: "low" },
+      thinking: { budget_tokens: 32_000, type: "enabled" },
+    })
+  ).toBe("low");
+  expect(
+    thinkingOf({
+      messages: [],
+      thinking: { budget_tokens: 32_000, type: "enabled" },
+    })
+  ).toBe("high");
+});
+
+test("leaves thinking off when the block is disabled or missing", () => {
+  expect(
+    thinkingOf({
+      messages: [],
+      output_config: { effort: "high" },
+      thinking: { type: "disabled" },
+    })
+  ).toBeUndefined();
+  expect(
+    thinkingOf({ messages: [], output_config: { effort: "high" } })
+  ).toBeUndefined();
+});
+
+test("ignores the display setting on a thinking block", () => {
+  expect(
+    messagesRequestSchema.safeParse({
+      messages: [],
+      thinking: { display: "summarized", type: "adaptive" },
+    }).success
+  ).toBe(true);
 });
