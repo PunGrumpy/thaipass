@@ -42,7 +42,7 @@ curl -sN localhost:3789/v1/chat/completions \
   -d '{"model":"claude-sonnet-5@default","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-`GET /v1/models` lists every model id the proxy routes, with a `kind` saying which endpoint takes it. Ids are case-sensitive, Claude ids carry a `@provider` suffix, and `gemini-3.1-flash-lite` is the free default.
+`GET /v1/models` reads the account's catalog live from AI Pass. Each entry carries a `kind` naming the endpoint that takes it. The proxy checks every chat request against the same catalog. A model upstream adds works the day it appears, and a model upstream retires answers 400, with no proxy release either way. Ids are case-sensitive, Claude ids carry a `@provider` suffix, and `gemini-3.1-flash-lite` is the free default.
 
 ## Endpoints
 
@@ -52,8 +52,10 @@ curl -sN localhost:3789/v1/chat/completions \
 - `POST /v1/videos`: one video; blocks for the whole render, see [Images, video and music](#images-video-and-music)
 - `POST /v1/audio/generations`: one music clip, buffered
 - `POST /v1/messages/count_tokens`: the estimated size of a prompt, no credential needed
-- `GET /v1/models`: the model catalog, richer with the cookie than without
+- `GET /v1/models`: the account's model catalog, needs the cookie
 - `GET /v1/usage`: the account's credit balance, needs the cookie
+- `GET /v1/lms/exp`: the account's learning EXP from the LMS, needs the cookie
+- `POST /v1/lms/learn`: watches video lessons in the LMS until a target EXP is earned, see [Earn LMS points](#earn-lms-points)
 - `GET /health`: liveness, no credential needed
 - `GET /`: OpenAPI docs rendered by Scalar, also at `/openapi.json`
 
@@ -225,6 +227,38 @@ Token counts are an estimate, not a tokeniser's output. The proxy counts about f
 ```bash
 curl -s localhost:3789/v1/usage -H "authorization: Bearer $AIPASS_COOKIE"
 ```
+
+## Earn LMS points
+
+AI Pass runs a learning site at `/lms` that pays EXP per completed lesson, and the membership tier wants a monthly minimum. `POST /v1/lms/learn` does what the lesson page does for every unwatched video lesson until the account has earned a target, 100 EXP by default:
+
+```bash
+curl -sN localhost:3789/v1/lms/learn \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $AIPASS_COOKIE" \
+  -d '{"target":100,"pace":1}'
+```
+
+The reply is one JSON object per line as the run goes: the month's EXP before, a `course` line per course it enters, a `lesson` line when a lesson starts and when it completes, a `stamp` line per ten seconds of video, the EXP after, and a `done` line saying how much was earned and why it stopped. The run enrols in a course that still has an unwatched video, opens the lesson, stamps the playhead as it advances, marks the lesson complete, and closes the course when that was its last open lesson. A course whose remaining lessons are articles or quizzes stays open, because the proxy only watches video.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `target` | 100 | EXP to earn before stopping |
+| `pace` | 1 | Playback speed, up to 16. At 1 a ten minute video takes ten minutes |
+| `max_lessons` | 50 | Stop after this many lessons regardless |
+| `dry_run` | false | List what would be learned and change nothing |
+
+Send `dry_run` first. It reads the catalogue and reports each lesson it would watch, with the tier's EXP per video lesson, without enrolling or stamping anything.
+
+`GET /v1/lms/exp` returns the session's EXP payload, the tier and the achievement summary as the LMS reports them, and a `monthly` figure when the payload names one. Read it once a month to see whether the minimum is met; a cron line that runs the learn call when it is not is the whole automation.
+
+Three things to know before relying on it:
+
+- **The LMS protocol was mapped from the web client's bundle, not a live run.** The routes and the order of calls are the lesson page's own. The body of a video stamp is not in the public bundle: the proxy mirrors the stamp shape the LMS returns inside the lesson content when there is one, and otherwise sends `currentTime` and `duration`. A `400` on the first stamp names the field the backend wanted; the `error` line carries the backend's own body, and the fix is one key in `stampShapeOf` in `src/lms/learn.ts`.
+- **The LMS needs its own cookies.** Copy the `Cookie` header from a request made while the browser is on a `/lms` page, not from the chat, so the tenant cookie the LMS sets travels with the session token. A `401` from the LMS says the cookie is stale or came from the wrong page.
+- **Keep the pace at 1.** The player blocks seeking on a first watch, so the backend expects the stamps to arrive as slowly as the video plays. A run at pace 1 holds the connection for as long as the videos take; run it locally, not on Vercel, and pass `-N` to curl so the lines show as they come.
+
+The proxy stops at the first failed call rather than trying the next course, because an undocumented backend that refused once will refuse again, and the programme awards these points for learning that a person is meant to do. This is your account and your call; the proxy sends nothing a browser watching the video would not.
 
 ## Deploy to Vercel
 
