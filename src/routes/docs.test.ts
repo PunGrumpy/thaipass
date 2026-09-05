@@ -72,6 +72,8 @@ test("documents every route the app serves", async () => {
     "/v1/audio/generations",
     "/v1/chat/completions",
     "/v1/images/generations",
+    "/v1/lms/exp",
+    "/v1/lms/learn",
     "/v1/messages",
     "/v1/messages/count_tokens",
     "/v1/models",
@@ -141,5 +143,7 @@ test("marks the model routes and the usage route as needing the cookie", async (
     "/v1/audio/generations",
     "/v1/models",
     "/v1/usage",
+    "/v1/lms/exp",
+    "/v1/lms/learn",
   ]);
 });
