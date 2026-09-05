@@ -176,6 +176,30 @@ test("stamps every ten seconds and the end, then completes the lesson", async ()
   expect(done.reason).toContain("no more video lessons");
 });
 
+test("shows the video part of the content when a lesson starts", async () => {
+  upstream = lmsUpstream({
+    content: {
+      videoContent: { hls: "https://cdn.test/v.m3u8", lastSecond: 3 },
+    },
+    lessons: [
+      {
+        durationInSeconds: 25,
+        enrollmentId: "e-1",
+        lessonType: "video",
+        lessonVersionId: "l-1",
+      },
+    ],
+  });
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  const started = events.find(
+    (event) => event.event === "lesson" && event.status === "started"
+  );
+  expect(started?.event === "lesson" && started.content).toEqual({
+    hls: "https://cdn.test/v.m3u8",
+    lastSecond: 3,
+  });
+});
+
 test("sends the LMS headers the web client sends", async () => {
   upstream = lmsUpstream();
   await collect({ cookie: COOKIE, sleep: NO_SLEEP });

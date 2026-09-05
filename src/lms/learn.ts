@@ -55,6 +55,9 @@ const TIME_KEYS = [
   "time",
 ] as const;
 
+/** Where a live lesson keeps its video and its progress. */
+const VIDEO_KEYS = ["videoContent", "lessonProgress", "video"] as const;
+
 const STAMP_KEYS = [
   "videoStamp",
   "lastVideoStamp",
@@ -218,6 +221,8 @@ export type LearnEvent =
       readonly duration?: number;
       readonly stamp?: Record<string, number>;
       readonly keys?: readonly string[];
+      /** The video and progress parts of the content, for reading the stamp's field names off a live lesson. */
+      readonly content?: LessonContent;
       readonly reason?: string;
       readonly exp?: number;
       readonly earned?: number;
@@ -373,6 +378,7 @@ const learnLesson = async function* learnLesson(
   const fields = stampFieldsOf(content);
   yield {
     code,
+    content: findPayload(content, VIDEO_KEYS) ?? {},
     duration,
     event: "lesson",
     keys: Object.keys(content),
