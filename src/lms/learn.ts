@@ -178,6 +178,7 @@ export type LearnEvent =
       readonly reason?: string;
       readonly exp?: number;
       readonly earned?: number;
+      readonly monthly?: number | null;
     }
   | {
       readonly event: "stamp";
@@ -215,6 +216,8 @@ export interface LearnOptions {
   readonly cookie: string;
   /** The period's EXP to reach before stopping; this run's own earnings when the LMS reports no figure. */
   readonly target?: number;
+  /** EXP to earn in this run whatever the period has; overrides target. */
+  readonly earn?: number;
   /** Playback speed: 1 stamps in real time, 4 gets through a video in a quarter of its length. */
   readonly pace?: number;
   readonly maxLessons?: number;
@@ -231,6 +234,7 @@ export interface LearnOptions {
 interface Run {
   readonly cookie: string;
   readonly target: number;
+  readonly earn: number | undefined;
   readonly pace: number;
   readonly maxLessons: number;
   readonly dryRun: boolean;
@@ -248,9 +252,11 @@ interface Run {
   lessons: number;
 }
 
-/** The target is the period's figure when the LMS reports one, else what this run has earned. */
+/** An `earn` goal is this run's own; a target is the period's figure when the LMS reports one. */
 const targetReached = (run: Run): boolean =>
-  (run.monthly ?? run.earned) >= run.target;
+  run.earn === undefined
+    ? (run.monthly ?? run.earned) >= run.target
+    : run.earned >= run.earn;
 
 const TIME_BUDGET_SPENT = "time budget spent";
 
@@ -262,7 +268,7 @@ const limitReached = (run: Run): string | undefined => {
     return TIME_BUDGET_SPENT;
   }
   if (targetReached(run)) {
-    return "target reached";
+    return run.earn === undefined ? "target reached" : "earned what was asked";
   }
   if (run.lessons >= run.maxLessons) {
     return "lesson cap reached";
@@ -485,6 +491,7 @@ const learnLesson = async function* learnLesson(
     event: "lesson",
     exp,
     lesson: id,
+    monthly: run.monthly ?? null,
     status: "completed",
     title,
   };
@@ -625,6 +632,7 @@ export const learn = async function* learn(
     deadline:
       options.budgetMs === undefined ? undefined : now() + options.budgetMs,
     dryRun: options.dryRun ?? false,
+    earn: options.earn,
     earned: 0,
     interval: options.stampIntervalS ?? STAMP_INTERVAL_S,
     lessons: 0,
@@ -646,7 +654,7 @@ export const learn = async function* learn(
     paused: run.paused,
     reached,
     reason,
-    target: run.target,
+    target: run.earn ?? run.target,
   });
   const before = await expEvent(run, "before");
   yield before;
@@ -654,7 +662,7 @@ export const learn = async function* learn(
     yield done(false, "the LMS refused the session");
     return;
   }
-  if (targetReached(run)) {
+  if (run.earn === undefined && targetReached(run)) {
     yield done(true, "the period already has the target");
     return;
   }

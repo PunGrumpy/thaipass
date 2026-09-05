@@ -31,6 +31,7 @@ export const learnRequestSchema = z.object({
     .max(MAX_BUDGET_S)
     .optional(),
   dry_run: z.boolean().optional(),
+  earn: z.number().int().min(1).optional(),
   max_lessons: z.number().int().min(1).max(MAX_LESSONS).optional(),
   pace: z.number().min(1).max(MAX_PACE).optional(),
   target: z.number().int().min(1).optional(),
@@ -126,7 +127,7 @@ export const lmsRoutes = new Elysia()
       body: "LearnRequest",
       detail: {
         description:
-          "Learns video lessons in the LMS until the period's EXP reaches the target, 100 by default; a run whose period already has it ends after one read. The proxy enrols in each course that still has an unwatched video, opens the lesson, and stamps the seconds watched every ten seconds, which is what the lesson page sends; a stamp the LMS answers with COMPLETED is what earns the EXP. pace is the playback speed: 1 stamps in real time, so a ten minute video takes ten minutes. The reply streams one JSON object per line as the run goes, ending with a done line, so it holds the connection for as long as the videos take. budget_seconds ends the run cleanly before that much wall-clock has passed, with paused true on the done line, and the next call resumes from the last stamp; on Vercel it defaults to 270, under the function limit. dry_run lists what would be learned and sends nothing that changes the account.",
+          "Learns video lessons in the LMS until the period's EXP reaches the target, 100 by default; a run whose period already has it ends after one read. earn asks instead for that much EXP in this run, whatever the period has. The proxy enrols in each course that still has an unwatched video, opens the lesson, and stamps the seconds watched every ten seconds, which is what the lesson page sends; a stamp the LMS answers with COMPLETED is what earns the EXP. pace is the playback speed: 1 stamps in real time, so a ten minute video takes ten minutes. The reply streams one JSON object per line as the run goes, ending with a done line, so it holds the connection for as long as the videos take. budget_seconds ends the run cleanly before that much wall-clock has passed, with paused true on the done line, and the next call resumes from the last stamp; on Vercel it defaults to 270, under the function limit. dry_run lists what would be learned and sends nothing that changes the account.",
         responses: {
           "200": ndjson(
             "Progress, one JSON object per line",
@@ -165,6 +166,7 @@ export const lmsRoutes = new Elysia()
           budgetSeconds === undefined ? undefined : budgetSeconds * MS_PER_S,
         cookie,
         dryRun: body.dry_run,
+        earn: body.earn,
         maxLessons: body.max_lessons,
         pace: body.pace,
         signal: request.signal,

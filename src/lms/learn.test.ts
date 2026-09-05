@@ -336,6 +336,22 @@ test("touches nothing when the period already has the target", async () => {
   expect(events).toHaveLength(2);
 });
 
+test("earn asks for more in this run whatever the period already has", async () => {
+  upstream = lmsUpstream({ monthly: 325 });
+  const events = await collect({
+    cookie: COOKIE,
+    earn: VIDEO_EXP,
+    sleep: NO_SLEEP,
+  });
+  const done = doneOf(events);
+  expect(done.lessons).toBe(1);
+  expect(done.earned).toBe(VIDEO_EXP);
+  expect(done.reached).toBe(true);
+  expect(done.target).toBe(VIDEO_EXP);
+  expect(done.reason).toBe("earned what was asked");
+  expect(lessonWith(events, "completed")?.monthly).toBe(325 + VIDEO_EXP);
+});
+
 test("falls back to this run's earnings when the LMS reports no figure", async () => {
   upstream = lmsUpstream({ monthly: Number.NaN });
   const done = doneOf(
