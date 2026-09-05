@@ -144,7 +144,12 @@ export const pause = async (
   signal?.removeEventListener("abort", onAbort);
 };
 
-export type LessonStatus = "planned" | "started" | "skipped" | "completed";
+export type LessonStatus =
+  | "planned"
+  | "started"
+  | "skipped"
+  | "paused"
+  | "completed";
 
 export type ErrorScope = "course" | "lesson" | "session";
 
@@ -199,6 +204,8 @@ export type LearnEvent =
       readonly monthly: number | null;
       readonly target: number;
       readonly reached: boolean;
+      /** True when the time budget ran out mid-lesson; the next call resumes from the last stamp. */
+      readonly paused: boolean;
       readonly reason: string;
     };
 
@@ -214,8 +221,11 @@ export interface LearnOptions {
   /** Lists what would be learned and sends nothing that changes the account. */
   readonly dryRun?: boolean;
   readonly signal?: AbortSignal;
+  /** Wall-clock the run may spend; it ends cleanly before a stamp would overrun it. */
+  readonly budgetMs?: number;
   readonly stampIntervalS?: number;
   readonly sleep?: Sleep;
+  readonly now?: () => number;
 }
 
 interface Run {
@@ -227,6 +237,10 @@ interface Run {
   readonly interval: number;
   readonly signal: AbortSignal | undefined;
   readonly sleep: Sleep;
+  readonly now: () => number;
+  readonly deadline: number | undefined;
+  /** Set when a lesson stopped for the budget rather than for the LMS. */
+  paused: boolean;
   videoExp: number | undefined;
   /** The period's EXP as last read, so a lesson's worth is what the LMS actually added. */
   monthly: number | undefined;
@@ -238,9 +252,14 @@ interface Run {
 const targetReached = (run: Run): boolean =>
   (run.monthly ?? run.earned) >= run.target;
 
+const TIME_BUDGET_SPENT = "time budget spent";
+
 const limitReached = (run: Run): string | undefined => {
   if (run.signal?.aborted) {
     return "the caller went away";
+  }
+  if (run.paused) {
+    return TIME_BUDGET_SPENT;
   }
   if (targetReached(run)) {
     return "target reached";
@@ -328,7 +347,12 @@ const stampLesson = async function* stampLesson(
   let status: string | undefined;
   // oxlint-disable no-await-in-loop
   for (const at of planStamps(duration, run.interval, watched)) {
-    await run.sleep(((at - previous) / run.pace) * MS_PER_S, run.signal);
+    const wait = ((at - previous) / run.pace) * MS_PER_S;
+    if (run.deadline !== undefined && run.now() + wait >= run.deadline) {
+      run.paused = true;
+      return status;
+    }
+    await run.sleep(wait, run.signal);
     if (run.signal?.aborted) {
       return status;
     }
@@ -426,6 +450,17 @@ const learnLesson = async function* learnLesson(
     watched,
   });
   if (run.signal?.aborted) {
+    return false;
+  }
+  if (run.paused) {
+    yield {
+      code,
+      event: "lesson",
+      lesson: id,
+      reason: `${TIME_BUDGET_SPENT}; the next call resumes from the last stamp`,
+      status: "paused",
+      title,
+    };
     return false;
   }
   if (status?.toUpperCase() !== COMPLETED) {
@@ -584,15 +619,20 @@ const learnPages = async function* learnPages(
 export const learn = async function* learn(
   options: LearnOptions
 ): AsyncGenerator<LearnEvent> {
+  const now = options.now ?? Date.now;
   const run: Run = {
     cookie: options.cookie,
+    deadline:
+      options.budgetMs === undefined ? undefined : now() + options.budgetMs,
     dryRun: options.dryRun ?? false,
     earned: 0,
     interval: options.stampIntervalS ?? STAMP_INTERVAL_S,
     lessons: 0,
     maxLessons: options.maxLessons ?? DEFAULT_MAX_LESSONS,
     monthly: undefined,
+    now,
     pace: options.pace ?? DEFAULT_PACE,
+    paused: false,
     signal: options.signal,
     sleep: options.sleep ?? pause,
     target: options.target ?? DEFAULT_TARGET,
@@ -603,6 +643,7 @@ export const learn = async function* learn(
     event: "done",
     lessons: run.lessons,
     monthly: run.monthly ?? null,
+    paused: run.paused,
     reached,
     reason,
     target: run.target,

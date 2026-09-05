@@ -24,5 +24,7 @@ export const env = createEnv({
     AIPASS_PORT: z.coerce.number().int().positive().default(3789),
     POSTHOG_API_KEY: z.string().startsWith("phc_").optional(),
     POSTHOG_HOST: z.url().optional().default("https://us.i.posthog.com"),
+    /** Set by Vercel on its functions, whose duration is capped. */
+    VERCEL: z.string().optional(),
   },
 });

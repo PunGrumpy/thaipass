@@ -138,4 +138,5 @@ test("streams the run as one JSON object per line and ends on done", async () =>
   expect(done?.event).toBe("done");
   expect(done?.target).toBe(50);
   expect(done?.reached).toBe(false);
+  expect(done?.paused).toBe(false);
 });

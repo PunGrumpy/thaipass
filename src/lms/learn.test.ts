@@ -414,6 +414,44 @@ test("sleeps for the gap between stamps divided by the pace", async () => {
   expect(waits).toEqual([2000, 2000, 1000]);
 });
 
+test("pauses before a stamp would overrun the time budget, and says so", async () => {
+  upstream = lmsUpstream();
+  let clock = 0;
+  const events = await collect({
+    budgetMs: 25_000,
+    cookie: COOKIE,
+    now: () => clock,
+    sleep: (ms) => {
+      clock += ms;
+      return Promise.resolve();
+    },
+  });
+  expect(stampsSent().map((stamp) => stamp.watchedSeconds)).toEqual([10, 20]);
+  expect(lessonWith(events, "paused")?.reason).toContain("time budget");
+  expect(bodyOf("/course-completed")).toBeUndefined();
+  const done = doneOf(events);
+  expect(done.paused).toBe(true);
+  expect(done.reached).toBe(false);
+  expect(done.reason).toBe("time budget spent");
+  expect(done.lessons).toBe(0);
+});
+
+test("finishes within the budget when the lesson fits", async () => {
+  upstream = lmsUpstream();
+  let clock = 0;
+  const events = await collect({
+    budgetMs: 60_000,
+    cookie: COOKIE,
+    now: () => clock,
+    sleep: (ms) => {
+      clock += ms;
+      return Promise.resolve();
+    },
+  });
+  expect(doneOf(events).paused).toBe(false);
+  expect(doneOf(events).lessons).toBe(1);
+});
+
 test("stops when the caller goes away", async () => {
   upstream = lmsUpstream();
   const controller = new AbortController();

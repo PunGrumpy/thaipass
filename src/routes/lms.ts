@@ -2,6 +2,7 @@ import { Elysia, status } from "elysia";
 import { z } from "zod";
 
 import { clientIdFromCookie, cookieFromRequest } from "../aipass/session";
+import { env } from "../lib/env";
 import { requestLogger } from "../lib/logger";
 import type { DeferredEmit } from "../lib/logger";
 import { json } from "../lib/openapi";
@@ -14,10 +15,21 @@ import { apiError, apiErrorSchema } from "../openai/errors";
 
 const MAX_PACE = 16;
 const MAX_LESSONS = 200;
+const MIN_BUDGET_S = 30;
+const MAX_BUDGET_S = 3600;
+/** Under Vercel's 300 s function limit, with room for the reads around the last stamp. */
+const VERCEL_BUDGET_S = 270;
+const MS_PER_S = 1000;
 const CLIENT_CLOSED_STATUS = 499;
 const BAD_GATEWAY = 502;
 
 export const learnRequestSchema = z.object({
+  budget_seconds: z
+    .number()
+    .int()
+    .min(MIN_BUDGET_S)
+    .max(MAX_BUDGET_S)
+    .optional(),
   dry_run: z.boolean().optional(),
   max_lessons: z.number().int().min(1).max(MAX_LESSONS).optional(),
   pace: z.number().min(1).max(MAX_PACE).optional(),
@@ -114,7 +126,7 @@ export const lmsRoutes = new Elysia()
       body: "LearnRequest",
       detail: {
         description:
-          "Learns video lessons in the LMS until the account has earned the target EXP, 100 by default. The proxy enrols in each course that still has an unwatched video, opens the lesson, stamps the playhead every ten seconds of video, and marks the lesson complete, which is what the lesson page sends. pace is the playback speed: 1 stamps in real time, so a ten minute video takes ten minutes. The reply streams one JSON object per line as the run goes, ending with a done line, so it holds the connection for as long as the videos take. dry_run lists what would be learned and sends nothing that changes the account.",
+          "Learns video lessons in the LMS until the period's EXP reaches the target, 100 by default; a run whose period already has it ends after one read. The proxy enrols in each course that still has an unwatched video, opens the lesson, and stamps the seconds watched every ten seconds, which is what the lesson page sends; a stamp the LMS answers with COMPLETED is what earns the EXP. pace is the playback speed: 1 stamps in real time, so a ten minute video takes ten minutes. The reply streams one JSON object per line as the run goes, ending with a done line, so it holds the connection for as long as the videos take. budget_seconds ends the run cleanly before that much wall-clock has passed, with paused true on the done line, and the next call resumes from the last stamp; on Vercel it defaults to 270, under the function limit. dry_run lists what would be learned and sends nothing that changes the account.",
         responses: {
           "200": ndjson(
             "Progress, one JSON object per line",
@@ -145,7 +157,12 @@ export const lmsRoutes = new Elysia()
       });
       const deferred: DeferredEmit = deferEmit;
       deferred.value = true;
+      const budgetSeconds =
+        body.budget_seconds ?? (env.VERCEL ? VERCEL_BUDGET_S : undefined);
+      log.set({ lmsBudgetSeconds: budgetSeconds });
       const events = learn({
+        budgetMs:
+          budgetSeconds === undefined ? undefined : budgetSeconds * MS_PER_S,
         cookie,
         dryRun: body.dry_run,
         maxLessons: body.max_lessons,
@@ -166,6 +183,8 @@ export const lmsRoutes = new Elysia()
                 log.set({
                   lmsEarned: event.earned,
                   lmsLessons: event.lessons,
+                  lmsMonthlyExp: event.monthly ?? undefined,
+                  lmsPaused: event.paused,
                   lmsReached: event.reached,
                   lmsReason: event.reason,
                 });
