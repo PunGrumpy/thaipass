@@ -130,12 +130,12 @@ AI Pass takes a reasoning level, not a token budget, and each model advertises t
 | Protocol | Field |
 | --- | --- |
 | OpenAI | `thinking_level`, or `reasoning_effort` with OpenAI's own values |
-| Anthropic | `thinking_level`, or a `thinking` block whose `budget_tokens` picks a level |
+| Anthropic | `thinking_level`, `output_config.effort`, or a `thinking` block whose `budget_tokens` picks a level |
 | AI SDK | `providerOptions.aipass.thinkingLevel` |
 
 The levels are `low`, `medium` and `high`, plus `max` on Claude Opus. Asking for a level a model does not offer is not an error. The proxy drops the level, names it in the wide event, and the reply still comes. `GET /v1/models` reports each model's levels when you send the cookie.
 
-The Anthropic budget thresholds are the proxy's own, because AI Pass publishes no token figure for a level. Under 4096 is `low`, under 16384 is `medium`, and above that is `high`.
+An Anthropic `thinking` block of type `adaptive` or `enabled` turns thinking on. With it, `output_config.effort` names the level, and `xhigh` rounds down to `high`. Without an effort, `budget_tokens` picks the level by thresholds that are the proxy's own, because AI Pass publishes no token figure for a level. Under 4096 is `low`, under 16384 is `medium`, and above that is `high`. Neither field alone is enough, and `medium` is the level when a block names neither.
 
 ## Images, video and music
 
