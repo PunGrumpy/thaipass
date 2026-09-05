@@ -260,11 +260,16 @@ Three things to know before relying on it:
 - **Keep the pace at 1.** The player blocks seeking on a first watch and never lets a stamp advance more than ten seconds, so the stamps arrive as slowly as the video plays, and a run takes as long as the videos do. Pass `-N` to curl so the lines show as they come. On Vercel the function is cut at five minutes, so there each call stops itself at 270 seconds with `paused: true` and keeps its stamps; call again until the `done` line says `paused: false`:
 
   ```bash
-  until curl -sN https://your_deployment_here/v1/lms/learn \
+  for attempt in $(seq 1 12); do
+    curl -sN https://your_deployment_here/v1/lms/learn \
       -H 'content-type: application/json' \
       -H "authorization: Bearer $AIPASS_COOKIE" \
-      -d '{"target":100}' | tee /dev/stderr | grep -q '"paused":false'; do :; done
+      -d '{"target":100}' | tee /dev/stderr | grep -Eq '"paused": ?false' && break
+    sleep 10
+  done
   ```
+
+  The pause between calls keeps a refused request from turning into a tight loop, and the cap bounds a bad day to an hour. Pipe the output through nothing else: a pretty-printer changes the line the loop looks for.
 
 The proxy stops at the first failed call rather than trying the next course, because an undocumented backend that refused once will refuse again, and the programme awards these points for learning that a person is meant to do. This is your account and your call; the proxy sends nothing a browser watching the video would not.
 
