@@ -4,6 +4,8 @@ import type { MediaAsset } from "../aipass/media";
 import { imageModelSchema } from "../aipass/models";
 import type { CreditUsage } from "../aipass/quotas";
 import { creditUsageSchema } from "../aipass/quotas";
+import { assetDatum, createdNow, mediaFormatSchema } from "./media";
+import type { MediaFormat } from "./media";
 
 /**
  * The OpenAI images surface, over the one aspect ratio AI Pass accepts.
@@ -55,7 +57,7 @@ export const imageRequestSchema = z.object({
   model: imageModelSchema,
   n: z.number().int().min(1).optional(),
   prompt: z.string().min(1),
-  response_format: z.enum(["b64_json", "url"]).optional(),
+  response_format: mediaFormatSchema.optional(),
   size: z.string().optional(),
 });
 
@@ -79,29 +81,19 @@ export type ImageResponse = z.infer<typeof imageResponseSchema>;
 export const aspectRatioFor = (body: ImageRequest): string | undefined =>
   body.aspect_ratio ?? (body.size ? ratioForSize(body.size) : undefined);
 
-const MS_PER_SECOND = 1000;
-
 /**
- * An inline asset is handed back as base64 unless the caller asked for a URL;
- * one that stayed a link is handed back as a link whatever they asked for,
- * with the reason in `revised_prompt`, which is the only free text the shape
- * has room for.
+ * The reason a file stayed a link goes in `revised_prompt`, which is the only
+ * free text the OpenAI shape has room for.
  */
 export const toImageResponse = (
   assets: readonly MediaAsset[],
-  format: "b64_json" | "url",
+  format: MediaFormat,
   credits: CreditUsage | undefined
 ): ImageResponse => ({
-  created: Math.floor(Date.now() / MS_PER_SECOND),
+  created: createdNow(),
   data: assets.map((asset) => {
-    if (!asset.inline) {
-      return asset.note
-        ? { revised_prompt: asset.note, url: asset.href }
-        : { url: asset.href };
-    }
-    return format === "url"
-      ? { url: asset.href }
-      : { b64_json: asset.href.slice(asset.href.indexOf(",") + 1) };
+    const { note, ...datum } = assetDatum(asset, format);
+    return note ? { ...datum, revised_prompt: note } : datum;
   }),
   usage: credits ? { credits } : undefined,
 });

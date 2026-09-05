@@ -4,6 +4,13 @@ import type { MediaAsset } from "../aipass/media";
 import { musicModelSchema } from "../aipass/models";
 import { creditUsageSchema } from "../aipass/quotas";
 import type { CreditUsage } from "../aipass/quotas";
+import {
+  assetDatum,
+  assetDatumSchema,
+  createdNow,
+  mediaFormatSchema,
+} from "./media";
+import type { MediaFormat } from "./media";
 
 /**
  * Music, in the same shape images come back in.
@@ -16,47 +23,28 @@ import type { CreditUsage } from "../aipass/quotas";
 export const audioRequestSchema = z.object({
   model: musicModelSchema,
   prompt: z.string().min(1),
-  response_format: z.enum(["b64_json", "url"]).optional(),
+  response_format: mediaFormatSchema.optional(),
 });
 
 export type AudioRequest = z.infer<typeof audioRequestSchema>;
 
 export const audioResponseSchema = z.object({
   created: z.number(),
-  data: z.array(
-    z.object({
-      b64_json: z.string().optional(),
-      media_type: z.string(),
-      note: z.string().optional(),
-      url: z.string().optional(),
-    })
-  ),
+  data: z.array(assetDatumSchema.extend({ media_type: z.string() })),
   usage: z.object({ credits: creditUsageSchema.optional() }).optional(),
 });
 
 export type AudioResponse = z.infer<typeof audioResponseSchema>;
 
-const MS_PER_SECOND = 1000;
-
 export const toAudioResponse = (
   assets: readonly MediaAsset[],
-  format: "b64_json" | "url",
+  format: MediaFormat,
   credits: CreditUsage | undefined
 ): AudioResponse => ({
-  created: Math.floor(Date.now() / MS_PER_SECOND),
-  data: assets.map((asset) => {
-    const base = { media_type: asset.mediaType };
-    if (!asset.inline) {
-      return asset.note
-        ? { ...base, note: asset.note, url: asset.href }
-        : { ...base, url: asset.href };
-    }
-    return format === "url"
-      ? { ...base, url: asset.href }
-      : {
-          ...base,
-          b64_json: asset.href.slice(asset.href.indexOf(",") + 1),
-        };
-  }),
+  created: createdNow(),
+  data: assets.map((asset) => ({
+    media_type: asset.mediaType,
+    ...assetDatum(asset, format),
+  })),
   usage: credits ? { credits } : undefined,
 });

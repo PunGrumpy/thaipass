@@ -6,6 +6,7 @@ import { randomHex } from "../lib/id";
 import type { ToolCall } from "../tools";
 import type { Reply, StreamWire, Wire } from "../turn";
 import { openaiFailure } from "./errors";
+import { createdNow } from "./media";
 
 const toolCallSchema = z.object({
   function: z.object({ arguments: z.string(), name: z.string() }),
@@ -72,7 +73,6 @@ type WireToolCall = z.infer<typeof toolCallSchema>;
 
 const PROTOCOL = "openai";
 const COMPLETION_ID_LENGTH = 16;
-const MS_PER_SECOND = 1000;
 const DONE_FRAME = "data: [DONE]\n\n";
 
 const FINISH_REASONS = new Map([
@@ -153,7 +153,7 @@ const chatCompletion = (
 /** Every chunk of one stream carries the same id and `created` second. */
 export const openaiWire = (model: string): Wire => {
   const id = `chatcmpl-${randomHex(COMPLETION_ID_LENGTH)}`;
-  const created = Math.floor(Date.now() / MS_PER_SECOND);
+  const created = createdNow();
   const chunk = (
     delta: ChatDelta,
     finishReason: string | null,

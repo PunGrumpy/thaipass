@@ -16,7 +16,7 @@ import { fetchCatalog } from "../aipass/catalog";
 import { deleteConversation, sendMessage } from "../aipass/client";
 import type { SendOptions } from "../aipass/client";
 import { fromDataUri } from "../aipass/inline";
-import { renderAsset, resolveAsset } from "../aipass/media";
+import { inlineBase64, renderAsset, resolveAsset } from "../aipass/media";
 import type { MediaAsset } from "../aipass/media";
 import type { ChatModel } from "../aipass/models";
 import { fetchCredits, settleCredits } from "../aipass/quotas";
@@ -215,7 +215,7 @@ const assetPart = (
     return { text: `\n\n${renderAsset(asset)}\n\n` };
   }
   return {
-    data: asset.href.slice(asset.href.indexOf(",") + 1),
+    data: inlineBase64(asset),
     mediaType: asset.mediaType,
     type: "file",
   };

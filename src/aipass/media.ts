@@ -75,6 +75,10 @@ const toDataUri = (bytes: ArrayBuffer, mediaType: string): string =>
 
 const isAbsolute = (url: string): boolean => /^https?:\/\//iu.test(url);
 
+/** The base64 payload of an inline asset's data URI. */
+export const inlineBase64 = (asset: MediaAsset): string =>
+  asset.href.slice(asset.href.indexOf(",") + 1);
+
 /** Renders the asset the way a chat client will show it. */
 export const renderAsset = (asset: MediaAsset): string => {
   const link = asset.kind === "image" ? "!" : "";
