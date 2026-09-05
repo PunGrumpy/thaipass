@@ -17,8 +17,10 @@ import type { Upstream } from "../testing/upstream";
 import { FENCE_CLOSE, FENCE_OPEN } from "../tools";
 import { createAipass } from "./aipass";
 
-const COOKIE = "__Secure-ai_passport_auth.session_token=abc.def";
+/** The catalog is cached per cookie across the whole run, so the provider keeps its own. */
+const COOKIE = "__Secure-ai_passport_auth.session_token=provider.def";
 const MODEL = "gemini-3.1-flash-lite";
+const MODELS_PATH = "/loaders/list-models";
 
 let upstream: Upstream;
 
@@ -53,9 +55,33 @@ test("exposes the v2 language model contract", () => {
   expect(model.modelId).toBe(MODEL);
 });
 
-test("rejects a model outside the catalog", () => {
+test("rejects a model the proxy does not know when the catalog cannot be read", async () => {
   upstream = stubUpstream(sseResponse([]));
-  expect(() => aipass.languageModel("gpt-4o")).toThrow(NoSuchModelError);
+  await expect(aipass("gpt-4o").doGenerate(call())).rejects.toThrow(
+    NoSuchModelError
+  );
+  expect(upstream.calls).toContain(MODELS_PATH);
+  expect(upstream.calls.some((path) => path.startsWith("/actions/"))).toBe(
+    false
+  );
+});
+
+test("takes a model the catalog lists even when the proxy does not know it", async () => {
+  const cookie = "__Secure-ai_passport_auth.session_token=provider-new.def";
+  upstream = stubUpstream(sseResponse(textDeltas(1)), (path) =>
+    path === MODELS_PATH
+      ? Response.json({ data: [{ id: "brand-new-model" }] })
+      : undefined
+  );
+  const model = createAipass({ cookie })("brand-new-model");
+  const result = await model.doGenerate(call());
+  expect(result.content[0]).toMatchObject({ text: "chunk0", type: "text" });
+});
+
+test("refuses a media model before any call is made", () => {
+  upstream = stubUpstream(sseResponse([]));
+  expect(() => aipass.languageModel("gpt-image-2")).toThrow(NoSuchModelError);
+  expect(() => aipass.languageModel("")).toThrow(NoSuchModelError);
 });
 
 test("falls back to the free default when no model is named", () => {

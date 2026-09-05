@@ -1,6 +1,6 @@
 ---
 name: aipass-upstream
-description: Keep the proxy in sync with the AI Pass upstream — refresh the model catalog in src/aipass/models.ts when CHAT_MODELS drifts from /loaders/list-models, and capture or verify a fresh session cookie. Use on "catalog has unserved models" warnings, "unknown model, see GET /v1/models" 400s, "cookie is stale, re-auth needed" 502s, 401s from the proxy, or when a model works in the AI Pass web UI but not through the proxy.
+description: Keep the proxy in sync with the AI Pass upstream — refresh the known model list in src/aipass/models.ts when CHAT_MODELS or MEDIA_MODELS drifts from /loaders/list-models, and capture or verify a fresh session cookie. Use on "catalog has unserved models" warnings, "unknown model" 400s, "no model catalog" or "cookie is stale, re-auth needed" 502s, 401s from the proxy, or when a model works in the AI Pass web UI but not through the proxy.
 metadata:
   author: PunGrumpy
   version: "0.1"
@@ -12,8 +12,9 @@ Two chores this proxy needs on a schedule set by the upstream, not by the code: 
 
 ## When to use
 
-- A log line says `catalog has unserved models` — upstream lists a model the proxy refuses.
-- A request comes back `400 unknown model, see GET /v1/models` for a model the web UI shows.
+- A log line says `catalog has unserved models` — upstream lists a model the proxy has not met. A chat id still works, because the proxy checks chat requests against the account's catalog. The proxy treats an image, video or music id as chat until `MEDIA_MODELS` names it, so it reaches the wrong route.
+- A request comes back `400 unknown model ... the account's catalog does not list it` for a model the web UI shows — the catalog and the web UI disagree, or the cookie belongs to another account.
+- A request comes back `400 unknown model ..., see GET /v1/models` without the catalog clause, or `GET /v1/models` answers `502 ... no model catalog` — the proxy could not read the catalog and fell back to the built-in list. Check the cookie first.
 - A request comes back `502 upstream 3xx ...; cookie is stale, re-auth needed`, or `401 missing AI Pass session cookie`.
 - The wide event lands with no `modelFree` / `modelReady` / `creditsAvailable` — the loader calls quietly failed, which almost always means the cookie died.
 
@@ -42,7 +43,7 @@ In fish, set it with `set -x COOKIE '<the whole cookie header>'`. Keep it out of
 
 ## 2. Refresh the model catalog
 
-`CHAT_MODELS` in `src/aipass/models.ts` is the single source of truth. `chatModelSchema`, the `/v1/models` route and the drift warning all derive from it, so a catalog refresh touches exactly one array — resist the urge to hunt for a second list.
+`GET /v1/models` lists the account's catalog from `/loaders/list-models`, and the proxy checks chat requests against the same catalog. A new chat model therefore needs no change here. `CHAT_MODELS` in `src/aipass/models.ts` has four jobs: the fallback when the catalog cannot be read, the examples in the OpenAPI document, the `/health` count, and one half of the drift warning. `MEDIA_MODELS` matters more. It is how the proxy knows an id makes an image, a video or a clip, which the catalog does not say. The video options per model live in `src/aipass/video.ts`.
 
 Diff upstream against what the proxy serves:
 
@@ -69,8 +70,8 @@ console.log("not ready      :", data.filter((m) => m.ready === false).map((m) =>
 
 Then:
 
-1. **added** — put chat ids in `CHAT_MODELS`, image/video/audio ids in `MEDIA_MODELS`. `MEDIA_MODELS` exists only to silence the drift warning; the proxy serves chat. Ids are case-sensitive and Claude carries a `@provider` suffix — copy them verbatim.
-2. **gone** — removing an id turns it into a 400 for anyone still asking. Prefer leaving it until upstream has clearly retired it, and never remove `DEFAULT_MODEL`.
+1. **added** — put chat ids in `CHAT_MODELS` and image, video or music ids in the matching list behind `MEDIA_MODELS`. A video id also needs its options in `src/aipass/video.ts`. Leave a media id out and the proxy serves it as chat, which fails at the wrong route. Ids are case-sensitive and Claude carries a `@provider` suffix — copy them verbatim.
+2. **gone** — the catalog already answers 400 for a retired id, so removing it here only changes the fallback and the docs. Never remove `DEFAULT_MODEL`.
 3. `DEFAULT_MODEL` must stay in `CHAT_MODELS` and should stay on the **free** list, so an unspecified model costs nothing.
 4. `bun run typecheck && bun run check`.
 

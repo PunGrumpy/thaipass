@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+/**
+ * The chat ids the proxy knew when it was built. The account's catalog on
+ * `/loaders/list-models` decides what a chat request may name. This list
+ * stands in when the catalog cannot be read, seeds the docs, and feeds the
+ * drift warning. A media id needs per-model knowledge the catalog does not
+ * carry, so the media lists below stay the gate for their routes.
+ */
 export const CHAT_MODELS = [
   "gpt-5.6-terra",
   "gpt-5.6-sol",
@@ -85,13 +92,22 @@ const KINDS = new Map<string, ModelKind>([
 export const kindOf = (modelId: string): ModelKind =>
   KINDS.get(modelId) ?? "chat";
 
-export const chatModelSchema = z.enum(CHAT_MODELS, {
-  error: "unknown model, see GET /v1/models",
-});
+export type KnownChatModel = (typeof CHAT_MODELS)[number];
 
-export type ChatModel = z.infer<typeof chatModelSchema>;
+/**
+ * Accepts any id. The route checks it against the account's catalog once it
+ * has the cookie, so a model upstream added yesterday works today.
+ */
+export const chatModelSchema = z
+  .string()
+  .min(1, { error: "model must not be empty, see GET /v1/models" })
+  .meta({
+    description:
+      "A chat model id from GET /v1/models. Ids are case-sensitive and Claude carries a @provider suffix.",
+    examples: [...CHAT_MODELS],
+  });
 
-export const DEFAULT_MODEL: ChatModel = "gemini-3.1-flash-lite";
+export const DEFAULT_MODEL: KnownChatModel = "gemini-3.1-flash-lite";
 
 export const ANY_MODELS = [...CHAT_MODELS, ...MEDIA_MODELS] as const;
 

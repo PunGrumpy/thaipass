@@ -17,7 +17,7 @@ export const healthRoutes = new Elysia().model({ Health: healthSchema }).get(
   {
     detail: {
       description:
-        "Reports the upstream origin and how many chat models the proxy serves. Needs no credential.",
+        "Reports the upstream origin and how many chat models the proxy knew when it was built. The proxy checks a request against the account's catalog on GET /v1/models, not this count. Needs no credential.",
       summary: "Health",
       tags: ["Meta"],
     },

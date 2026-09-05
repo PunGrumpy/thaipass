@@ -1,6 +1,6 @@
 import type { RequestLogger } from "evlog";
 
-import { fetchCatalog } from "./aipass/catalog";
+import { chatModelProblem, fetchCatalog } from "./aipass/catalog";
 import type { Catalog } from "./aipass/catalog";
 import { deleteConversation, sendMessage } from "./aipass/client";
 import type { SendResult } from "./aipass/client";
@@ -8,7 +8,6 @@ import { fetchIdentity } from "./aipass/identity";
 import type { Identity } from "./aipass/identity";
 import { InlineError } from "./aipass/inline";
 import { renderAsset } from "./aipass/media";
-import type { ChatModel } from "./aipass/models";
 import { fetchCredits, settleCredits } from "./aipass/quotas";
 import type { CreditUsage, Credits } from "./aipass/quotas";
 import {
@@ -73,7 +72,7 @@ export interface TurnRequest {
   readonly conversation: Conversation;
   readonly deferEmit: DeferredEmit;
   readonly log: RequestLogger;
-  readonly model: ChatModel;
+  readonly model: string;
   readonly request: Request;
   readonly stream: boolean;
   readonly thinking?: ThinkingLevel;
@@ -325,6 +324,13 @@ const runTurn = async (
     streaming: stream,
     toolCount: conversation.tools.length,
   });
+
+  /** The catalog decides the model, so it is read before anything is sent. */
+  const problem = chatModelProblem(model, await facts.catalog);
+  if (problem) {
+    log.set({ status: 400 });
+    return wire.fail({ message: problem, status: 400 });
+  }
 
   /** A file the proxy cannot read fails the request rather than being dropped. */
   let prepared: PreparedTurn;

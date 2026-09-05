@@ -103,7 +103,7 @@ test("takes the cookie from a bearer token too", async () => {
   expect(response.status).toBe(200);
 });
 
-test("answers a malformed body in the anthropic error shape", async () => {
+test("answers an unknown model in the anthropic error shape", async () => {
   upstream = stubUpstream(sseResponse(textDeltas(1)));
   const response = await app.fetch(messagesRequest({ model: "claude-3" }));
   const body = errorSchema.parse(await response.json());

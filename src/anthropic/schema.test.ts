@@ -42,9 +42,11 @@ test("leaves the model undefined so the route can default it", () => {
   expect(result.data?.model).toBeUndefined();
 });
 
-test("rejects a model that is not in the catalog", () => {
-  const result = messagesRequestSchema.safeParse({ model: "claude-3-opus" });
-  expect(result.success).toBe(false);
+test("leaves a model it does not know to the catalog, and rejects only an empty one", () => {
+  const unknown = messagesRequestSchema.safeParse({ model: "claude-3-opus" });
+  expect(unknown.success).toBe(true);
+  const empty = messagesRequestSchema.safeParse({ model: "" });
+  expect(empty.success).toBe(false);
 });
 
 test("joins the text blocks of a message and carries the image beside them", () => {

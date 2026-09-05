@@ -20,7 +20,9 @@ const documentSchema = z.object({
 type Document = z.infer<typeof documentSchema>;
 
 const requestSchema = z.object({
-  properties: z.object({ model: z.object({ enum: z.array(z.string()) }) }),
+  properties: z.object({
+    model: z.object({ examples: z.array(z.string()), type: z.string() }),
+  }),
 });
 
 const postSchema = z.object({
@@ -92,12 +94,15 @@ test("resolves every schema reference it makes", async () => {
   }
 });
 
-test("lists every served model in both request schemas", async () => {
+test("offers every known model as an example in both request schemas, without closing the field", async () => {
   const { components } = await document();
   for (const name of ["ChatRequest", "MessagesRequest"]) {
     const request = requestSchema.parse(components.schemas[name]);
-    expect(request.properties.model.enum).toContain("gemini-3.1-flash-lite");
-    expect(request.properties.model.enum).toHaveLength(CATALOG_SIZE);
+    expect(request.properties.model.type).toBe("string");
+    expect(request.properties.model.examples).toContain(
+      "gemini-3.1-flash-lite"
+    );
+    expect(request.properties.model.examples).toHaveLength(CATALOG_SIZE);
   }
 });
 
