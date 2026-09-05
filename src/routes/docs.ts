@@ -117,6 +117,10 @@ export const docsRoutes = (host: AnyElysia) =>
           ],
         },
         path: "/",
+        scalar: {
+          customCss: "",
+          theme: "deepSpace",
+        },
         specPath: SPEC_PATH,
       })
     );
