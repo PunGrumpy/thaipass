@@ -82,11 +82,15 @@ const client = new OpenAI({
 
 ### AI SDK provider
 
-`createAipass` returns models that `streamText` and `generateText` accept, with no HTTP hop:
+The provider ships as the `thaipass` package. `createAipass` returns models that `streamText` and `generateText` accept, with no HTTP hop:
+
+```bash
+bun add thaipass
+```
 
 ```ts
 import { streamText } from "ai";
-import { createAipass } from "aipass-proxy/provider";
+import { createAipass } from "thaipass";
 
 const aipass = createAipass({ cookie: process.env.AIPASS_COOKIE ?? "" });
 
@@ -96,7 +100,9 @@ const result = streamText({
 });
 ```
 
-The provider implements `LanguageModelV2` for `ai` v5. On `ai` v7 use `/v1/messages` over HTTP instead.
+The provider implements `LanguageModelV2` for `ai` v5. On `ai` v7 use `/v1/messages` over HTTP instead. Until the first npm release, build it from this repo: `bun run build` writes `packages/thaipass/dist`, and `bun link` in that directory makes `thaipass` resolvable.
+
+`createAipass` also takes `origin` for a different AI Pass host and `logger` for the warnings the proxy has no reply to attach to. Both apply to the whole process, and both have defaults.
 
 File parts upload as attachments, and a generated file comes back as the SDK's own file part. `providerOptions.aipass.thinkingLevel` picks a reasoning level, and sampling settings come back as `unsupported-setting` warnings. `usage` holds token estimates, and `providerMetadata.aipass.credits` holds the credit balance.
 
@@ -340,7 +346,7 @@ The proxy stops at the first failed call instead of trying the next course. An u
 
 ## Deploy to Vercel
 
-`src/index.ts` default-exports the Elysia app and `vercel.json` sets `bunVersion`, so the repo deploys as is. Keep Deployment Protection on. The deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
+Set the Vercel project's Root Directory to `apps/proxy`. There, `src/index.ts` default-exports the Elysia app and `vercel.json` sets `bunVersion`, so the workspace deploys as is. Keep Deployment Protection on. The deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
 
 On Vercel the function duration bounds a stream, not the proxy's 240s idle timeout, so a slow model can be cut off mid-reply. Video will not survive there at all, and the LMS learner pauses itself at 270 seconds. See [Video](#video) and [On a schedule](#on-a-schedule).
 
@@ -392,13 +398,21 @@ The cookie came from the chat page instead of a `/lms` page, or it expired. See 
 
 ## Development
 
-Scripts for working on the proxy:
+The repo is a Bun workspace run by Turborepo, with one package per job:
 
-- `bun run dev`: watch mode
-- `bun run test`: Bun test suite
+- `apps/proxy`: the server, the LMS command and everything HTTP
+- `packages/core`: the AI Pass protocol the server and the provider share
+- `packages/thaipass`: the AI SDK provider, built to `dist` for npm
+- `packages/typescript-config`: the `tsconfig` base every package extends
+
+Scripts from the root run in every package that has them:
+
+- `bun run dev`: watch mode for the server
+- `bun run test`: the Bun test suites
+- `bun run typecheck`: `tsc --noEmit`
+- `bun run build`: builds `thaipass` into `packages/thaipass/dist`
 - `bun run check`: Ultracite check
 - `bun run fix`: format and autofix
-- `bun run typecheck`: `tsc --noEmit`
 
 ## Personal use only
 
