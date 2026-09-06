@@ -72,7 +72,7 @@ export const chatModelProblem = (
 const reportDrift = (catalog: Catalog): void => {
   const unknown = [...catalog.keys()].filter((id) => !served.has(id));
   if (unknown.length > 0) {
-    config.logger.warn({
+    config.logger?.warn({
       models: unknown.join(", "),
       msg: "catalog has unserved models",
     });

@@ -97,10 +97,10 @@ export const deleteConversation = async (
       )
     );
     if (status >= 400) {
-      config.logger.warn({ conversationId, msg: "delete rejected", status });
+      config.logger?.warn({ conversationId, msg: "delete rejected", status });
     }
   } catch (error) {
-    config.logger.warn({
+    config.logger?.warn({
       conversationId,
       err: String(error),
       msg: "delete failed",

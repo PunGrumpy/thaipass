@@ -11,7 +11,7 @@ export interface Config {
   readonly origin: string;
   /** A browser's, because the edge refuses anything else. */
   readonly userAgent: string;
-  readonly logger: UpstreamLogger;
+  readonly logger?: UpstreamLogger;
 }
 
 export const DEFAULT_ORIGIN = "https://de.aipass.net";
@@ -20,10 +20,8 @@ const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36";
 
-const silent: UpstreamLogger = { warn: () => void 0 };
-
 interface MutableConfig {
-  logger: UpstreamLogger;
+  logger?: UpstreamLogger;
   origin: string;
   userAgent: string;
 }
@@ -31,7 +29,6 @@ interface MutableConfig {
 export type ConfigChanges = Partial<MutableConfig>;
 
 const current: MutableConfig = {
-  logger: silent,
   origin: DEFAULT_ORIGIN,
   userAgent: DEFAULT_USER_AGENT,
 };
