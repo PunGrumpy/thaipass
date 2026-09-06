@@ -4,6 +4,7 @@
   "private": true,
   "description": "OpenAI-compatible /v1/chat/completions proxy in front of the AI Pass (de.aipass.net) chat backend.",
   "bin": {
+    "aipass-lms": "src/lms/cli.ts",
     "aipass-proxy": "src/server.ts"
   },
   "type": "module",
@@ -14,6 +15,7 @@
   "scripts": {
     "start": "bun run src/server.ts",
     "dev": "bun --watch src/server.ts",
+    "lms": "bun run src/lms/cli.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "check": "ultracite check",

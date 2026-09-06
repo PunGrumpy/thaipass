@@ -89,6 +89,23 @@ Nothing else needs touching: `served` in `src/aipass/catalog.ts` is built from b
 
 Both loaders go through `loadJson`, which **swallows every failure and returns `null`** (`src/aipass/request.ts:43`). A dead cookie therefore shows up as missing fields on the wide event rather than as an error — check the cookie first when catalog or credit fields go absent.
 
+### LMS endpoints
+
+The learning site at `/lms` is a separate Next.js app; its backend answers on the same origin under `/lms/api/v1`, with the same session cookie plus an `X-CSRF-Protection: 1` header. `src/lms/api.ts` holds the routes and `src/lms/learn.ts` the lesson-page sequence. Mapped from the client bundle (`3vvnepg1owi5i.js` is the generated API layer), not a spec; the stamp was read off the lesson page's own chunk (`0z-hm15ewyw1c.js`) and confirmed against a live session.
+
+| path | method | notes |
+| --- | --- | --- |
+| `/course/v2` | POST json | catalogue, `{page, limit}` |
+| `/course/<code>/lesson` | GET | `enrollmentId` plus lessons with `lessonVersionId`, `lessonType` (`VIDEO`), `learnerLessonStatus`, `durationSeconds` |
+| `/course/<code>/enrollment` | POST | enrol |
+| `/course/<code>/lesson/<lessonVersionId>` | POST json | open, `{enrollmentId}`; answers `durationSeconds`, `lessonProgressId`, `videoContent`; 403 inside a 200 when not enrolled |
+| `.../video-stamp` | PUT json | `{videoContentId, watchedSeconds, durationSeconds, enrollmentId, lessonProgressId}`; answers `{lessonProgressId, status}`; the player caps each advance at +10 s |
+| `.../course-completed` | PUT json | `{enrollmentId}`, sent after a stamp reports `COMPLETED`; `lesson-completed` is for non-video lessons |
+| `/session/session-exp`, `/session/session-tier` | GET | `member.expEarn` is the period's EXP as a string; the tier carries `member.lessonTypeExp[]` |
+| `/achievement` | GET | the achievements page |
+
+A `401` with `No authentication credentials provided` means no session token reached the LMS; `Authentication service error` means one did and was refused.
+
 ## Scope
 
 This is a reverse-engineered adapter over an undocumented private API for one account the user owns. Poll these endpoints by hand when something looks wrong, not on a timer, and never against an account that is not the caller's.

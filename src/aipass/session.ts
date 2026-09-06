@@ -17,6 +17,10 @@ const withToken = (cookie: string): CookieLookup =>
     ? { cookie, ok: true }
     : { ok: false, reason: NO_TOKEN };
 
+/** A cookie handed over directly, as the CLI reads it from the environment or a file. */
+export const cookieFromValue = (value: string): CookieLookup =>
+  withToken(value.trim());
+
 /** A client sends the cookie as a bearer token or, from an Anthropic client, in `x-api-key`. */
 export const cookieFromRequest = (request: Request): CookieLookup => {
   const apiKey = request.headers.get("x-api-key");
