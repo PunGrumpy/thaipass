@@ -17,8 +17,7 @@
     "check": "ultracite check",
     "fix": "ultracite fix",
     "changeset": "changeset",
-    "version": "changeset version && bun install --lockfile-only",
-    "release": "turbo run build --filter=thaipass && changeset publish"
+    "version": "changeset version && bun install --lockfile-only"
   },
   "devDependencies": {
     "@changesets/changelog-github": "1.0.1",

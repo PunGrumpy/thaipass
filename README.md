@@ -416,7 +416,7 @@ Scripts from the root run in every package that has them:
 - `bun run check`: Ultracite check
 - `bun run fix`: format and autofix
 
-Releases of `thaipass` go through [Changesets](https://github.com/changesets/changesets). A change that should reach npm gets a changeset from `bun run changeset`, the release workflow turns pending changesets into a version pull request, and merging that pull request publishes.
+Releases of `thaipass` go through [Changesets](https://github.com/changesets/changesets). A change that should reach npm gets a changeset from `bun run changeset`, the release workflow turns pending changesets into a version pull request, and merging that pull request publishes. npm authenticates the publish job through OIDC as a trusted publisher, so the repo holds no npm token.
 
 ## Personal use only
 
