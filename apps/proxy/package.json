@@ -11,7 +11,7 @@
   "scripts": {
     "start": "bun run src/server.ts",
     "dev": "bun --watch src/server.ts",
-    "build": "bun build src/app.ts --target=bun --outfile dist/app.js --external 'elysia' --external '@elysiajs/*' --external 'evlog' --external 'evlog/*' --external '@t3-oss/*' --external 'zod' --external '@ai-sdk/*' --banner '// Bundled from src/app.ts by bun build with @thaipass/core inlined; the imports from \"elysia\" and the other dependencies stay external for Vercel to trace.'",
+    "build": "tsdown",
     "lms": "bun run src/lms/cli.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
@@ -19,14 +19,15 @@
   "dependencies": {
     "@elysiajs/openapi": "2.0.0-exp.0",
     "@t3-oss/env-core": "0.13.11",
-    "@thaipass/core": "workspace:*",
     "elysia": "2.0.0-exp.64",
     "evlog": "2.28.0",
     "zod": "4.5.4"
   },
   "devDependencies": {
+    "@thaipass/core": "workspace:*",
     "@thaipass/typescript-config": "workspace:*",
     "@types/bun": "1.4.0",
+    "tsdown": "0.23.0",
     "typescript": "7.0.2"
   }
 }

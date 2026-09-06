@@ -1,3 +1,8 @@
 [install]
-# Hoisted like npm, so apps/proxy/node_modules holds real directories for Vercel to trace, not links into a store.
+# Hoisted (flat) node_modules instead of bun's default isolated `.bun` store.
+# Vercel traces the proxy's imports from apps/proxy into the function, and the
+# isolated store puts every package behind a symlink into the repo-root store,
+# outside the project's Root Directory; with a flat layout the traced files are
+# real directories, the same shape as a typical npm/CI install. Bun itself
+# resolves either layout fine.
 linker = "hoisted"
