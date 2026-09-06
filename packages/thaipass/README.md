@@ -24,4 +24,4 @@ The provider implements `LanguageModelV2` for `ai` v5. File parts upload as atta
 
 `createAipass` also takes `origin` for a different AI Pass host and `logger` for the warnings the provider has no reply to attach to. Both apply to the whole process.
 
-This is a reverse-engineered adapter over an undocumented private API. Keep it to a single account you own. The code is MIT, and the rest of the story, from attachments to the edge's refusals, is in the [aipass-proxy README](https://github.com/PunGrumpy/aipass-proxy#readme).
+This is a reverse-engineered adapter over an undocumented private API. Keep it to a single account you own. The code is MIT, and the rest of the story, from attachments to the edge's refusals, is in the [thaipass README](https://github.com/PunGrumpy/thaipass#readme).
