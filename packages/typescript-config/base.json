@@ -5,7 +5,7 @@
     "module": "ESNext",
     "target": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["bun"],
+    "types": [],
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "strict": true,

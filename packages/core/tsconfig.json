@@ -1,4 +1,7 @@
 {
   "extends": "@thaipass/typescript-config/base.json",
+  "compilerOptions": {
+    "types": ["bun"]
+  },
   "include": ["src"]
 }
