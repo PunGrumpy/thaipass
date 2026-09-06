@@ -11,7 +11,7 @@
   "scripts": {
     "start": "bun run src/server.ts",
     "dev": "bun --watch src/server.ts",
-    "build": "bun build src/app.ts --target=bun --outfile dist/app.js",
+    "build": "bun build src/app.ts --target=bun --outfile dist/app.js --banner '// Bundled from src/app.ts by bun build; every dependency is inlined, so the imports from \"elysia\" and @thaipass/core live in this file.'",
     "lms": "bun run src/lms/cli.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
