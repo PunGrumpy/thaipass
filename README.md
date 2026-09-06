@@ -267,7 +267,25 @@ curl -s localhost:3789/v1/usage -H "authorization: Bearer $AIPASS_COOKIE"
 
 ## Earn LMS points
 
-AI Pass runs a learning site at `/lms` that pays EXP per completed lesson, and the membership tier wants a monthly minimum. `POST /v1/lms/learn` does what the lesson page does for every unwatched video lesson until the account has earned a target, 100 EXP by default:
+AI Pass runs a learning site at `/lms` that pays EXP per completed lesson, and the membership tier wants a monthly minimum. The proxy can do the watching for you, from a command on your machine or from a scheduler through the API.
+
+### On your machine
+
+`bun run lms` runs the learner in-process, with no function limit and no loop to write:
+
+```bash
+AIPASS_COOKIE='your_cookie_header_here' bun run lms             # reach 100 this period
+AIPASS_COOKIE='your_cookie_header_here' bun run lms --earn 200  # earn 200 more
+bun run lms --cookie-file ~/.aipass-cookie --dry-run            # see what it would watch
+```
+
+Run `--dry-run` first. It reads the catalogue and reports each lesson it would watch, with the tier's EXP per video lesson, and changes nothing.
+
+The command prints one line per course and lesson, redraws the stamp progress in place, and exits 0 when the goal is reached, 1 when it is not, and 2 on a usage error. `--json` prints the same lines the route streams. This command is the one place in the repo that reads a cookie from the environment. The server never does.
+
+### Through the API
+
+`POST /v1/lms/learn` watches every unwatched video lesson until the account has earned a target, 100 EXP by default:
 
 ```bash
 curl -sN localhost:3789/v1/lms/learn \
@@ -276,61 +294,49 @@ curl -sN localhost:3789/v1/lms/learn \
   -d '{"target":100,"pace":1}'
 ```
 
-The reply is one JSON object per line as the run goes: the month's EXP before, a `course` line per course it enters, a `lesson` line when a lesson starts and when it completes, a `stamp` line per ten seconds of video, the EXP after, and a `done` line saying how much was earned and why it stopped. The run enrols in a course that still has an unwatched video, opens the lesson, stamps the seconds watched as the video would play, and asks the course to close once the LMS reports the lesson complete. Articles and quizzes are left alone, because the proxy only watches video.
+The reply is one JSON object per line as the run goes: the period's EXP before, a `course` line per course it enters, a `lesson` line when a lesson starts and when it completes, a `stamp` line per ten seconds of video, the EXP after, and a `done` line saying how much was earned and why it stopped. Pass `-N` to curl so the lines show as they arrive. Articles and quizzes are left alone, because the proxy only watches video.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `target` | 100 | The period's EXP to reach, as the LMS reports it; a run whose period already has it touches nothing |
-| `earn` | none | Earn this much EXP in this run, whatever the period already has; overrides `target` |
+| `target` | 100 | The period's EXP to reach, as the LMS reports it. A run whose period already has it touches nothing |
+| `earn` | none | Earn this much EXP in this run, whatever the period already has. Overrides `target` |
 | `pace` | 1 | Playback speed, up to 16. At 1 a ten minute video takes ten minutes |
 | `max_lessons` | 50 | Stop after this many lessons regardless |
 | `dry_run` | false | List what would be learned and change nothing |
-| `budget_seconds` | none, 270 on Vercel | End the run cleanly before this much wall-clock has passed; the `done` line then has `paused: true` and the next call resumes from the last stamp |
+| `budget_seconds` | none, 270 on Vercel | End the run before this much wall-clock has passed. The `done` line then has `paused: true`, and the next call resumes from the last stamp |
 
-Send `dry_run` first. It reads the catalogue and reports each lesson it would watch, with the tier's EXP per video lesson, without enrolling or stamping anything.
+`GET /v1/lms/exp` returns the session's EXP payload, the tier and the achievement summary as the LMS reports them, with the period's figure as `monthly`.
 
-### Through the API, on a schedule
+### On a schedule
 
-Every call to `POST /v1/lms/learn` makes progress and stops on its own: at the target, at the end of the videos, or at `budget_seconds` with `paused: true`, from where the next call resumes. So the whole automation from any scheduler is one call, repeated:
+Every call stops on its own: at the target, at the end of the videos, or at `budget_seconds` with `paused: true`, from where the next call resumes. So the whole automation from any scheduler is one call, repeated:
 
-- **Monthly minimum**: call with `{"target": 100}` every ten minutes, or once an hour. A call whose period already has the target reads one figure and ends, so the idle calls cost nothing. Because `target` is the period's figure, a target of 1000 is reached across as many calls as it takes.
-- **Keep accumulating**: call with `{"earn": 100}` on the same schedule; each call earns that much more, whatever the period has, until the videos run out.
+- **Monthly minimum**: call with `{"target": 100}` every ten minutes or once an hour. A call whose period already has the target reads one figure and ends, so the idle calls cost nothing
+- **Keep accumulating**: call with `{"earn": 100}` on the same schedule. Each call earns that much more, whatever the period has, until the videos run out
 
-On Vercel each call stops itself at 270 seconds, under the function limit, so a lesson longer than that spans two calls. The stream carries the account's EXP figure and nothing else about the account; `GET /v1/lms/exp` has the rest.
-
-### One command, on your machine
-
-The route is for a client that already talks to the proxy. For the monthly chore itself there is a command that runs the learner in-process, with no function limit and no loop to write:
+On Vercel each call stops itself at 270 seconds, under the function limit, so a lesson longer than that spans two calls. This loop calls again until the `done` line says `paused: false`:
 
 ```bash
-AIPASS_COOKIE='<the Cookie header>' bun run lms            # reach 100 this period
-AIPASS_COOKIE='<the Cookie header>' bun run lms --earn 200  # earn 200 more, whatever the period has
-bun run lms --cookie-file ~/.aipass-cookie --dry-run        # see what it would watch
+for attempt in $(seq 1 12); do
+  curl -sN https://your_deployment_here/v1/lms/learn \
+    -H 'content-type: application/json' \
+    -H "authorization: Bearer $AIPASS_COOKIE" \
+    -d '{"target":100}' | tee /dev/stderr | grep -Eq '"paused": ?false' && break
+  sleep 10
+done
 ```
 
-It prints one line per course and lesson, redraws the stamp progress in place, and exits 0 when the goal is there, 1 when it is not, 2 on a usage error. `--json` prints the same lines the route streams. This command is the one place in the repo that reads a cookie from the environment; the server never does.
+The sleep keeps a refused request from becoming a tight loop, and the cap bounds a bad day to an hour. Pipe the output through nothing else, because a pretty-printer changes the line the loop greps for.
 
-`GET /v1/lms/exp` returns the session's EXP payload, the tier and the achievement summary as the LMS reports them, with the period's figure as `monthly`. A cron line that runs the learn call once a month is the whole automation: the run reads the figure first and ends at once when the target is already there.
+### What the learner sends
 
 Three things to know before relying on it:
 
-- **The stamp is the player's own, read off the lesson page and confirmed against a live session.** Each stamp carries the video content id, the enrolment, the progress record and the whole seconds watched, never more than ten past the last one, and the LMS answers with the lesson's status. A stamp that reports `COMPLETED` is what earns the EXP; the proxy then asks the course to close, as the page does, and prices the lesson by how much the period's EXP moved.
-- **The LMS needs its own cookies.** Copy the `Cookie` header from a request made while the browser is on a `/lms` page, not from the chat, so the tenant cookie the LMS sets travels with the session token. A `401` from the LMS says the cookie is stale or came from the wrong page.
-- **Keep the pace at 1.** The player blocks seeking on a first watch and never lets a stamp advance more than ten seconds, so the stamps arrive as slowly as the video plays, and a run takes as long as the videos do. Pass `-N` to curl so the lines show as they come. On Vercel the function is cut at five minutes, so there each call stops itself at 270 seconds with `paused: true` and keeps its stamps; call again until the `done` line says `paused: false`:
+- **The stamp is the player's own.** I read it off the lesson page and confirmed it against a live session. Each stamp carries the video content id, the enrolment, the progress record and the whole seconds watched, never more than ten past the last one. A stamp the LMS answers with `COMPLETED` is what earns the EXP. The proxy then asks the course to close, as the page does, and prices the lesson by how much the period's EXP moved.
+- **The LMS needs its own cookies.** Copy the `Cookie` header from a request made while the browser is on a `/lms` page, not from the chat, so the tenant cookie the LMS sets travels with the session token. A `401` from the LMS means the cookie is stale or came from the wrong page.
+- **Keep the pace at 1.** The player blocks seeking on a first watch and never lets a stamp advance more than ten seconds, so a run takes as long as the videos do.
 
-  ```bash
-  for attempt in $(seq 1 12); do
-    curl -sN https://your_deployment_here/v1/lms/learn \
-      -H 'content-type: application/json' \
-      -H "authorization: Bearer $AIPASS_COOKIE" \
-      -d '{"target":100}' | tee /dev/stderr | grep -Eq '"paused": ?false' && break
-    sleep 10
-  done
-  ```
-
-  The pause between calls keeps a refused request from turning into a tight loop, and the cap bounds a bad day to an hour. Pipe the output through nothing else: a pretty-printer changes the line the loop looks for.
-
-The proxy stops at the first failed call rather than trying the next course, because an undocumented backend that refused once will refuse again, and the programme awards these points for learning that a person is meant to do. This is your account and your call; the proxy sends nothing a browser watching the video would not.
+The proxy stops at the first failed call instead of trying the next course. An undocumented backend that refused once will refuse again, and the programme awards these points for learning a person is meant to do. This is your account and your call. The proxy sends nothing a browser watching the video would not.
 
 ## Deploy to Vercel
 
