@@ -2,13 +2,15 @@
 
 [![runtime](https://img.shields.io/badge/runtime-bun-000000?style=flat&colorA=000000&colorB=000000)](https://bun.sh) [![framework](https://img.shields.io/badge/framework-elysia-000000?style=flat&colorA=000000&colorB=000000)](https://elysiajs.com) [![deploy](https://img.shields.io/badge/deploy-vercel-000000?style=flat&colorA=000000&colorB=000000)](https://vercel.com)
 
-Point your OpenAI or Anthropic client at AI Pass.
+Point your OpenAI or Anthropic client at [AI Pass](https://de.aipass.net) and use the models your account already sees in the web UI.
 
-AIPass Proxy serves an OpenAI-compatible `/v1/chat/completions` and an Anthropic-compatible `/v1/messages` in front of the [AI Pass](https://de.aipass.net) chat backend. Any tool that speaks either protocol reaches the models your account already sees in the web UI. AI SDK apps can import the bundled provider instead.
+The proxy serves an OpenAI-compatible `/v1/chat/completions` and an Anthropic-compatible `/v1/messages` in front of the AI Pass chat backend. It also generates images, video and music, reports the account's credit balance, and can earn the monthly learning points for you. AI SDK apps can import the bundled provider and skip HTTP.
 
 Every request carries your own session cookie. The proxy stores no credential and drives no account but yours. See [Personal use only](#personal-use-only).
 
 ## Quick start
+
+Three steps get a reply: run the server, copy your cookie, send a request.
 
 ### 1. Run the proxy
 
@@ -17,21 +19,13 @@ bun install
 bun run start
 ```
 
-The server listens on `http://127.0.0.1:3789`. Every setting has a default, so no `.env` is required.
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `AIPASS_ORIGIN` | `https://de.aipass.net` | Upstream origin |
-| `AIPASS_HOST` | `127.0.0.1` | Bind address, local only |
-| `AIPASS_PORT` | `3789` | Port, local only |
-| `POSTHOG_API_KEY` | none | Project token (`phc_…`), enables PostHog |
-| `POSTHOG_HOST` | `https://us.i.posthog.com` | PostHog ingestion host |
+The server listens on `http://127.0.0.1:3789`. No `.env` is needed. See [Settings](#settings) to change the port or turn on PostHog.
 
 ### 2. Copy your session cookie
 
 Log in to AI Pass and copy the full `Cookie` header from any request to `de.aipass.net`. It must contain `__Secure-ai_passport_auth.session_token`. Keep the percent-encoding as the browser sends it.
 
-That string is your API key. Pass it as a bearer token, or as `x-api-key` from an Anthropic client. A client that requires keys to start with `sk-` will not work.
+That string is your API key. Send it as a bearer token, or as `x-api-key` from an Anthropic client. A client that insists keys start with `sk-` will not work.
 
 ### 3. Send a request
 
@@ -42,26 +36,15 @@ curl -sN localhost:3789/v1/chat/completions \
   -d '{"model":"claude-sonnet-5@default","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-`GET /v1/models` reads the account's catalog live from AI Pass. Each entry carries a `kind` naming the endpoint that takes it. The proxy checks every chat request against the same catalog. A model upstream adds works the day it appears, and a model upstream retires answers 400, with no proxy release either way. Ids are case-sensitive, Claude ids carry a `@provider` suffix, and `gemini-3.1-flash-lite` is the free default.
+`gemini-3.1-flash-lite` is the free default model. `GET /v1/models` lists the rest. See [Models](#models).
 
-## Endpoints
+## Connect a client
 
-- `POST /v1/chat/completions`: OpenAI protocol, streaming by default
-- `POST /v1/messages`: Anthropic protocol, buffered unless `stream: true`
-- `POST /v1/images/generations`: one image, buffered
-- `POST /v1/videos`: one video; blocks for the whole render, see [Images, video and music](#images-video-and-music)
-- `POST /v1/audio/generations`: one music clip, buffered
-- `POST /v1/messages/count_tokens`: the estimated size of a prompt, no credential needed
-- `GET /v1/models`: the account's model catalog, needs the cookie
-- `GET /v1/usage`: the account's credit balance, needs the cookie
-- `GET /v1/lms/exp`: the account's learning EXP from the LMS, needs the cookie
-- `POST /v1/lms/learn`: watches video lessons in the LMS until a target EXP is earned, see [Earn LMS points](#earn-lms-points)
-- `GET /health`: liveness, no credential needed
-- `GET /`: OpenAPI docs rendered by Scalar, also at `/openapi.json`
+Each client needs a base URL, the cookie as its key, and a model id from the catalog.
 
-## Use it from an Anthropic client
+### Anthropic SDK and agents
 
-Change the environment of any app that speaks the Anthropic protocol, such as a [baymi](https://github.com/PunGrumpy/baymi) agent:
+Set the environment of any app that speaks the Anthropic protocol, such as a [baymi](https://github.com/PunGrumpy/baymi) agent:
 
 ```bash
 ANTHROPIC_BASE_URL=https://your_deployment_here/v1
@@ -69,9 +52,11 @@ ANTHROPIC_API_KEY=your_cookie_header_here
 MODEL=claude-sonnet-5@default
 ```
 
-The proxy carries text, `tool_use`, `tool_result`, `image` and `document` blocks through, and a `thinking` block picks a reasoning level. It drops `max_tokens` and the sampling settings.
+The proxy passes text, `tool_use`, `tool_result`, `image` and `document` blocks through. A `thinking` block picks a reasoning level. The proxy drops `max_tokens` and the sampling settings.
 
-Claude Code appends `/v1/messages` to the base URL itself, so leave off the `/v1` the SDKs add. Name both models, because the ids Claude Code sends are outside the catalog:
+### Claude Code
+
+Claude Code appends `/v1/messages` to the base URL itself, so leave off the `/v1`. Name both models, because the ids Claude Code sends by default are not in the catalog:
 
 ```bash
 ANTHROPIC_BASE_URL=https://your_deployment_here
@@ -80,11 +65,22 @@ ANTHROPIC_MODEL=claude-sonnet-5@default
 ANTHROPIC_SMALL_FAST_MODEL=gemini-3.1-flash-lite
 ```
 
-Claude Code is a heavy caller. Its system prompt and tool definitions make a first request of about 100 KB, and every turn resends the whole conversation, so one session can spend the daily allowance.
+Two warnings before you start a session. The first request is about 100 KB of system prompt and tool definitions, and every turn resends the whole conversation, so one session can spend the daily allowance. That system prompt is also the shape the AI Pass edge refuses most, so the first request may come back as a `400`. See [400: the edge refused the prompt](#400-the-edge-refused-the-prompt).
 
-Its system prompt is also the shape the edge is most likely to refuse, so expect a `400` naming an edge refusal on the first request. See [When the edge refuses a prompt](#when-the-edge-refuses-a-prompt).
+### OpenAI SDK
 
-## Use it as an AI SDK provider
+Point any OpenAI client at `/v1` with the cookie as the API key:
+
+```ts
+import OpenAI from "openai";
+
+const client = new OpenAI({
+  baseURL: "http://127.0.0.1:3789/v1",
+  apiKey: process.env.AIPASS_COOKIE,
+});
+```
+
+### AI SDK provider
 
 `createAipass` returns models that `streamText` and `generateText` accept, with no HTTP hop:
 
@@ -100,9 +96,60 @@ const result = streamText({
 });
 ```
 
-The provider implements `LanguageModelV2` for `ai` v5. An app on `ai` v7 should use `/v1/messages` over HTTP instead.
+The provider implements `LanguageModelV2` for `ai` v5. On `ai` v7 use `/v1/messages` over HTTP instead.
 
-The provider uploads file parts as attachments, and a generated file comes back as the SDK's own file part. `providerOptions.aipass.thinkingLevel` picks a reasoning level. Sampling settings come back as `unsupported-setting` warnings. Token counts in `usage` are estimates from the text, and `providerMetadata.aipass.credits` holds the credit balance.
+File parts upload as attachments, and a generated file comes back as the SDK's own file part. `providerOptions.aipass.thinkingLevel` picks a reasoning level, and sampling settings come back as `unsupported-setting` warnings. `usage` holds token estimates, and `providerMetadata.aipass.credits` holds the credit balance.
+
+## Endpoints
+
+Every route the proxy serves:
+
+| Route | What it does | Cookie |
+| --- | --- | --- |
+| `POST /v1/chat/completions` | OpenAI protocol, streams by default | yes |
+| `POST /v1/messages` | Anthropic protocol, buffered unless `stream: true` | yes |
+| `POST /v1/messages/count_tokens` | Estimated size of a prompt | no |
+| `POST /v1/images/generations` | One image, buffered | yes |
+| `POST /v1/videos` | One video, blocks for the whole render | yes |
+| `POST /v1/audio/generations` | One music clip, buffered | yes |
+| `GET /v1/models` | The account's model catalog | yes |
+| `GET /v1/usage` | The account's credit balance | yes |
+| `GET /v1/lms/exp` | The account's learning EXP | yes |
+| `POST /v1/lms/learn` | Watches video lessons until a target EXP | yes |
+| `GET /health` | Liveness | no |
+| `GET /` | OpenAPI docs rendered by Scalar, JSON at `/openapi.json` | no |
+
+## Settings
+
+Every setting has a default, so the proxy runs with no `.env`:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `AIPASS_ORIGIN` | `https://de.aipass.net` | Upstream origin |
+| `AIPASS_HOST` | `127.0.0.1` | Bind address, local only |
+| `AIPASS_PORT` | `3789` | Port, local only |
+| `POSTHOG_API_KEY` | none | Project token (`phc_…`), enables PostHog |
+| `POSTHOG_HOST` | `https://us.i.posthog.com` | PostHog ingestion host |
+
+## Models
+
+`GET /v1/models` reads the account's catalog live from AI Pass. Each entry carries a `kind` naming the endpoint that takes it, and the proxy checks every request against the same catalog. A model AI Pass adds works the day it appears. A model AI Pass retires returns `400`. Neither needs a proxy release.
+
+Ids are case-sensitive, and Claude ids carry a `@provider` suffix, as in `claude-sonnet-5@default`.
+
+### Reasoning effort
+
+AI Pass takes a reasoning level, not a token budget, and each model advertises the levels it accepts. Each protocol has a field for it:
+
+| Protocol | Field |
+| --- | --- |
+| OpenAI | `thinking_level`, or `reasoning_effort` with OpenAI's own values |
+| Anthropic | `thinking_level`, `output_config.effort`, or a `thinking` block whose `budget_tokens` picks a level |
+| AI SDK | `providerOptions.aipass.thinkingLevel` |
+
+The levels are `low`, `medium` and `high`, plus `max` on Claude Opus. Asking for a level the model does not offer is not an error. The proxy drops it, records that in the wide event, and the reply still comes. `GET /v1/models` lists each model's levels.
+
+An Anthropic `thinking` block of type `adaptive` or `enabled` turns thinking on. With it, `output_config.effort` names the level, and `xhigh` rounds down to `high`. Without an effort, `budget_tokens` picks the level by thresholds the proxy chose, because AI Pass publishes no token figure per level: under 4096 is `low`, under 16384 is `medium`, and above that is `high`. A block that names neither gets `medium`.
 
 ## Attachments
 
@@ -124,20 +171,6 @@ curl -s localhost:3789/v1/chat/completions \
 The bytes have to arrive inline, as a data URI or as base64 in the block that names them. The proxy refuses a remote URL with a `400` rather than fetching it, because a deployment that fetches any URL a caller names is a request forger pointed at whatever network it sits in. Fetch the file yourself and send the bytes.
 
 The proxy accepts files up to 20 MB. Uploading one takes three calls before the turn is sent: the proxy reserves a slot, puts the bytes at a signed storage URL, then confirms the object. A file the proxy cannot read fails the request instead of being dropped, because a model answering about a document it never received is worse than an error naming the document.
-
-## Reasoning effort
-
-AI Pass takes a reasoning level, not a token budget, and each model advertises the levels it will take. Every protocol has a way to ask:
-
-| Protocol | Field |
-| --- | --- |
-| OpenAI | `thinking_level`, or `reasoning_effort` with OpenAI's own values |
-| Anthropic | `thinking_level`, `output_config.effort`, or a `thinking` block whose `budget_tokens` picks a level |
-| AI SDK | `providerOptions.aipass.thinkingLevel` |
-
-The levels are `low`, `medium` and `high`, plus `max` on Claude Opus. Asking for a level a model does not offer is not an error. The proxy drops the level, names it in the wide event, and the reply still comes. `GET /v1/models` reports each model's levels when you send the cookie.
-
-An Anthropic `thinking` block of type `adaptive` or `enabled` turns thinking on. With it, `output_config.effort` names the level, and `xhigh` rounds down to `high`. Without an effort, `budget_tokens` picks the level by thresholds that are the proxy's own, because AI Pass publishes no token figure for a level. Under 4096 is `low`, under 16384 is `medium`, and above that is `high`. Neither field alone is enough, and `medium` is the level when a block names neither.
 
 ## Images, video and music
 
