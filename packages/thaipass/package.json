@@ -2,6 +2,14 @@
   "name": "thaipass",
   "version": "0.0.0",
   "description": "AI SDK provider for AI Pass, using your own session cookie.",
+  "keywords": [
+    "ai-sdk",
+    "ai-sdk-provider",
+    "aipass",
+    "llm",
+    "thai",
+    "vercel-ai"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
