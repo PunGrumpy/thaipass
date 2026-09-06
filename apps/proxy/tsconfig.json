@@ -1,4 +1,5 @@
 {
   "extends": "@thaipass/typescript-config/base.json",
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/index.ts"]
 }

@@ -346,7 +346,7 @@ The proxy stops at the first failed call instead of trying the next course. An u
 
 ## Deploy to Vercel
 
-Set the Vercel project's Root Directory to `apps/proxy`. There, `src/index.ts` default-exports the Elysia app and `vercel.json` sets `bunVersion`, so the workspace deploys as is. Keep Deployment Protection on. The deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
+Set the Vercel project's Root Directory to `apps/proxy` and turn on the option to include source files outside it, so the build can read `packages/core`. There, `vercel.json` sets `bunVersion` and runs `bun run build`, which writes a self-contained bundle that `src/index.ts` exports, so the function carries no workspace symlink. Keep Deployment Protection on. The deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
 
 On Vercel the function duration bounds a stream, not the proxy's 240s idle timeout, so a slow model can be cut off mid-reply. Video will not survive there at all, and the LMS learner pauses itself at 270 seconds. See [Video](#video) and [On a schedule](#on-a-schedule).
 
