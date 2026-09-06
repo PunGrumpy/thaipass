@@ -2,5 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "bunVersion": "1.x",
   "buildCommand": "bun run build",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "installCommand": "root=$(git rev-parse --show-toplevel) && rm -rf \"$root\"/node_modules \"$root\"/apps/*/node_modules \"$root\"/packages/*/node_modules && bun install"
 }
