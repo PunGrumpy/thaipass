@@ -1,0 +1,3 @@
+[install]
+# Hoisted like npm, so apps/proxy/node_modules holds real directories for Vercel to trace, not links into a store.
+linker = "hoisted"

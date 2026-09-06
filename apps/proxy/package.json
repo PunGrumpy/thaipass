@@ -11,7 +11,7 @@
   "scripts": {
     "start": "bun run src/server.ts",
     "dev": "bun --watch src/server.ts",
-    "build": "bun build src/app.ts --target=bun --outfile dist/app.js --banner '// Bundled from src/app.ts by bun build; every dependency is inlined, so the imports from \"elysia\" and @thaipass/core live in this file.'",
+    "build": "bun build src/app.ts --target=bun --outfile dist/app.js --external 'elysia' --external '@elysiajs/*' --external 'evlog' --external 'evlog/*' --external '@t3-oss/*' --external 'zod' --external '@ai-sdk/*' --banner '// Bundled from src/app.ts by bun build with @thaipass/core inlined; the imports from \"elysia\" and the other dependencies stay external for Vercel to trace.'",
     "lms": "bun run src/lms/cli.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
