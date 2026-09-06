@@ -410,9 +410,11 @@ Scripts from the root run in every package that has them:
 - `bun run dev`: watch mode for the server
 - `bun run test`: the Bun test suites
 - `bun run typecheck`: `tsc --noEmit`
-- `bun run build`: builds `thaipass` into `packages/thaipass/dist`
+- `bun run build`: builds `thaipass` and the proxy's Vercel bundle into each package's `dist`
 - `bun run check`: Ultracite check
 - `bun run fix`: format and autofix
+
+Releases of `thaipass` go through [Changesets](https://github.com/changesets/changesets). A change that should reach npm gets a changeset from `bun run changeset`, the release workflow turns pending changesets into a version pull request, and merging that pull request publishes.
 
 ## Personal use only
 
