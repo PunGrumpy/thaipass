@@ -1,0 +1,8 @@
+{
+  "extends": "./packages/typescript-config/base.json",
+  "include": ["packages/thaipass/src", "packages/core/src"],
+  "exclude": ["packages/**/*.test.ts", "packages/core/src/testing"],
+  "compilerOptions": {
+    "types": ["node"]
+  }
+}

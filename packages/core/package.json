@@ -1,0 +1,23 @@
+{
+  "name": "@thaipass/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The AI Pass protocol: sessions, conversations, uploads, media jobs, credits and the text-to-protocol translation the proxy and the provider share.",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/provider-utils": "3.0.36",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@thaipass/typescript-config": "workspace:*",
+    "@types/bun": "1.4.0",
+    "typescript": "7.0.2"
+  }
+}

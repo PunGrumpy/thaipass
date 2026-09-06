@@ -1,0 +1,31 @@
+{
+  "name": "@thaipass/proxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenAI-compatible /v1/chat/completions and Anthropic-compatible /v1/messages in front of the AI Pass (de.aipass.net) chat backend.",
+  "bin": {
+    "aipass-lms": "src/lms/cli.ts",
+    "aipass-proxy": "src/server.ts"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/server.ts",
+    "dev": "bun --watch src/server.ts",
+    "lms": "bun run src/lms/cli.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elysiajs/openapi": "2.0.0-exp.0",
+    "@t3-oss/env-core": "0.13.11",
+    "@thaipass/core": "workspace:*",
+    "elysia": "2.0.0-exp.64",
+    "evlog": "2.28.0",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@thaipass/typescript-config": "workspace:*",
+    "@types/bun": "1.4.0",
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "thaipass",
+  "version": "0.1.0",
+  "description": "AI SDK provider for AI Pass: streamText and generateText against the models your account already sees, with your own session cookie.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PunGrumpy/aipass-proxy.git",
+    "directory": "packages/thaipass"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/provider": "2.0.3",
+    "@ai-sdk/provider-utils": "3.0.36",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@thaipass/core": "workspace:*",
+    "@thaipass/typescript-config": "workspace:*",
+    "@types/bun": "1.4.0",
+    "tsdown": "0.23.0",
+    "typescript": "7.0.2"
+  }
+}
