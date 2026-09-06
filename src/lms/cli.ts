@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 
 import { cookieFromValue } from "../aipass/session";
 import { env } from "../lib/env";
+import "../lib/settings";
 import { DEFAULT_TARGET, learn } from "./learn";
 import type { LearnEvent } from "./learn";
 

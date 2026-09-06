@@ -3,6 +3,7 @@ import { log } from "evlog";
 
 import { anthropicError } from "./anthropic/errors";
 import { requestLogger } from "./lib/logger";
+import "./lib/settings";
 import { apiError } from "./openai/errors";
 import { audioRoutes } from "./routes/audio";
 import { chatRoutes } from "./routes/chat";

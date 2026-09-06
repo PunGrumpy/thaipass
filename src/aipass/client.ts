@@ -1,5 +1,3 @@
-import { log } from "evlog";
-
 import { config } from "../lib/config";
 import { isEdgeRefusal } from "./refusal";
 import { browserPostHeaders, conversationJsonHeaders } from "./request";
@@ -99,10 +97,14 @@ export const deleteConversation = async (
       )
     );
     if (status >= 400) {
-      log.warn({ conversationId, msg: "delete rejected", status });
+      config.logger.warn({ conversationId, msg: "delete rejected", status });
     }
   } catch (error) {
-    log.warn({ conversationId, err: String(error), msg: "delete failed" });
+    config.logger.warn({
+      conversationId,
+      err: String(error),
+      msg: "delete failed",
+    });
   }
 };
 

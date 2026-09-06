@@ -1,7 +1,7 @@
-import { log } from "evlog";
 import { z } from "zod";
 
 import { ttlCache } from "../lib/cache";
+import { config } from "../lib/config";
 import { CHAT_MODELS, kindOf, MEDIA_MODELS } from "./models";
 import type { ModelKind } from "./models";
 import { loadJson } from "./request";
@@ -72,7 +72,7 @@ export const chatModelProblem = (
 const reportDrift = (catalog: Catalog): void => {
   const unknown = [...catalog.keys()].filter((id) => !served.has(id));
   if (unknown.length > 0) {
-    log.warn({
+    config.logger.warn({
       models: unknown.join(", "),
       msg: "catalog has unserved models",
     });
