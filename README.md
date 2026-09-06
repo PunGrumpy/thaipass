@@ -168,13 +168,13 @@ curl -s localhost:3789/v1/chat/completions \
   }'
 ```
 
-The bytes have to arrive inline, as a data URI or as base64 in the block that names them. The proxy refuses a remote URL with a `400` rather than fetching it, because a deployment that fetches any URL a caller names is a request forger pointed at whatever network it sits in. Fetch the file yourself and send the bytes.
+The bytes must arrive inline, as a data URI or as base64 in the block that names them. The proxy refuses a remote URL with a `400` instead of fetching it, because a deployment that fetches any URL a caller names is a request forger pointed at whatever network it sits in. Fetch the file yourself and send the bytes.
 
-The proxy accepts files up to 20 MB. Uploading one takes three calls before the turn is sent: the proxy reserves a slot, puts the bytes at a signed storage URL, then confirms the object. A file the proxy cannot read fails the request instead of being dropped, because a model answering about a document it never received is worse than an error naming the document.
+Files go up to 20 MB. An upload takes three calls before the turn is sent: reserve a slot, put the bytes at a signed storage URL, confirm the object. A file the proxy cannot read fails the request instead of being dropped. A model answering about a document it never received is worse than an error naming the document.
 
 ## Images, video and music
 
-Each kind has its own endpoint, and the same models also work through `/v1/chat/completions`, where the file comes back as a markdown image or link in the reply.
+Each kind has its own endpoint. The same models also work through `/v1/chat/completions`, where the file comes back as a markdown image or link in the reply.
 
 ```bash
 curl -s localhost:3789/v1/images/generations \
@@ -183,11 +183,13 @@ curl -s localhost:3789/v1/images/generations \
   -d '{"model":"gpt-image-2","prompt":"a cat in Chiang Mai","size":"1024x768"}'
 ```
 
-AI Pass describes an image by its shape rather than its pixel size, so the proxy rounds `size` to the nearest ratio it offers: `1:1`, `3:4` or `4:3`. Send `aspect_ratio` to name the shape outright. Each request makes one file, so the proxy refuses `n` above one rather than quietly making a single image.
+AI Pass describes an image by its shape, not its pixel size, so the proxy rounds `size` to the nearest ratio it offers: `1:1`, `3:4` or `4:3`. Send `aspect_ratio` to name the shape outright. Each request makes one file, so the proxy refuses `n` above one instead of quietly making a single image.
 
-Video blocks for the whole render. AI Pass submits a job and polls it, with no streaming variant, so `POST /v1/videos` holds the connection until the render is done, which takes minutes. The proxy cancels a job that fails or loses its caller, because a job left running keeps spending the video quota. On Vercel the function duration cuts this off long before a render finishes, so run the proxy locally for video.
+### Video
 
-Each video model accepts a different set of options, and the upstream rejects the whole body without naming a field, so the proxy drops an option the model does not take rather than sending it. `GET /v1/models` lists each model's options under `options`:
+Video blocks for the whole render. AI Pass submits a job and polls it, with no streaming variant, so `POST /v1/videos` holds the connection until the render is done, which takes minutes. The proxy cancels a job that fails or loses its caller, because a job left running keeps spending the video quota. On Vercel the function limit cuts this off long before a render finishes. Run the proxy locally for video.
+
+Each video model accepts a different set of options, and AI Pass rejects the whole body without naming the field, so the proxy drops an option the model does not take. `GET /v1/models` lists each model's options under `options`:
 
 | Option | Models |
 | --- | --- |
@@ -195,7 +197,9 @@ Each video model accepts a different set of options, and the upstream rejects th
 | `duration`, `camera_fixed`, `generate_audio` | seedance only |
 | `resolution` (`480p`, `720p`) | `seedance-2.0-fast`, `seedance-2.0-mini` |
 
-The generated file sits behind the session cookie on the AI Pass origin, so the proxy reads it and returns the bytes: `b64_json` by default, or `url` as a data URI on request. Past a per-kind cap the file stays a link, with a note saying the link needs a logged-in browser, rather than a URL that 401s. On the AI SDK provider a generated file comes back as the SDK's own file part.
+### How the file comes back
+
+The generated file sits behind the session cookie on the AI Pass origin, so the proxy fetches it and returns the bytes: `b64_json` by default, or `url` as a data URI on request. Past a per-kind cap the file stays a link, with a note that the link needs a logged-in browser, instead of a URL that answers 401. On the AI SDK provider a generated file is the SDK's own file part.
 
 | Kind  | Inline cap |
 | ----- | ---------- |
@@ -203,9 +207,9 @@ The generated file sits behind the session cookie on the AI Pass origin, so the 
 | Audio | 25 MB      |
 | Video | 50 MB      |
 
-## Tool calling over text
+## Tool calling
 
-AI Pass answers with plain text, so the proxy emulates tools. The proxy describes each offered tool in the prompt and asks the model to call one with a fenced block:
+AI Pass answers with plain text, so the proxy emulates tools. It describes each offered tool in the prompt and asks the model to call one with a fenced block:
 
 ````markdown
 ```tool_call
@@ -219,10 +223,10 @@ Each such block becomes a `tool_calls` entry (OpenAI), a `tool_use` block (Anthr
 
 Each proxied request does four things:
 
-1. **Create a throwaway conversation** with `POST /chat.data`.
-2. **Send one flattened turn**: the backend ignores multi-message bodies, so the whole conversation becomes a single role-labelled user message.
-3. **Stream the reply**: `text-delta` events become OpenAI chunks or Anthropic events.
-4. **Delete the conversation**: the account's chat list stays clean.
+1. Creates a throwaway conversation with `POST /chat.data`
+2. Sends one flattened turn. The backend ignores multi-message bodies, so the whole conversation becomes a single role-labelled user message
+3. Streams the reply. `text-delta` events become OpenAI chunks or Anthropic events
+4. Deletes the conversation, so the account's chat list stays clean
 
 Every agent round is one more conversation upstream, so tool-heavy loops spend the daily credit allowance fast.
 
