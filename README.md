@@ -232,7 +232,7 @@ Every agent round is one more conversation upstream, so tool-heavy loops spend t
 
 ## Usage in credits
 
-AI Pass meters in credits per period, not in tokens, and reports no token counts at all. Every reply reports the credit balance instead, alongside token counts the proxy estimates from the text it sent and received. Each completion reads the balance as it starts and again as it ends, and puts the result under `usage.credits`:
+AI Pass meters in credits per period, not tokens, and reports no token counts. Every reply carries the credit balance instead, next to token counts the proxy estimates from the text. Each completion reads the balance as it starts and again as it ends, and puts the result under `usage.credits`:
 
 ```json
 {
@@ -257,9 +257,9 @@ AI Pass meters in credits per period, not in tokens, and reports no token counts
 - **Anthropic stream**: the `message_delta` event
 - **AI SDK provider**: `providerMetadata.aipass.credits`
 
-Token counts are an estimate, not a tokeniser's output. The proxy counts about four characters to a token for ASCII and one and a half for Thai and other non-Latin scripts. It counts the flattened prompt it sends, which carries the tool guide and the role labels alongside the conversation. `POST /v1/messages/count_tokens` returns the same estimate without sending the prompt, so a client that manages its own context window has something to read.
+Token counts are an estimate, not a tokeniser's output. The proxy counts about four characters per token for ASCII and one and a half for Thai and other non-Latin scripts. It counts the flattened prompt it sends, which includes the tool guide and the role labels. `POST /v1/messages/count_tokens` returns the same estimate without sending the prompt, so a client that manages its own context window has something to read.
 
-`GET /v1/usage` returns the same balance without spending anything:
+`GET /v1/usage` returns the balance without spending anything:
 
 ```bash
 curl -s localhost:3789/v1/usage -H "authorization: Bearer $AIPASS_COOKIE"
