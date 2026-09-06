@@ -342,17 +342,21 @@ The proxy stops at the first failed call instead of trying the next course. An u
 
 `src/index.ts` default-exports the Elysia app and `vercel.json` sets `bunVersion`, so the repo deploys as is. Keep Deployment Protection on. The deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
 
-The function duration bounds a stream on Vercel, not the 240s idle timeout, so a slow model can be cut off mid-reply. `POST /v1/videos` holds the connection for a render that takes minutes, so it will not survive on Vercel at all. Run the proxy locally for video.
+On Vercel the function duration bounds a stream, not the proxy's 240s idle timeout, so a slow model can be cut off mid-reply. Video will not survive there at all, and the LMS learner pauses itself at 270 seconds. See [Video](#video) and [On a schedule](#on-a-schedule).
 
 ## Logging
 
-Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, the account's credit balance, and the credits the reply spent. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
+Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, the credit balance, and the credits the reply spent. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
 
-## When the edge refuses a prompt
+## Troubleshooting
+
+Find the status the proxy returned:
+
+### 400: the edge refused the prompt
 
 AI Pass sits behind an edge that answers some requests itself with a `403`, before the chat backend runs. The edge scores what a request contains rather than how long it is, so it passes prose of one length and refuses an agent-style prompt of the same length. A shell path or an environment variable in the prompt can be enough on its own.
 
-The proxy reports that as a `400`, not a `502`, because a bad gateway invites a retry and a retry of the identical body reaches the identical verdict:
+The proxy reports that as a `400`, not a `502`, because a bad gateway invites a retry and the same body gets the same verdict:
 
 ```json
 {
@@ -363,21 +367,32 @@ The proxy reports that as a `400`, not a `502`, because a bad gateway invites a 
 }
 ```
 
-An Anthropic client sees the same thing as `invalid_request_error`. The wide event carries `edgeRefused` so a run of them is visible in the logs.
+An Anthropic client sees the same thing as `invalid_request_error`. The wide event carries `edgeRefused`, so a run of them shows in the logs.
 
-The trigger set is undocumented, so the proxy names the shape of the problem and returns the edge's own body rather than guessing which string tripped it. If you hit it, change the prompt. A literal path or variable in a system prompt is the usual cause, and it is also why a heavy agent client can fail on its first request while plain chat of the same size works.
+The trigger set is undocumented, so the proxy names the shape of the problem and returns the edge's own body instead of guessing which string tripped it. If you hit it, change the prompt. A literal path or variable in a system prompt is the usual cause. It is also why a heavy agent client can fail on its first request while plain chat of the same size works.
+
+### 400: unknown model
+
+The proxy checks every model id against the live catalog and does not forward an id it cannot find. Ids are case-sensitive, and Claude ids need the `@provider` suffix. `GET /v1/models` lists what the account has.
+
+### 502: the cookie is stale
+
+Cookies expire. A `502` whose message says the cookie is stale means you need a fresh one. Copy it again as in [step 2](#2-copy-your-session-cookie).
+
+### 401 from the LMS
+
+The cookie came from the chat page instead of a `/lms` page, or it expired. See [What the learner sends](#what-the-learner-sends).
 
 ## Limits
 
-- **Token counts are estimates.** AI Pass reports none, so the proxy counts characters. Credits are the exact figure, see [Usage in credits](#usage-in-credits).
-- **Cookies expire.** A 502 whose message says the cookie is stale means you need a fresh one.
-- **The edge can refuse a prompt outright.** See [When the edge refuses a prompt](#when-the-edge-refuses-a-prompt).
-- **Unknown model ids return 400.** The proxy does not forward them.
-- **Attachments must be inline.** The proxy refuses a URL rather than fetching it. See [Attachments](#attachments).
-- **Video holds the connection open** for the whole render, so it cannot run behind a function timeout.
-- **Media and attachments have not met a live account.** I built them from the upstream protocol and tested them against a stubbed upstream. Nothing here has run against de.aipass.net, so expect to fix something the first time you use them for real.
+- **Token counts are estimates.** AI Pass reports none, so the proxy counts characters. Credits are the exact figure, see [Usage in credits](#usage-in-credits)
+- **Attachments must be inline.** The proxy refuses a URL rather than fetching it, see [Attachments](#attachments)
+- **Video holds the connection open** for the whole render, so it cannot run behind a function timeout
+- **Media and attachments have not met a live account.** I built them from the upstream protocol and tested them against a stubbed upstream. Nothing there has run against de.aipass.net, so expect to fix something the first time you use them for real
 
-## Development scripts
+## Development
+
+Scripts for working on the proxy:
 
 - `bun run dev`: watch mode
 - `bun run test`: Bun test suite
