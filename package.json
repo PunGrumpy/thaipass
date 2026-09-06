@@ -15,9 +15,14 @@
     "typecheck": "turbo run typecheck",
     "lms": "bun run --cwd apps/proxy lms",
     "check": "ultracite check",
-    "fix": "ultracite fix"
+    "fix": "ultracite fix",
+    "changeset": "changeset",
+    "version": "changeset version && bun install --lockfile-only",
+    "release": "turbo run build --filter=thaipass && changeset publish"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "1.0.1",
+    "@changesets/cli": "3.0.2",
     "@types/node": "26.4.1",
     "oxfmt": "0.66.0",
     "oxlint": "1.81.0",
