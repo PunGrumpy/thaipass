@@ -1,7 +1,7 @@
 {
   "name": "thaipass",
   "version": "0.0.0",
-  "description": "AI SDK provider for AI Pass: streamText and generateText against the models your account already sees, with your own session cookie.",
+  "description": "AI SDK provider for AI Pass, using your own session cookie.",
   "license": "MIT",
   "repository": {
     "type": "git",

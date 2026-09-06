@@ -3,7 +3,7 @@ import { log } from "evlog";
 
 import { env } from "./env";
 
-/** Applies the process environment to the upstream client before anything calls it. */
+// Runs on import, before any route reaches upstream.
 configure({ logger: log, origin: env.AIPASS_ORIGIN });
 
 export const settings = {

@@ -3,7 +3,7 @@ import type { LanguageModelV2 } from "@ai-sdk/provider";
 import { DEFAULT_MODEL, kindOf } from "@thaipass/core/aipass/models";
 import type { KnownChatModel } from "@thaipass/core/aipass/models";
 import { configure } from "@thaipass/core/lib/config";
-import type { ConfigChanges, UpstreamLogger } from "@thaipass/core/lib/config";
+import type { UpstreamLogger } from "@thaipass/core/lib/config";
 
 import { aipassModel } from "./model";
 
@@ -13,12 +13,9 @@ export type AipassModelId = KnownChatModel | (string & Record<never, never>);
 export interface AipassProviderSettings {
   /** The Cookie header of a browser signed in to AI Pass. */
   readonly cookie: string;
-  /**
-   * The AI Pass origin, https://de.aipass.net by default. One origin serves
-   * the whole process, so the last provider to name one wins.
-   */
+  /** Process-wide; defaults to https://de.aipass.net. */
   readonly origin?: string;
-  /** Receives the warnings the proxy has no reply to attach to; silent by default. */
+  /** Process-wide; silent by default. */
   readonly logger?: UpstreamLogger;
 }
 
@@ -30,21 +27,13 @@ export interface AipassProvider {
 export const createAipass = (
   settings: AipassProviderSettings
 ): AipassProvider => {
-  const changes: ConfigChanges = {};
   if (settings.origin !== undefined) {
-    changes.origin = settings.origin;
+    configure({ origin: settings.origin });
   }
   if (settings.logger !== undefined) {
-    changes.logger = settings.logger;
+    configure({ logger: settings.logger });
   }
-  if (Object.keys(changes).length > 0) {
-    configure(changes);
-  }
-  /**
-   * Whether the account's catalog lists the id is only known once a call
-   * carries the cookie upstream, so that check is made on the first call.
-   * What can be refused here is an empty id or one that makes media.
-   */
+  // The catalog check needs the cookie, so it waits for the first call.
   const languageModel = (modelId: string = DEFAULT_MODEL): LanguageModelV2 => {
     if (modelId.length === 0 || kindOf(modelId) !== "chat") {
       throw new NoSuchModelError({ modelId, modelType: "languageModel" });

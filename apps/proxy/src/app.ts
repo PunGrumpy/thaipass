@@ -39,11 +39,7 @@ const reject = (
   return status(code, errorBody(path, code, message));
 };
 
-/**
- * What an unknown error can say about itself. A Bun ResolveMessage, thrown
- * when an import cannot be found at runtime, names the specifier and the
- * file that asked for it, which is the whole diagnosis.
- */
+/** What a Bun ResolveMessage carries; other errors have only message. */
 const unhandledSchema = z.object({
   importKind: z.string().optional(),
   message: z.string().optional(),
