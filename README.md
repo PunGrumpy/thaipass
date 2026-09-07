@@ -387,6 +387,14 @@ The proxy checks every model id against the live catalog and does not forward an
 
 Cookies expire. A `502` whose message says the cookie is stale means you need a fresh one. Copy it again as in [step 2](#2-copy-your-session-cookie).
 
+### 502: upstream abandoned a tool call
+
+AI Pass runs tools of its own behind the chat UI. When one of them fails, the turn still ends on `tool-calls` and makes no call. What comes back as the reply is an apology in Thai and English.
+
+Nothing in that response marks it as broken. A client reads the apology as an answer, and an agent posts it wherever it posts answers.
+
+The proxy returns a `502` in both cases and names the failed tool when upstream named it. The AI SDK retries a `5xx`, so this usually costs you a retry rather than the turn.
+
 ### 401 from the LMS
 
 The cookie came from the chat page instead of a `/lms` page, or it expired. See [What the learner sends](#what-the-learner-sends).
