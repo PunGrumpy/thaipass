@@ -389,11 +389,28 @@ Cookies expire. A `502` whose message says the cookie is stale means you need a 
 
 ### 502: upstream abandoned a tool call
 
-AI Pass runs tools of its own behind the chat UI. When one of them fails, the turn still ends on `tool-calls` and makes no call. What comes back as the reply is an apology in Thai and English.
+A tool call can fail upstream. The stream reports it in `tool-input-error` or `tool-output-error`, and the turn still ends on `tool-calls` with no call made.
 
-Nothing in that response marks it as broken. A client reads the apology as an answer, and an agent posts it wherever it posts answers.
+The tool named is one of yours. The proxy describes your tools in the prompt, and the model behind AI Pass sometimes calls one natively instead of writing the fenced block. AI Pass has nothing registered under that name, so the attempt errors:
 
-The proxy returns a `502` in both cases and names the failed tool when upstream named it. The AI SDK retries a `5xx`, so this usually costs you a retry rather than the turn.
+```json
+{
+  "error": "AI provider error",
+  "fallbackMessage": {
+    "role": "assistant",
+    "parts": [
+      {
+        "type": "text",
+        "text": "การเชื่อมต่อกับโมเดลขัดข้อง กรุณาลองใหม่อีกครั้ง"
+      }
+    ]
+  }
+}
+```
+
+`fallbackMessage` is the part to watch. AI Pass writes an apology of its own, in Thai and English. On some paths it arrives as ordinary reply text on a 200, where nothing marks it as broken. A client reads it as an answer, and an agent posts it wherever it posts answers.
+
+The proxy returns a `502` for both the failed tool and the abandoned turn, naming the tool. The AI SDK retries a `5xx`, so this usually costs you a retry rather than the turn. It gets likelier the more tools you offer.
 
 ### 401 from the LMS
 
