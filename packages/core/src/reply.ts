@@ -89,10 +89,18 @@ export interface ReadReplyOptions {
   readonly startedAt?: number;
 }
 
-export const finishReasonOf = (tally: ReplyTally): string =>
-  tally.calls > 0 && tally.finishReason === "stop"
+/** Upstream promised a call and made none, so what it left is an apology. */
+export const isAbandonedToolCall = (tally: ReplyTally): boolean =>
+  tally.finishReason === "tool-calls" && tally.calls === 0;
+
+export const finishReasonOf = (tally: ReplyTally): string => {
+  if (isAbandonedToolCall(tally)) {
+    return "error";
+  }
+  return tally.calls > 0 && tally.finishReason === "stop"
     ? "tool-calls"
     : tally.finishReason;
+};
 
 export const replyTokens = (tally: ReplyTally): number =>
   charTokens(tally.reply);

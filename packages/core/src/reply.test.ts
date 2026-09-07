@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 
-import { finishReasonOf, readReply, replyTokens } from "./reply";
+import {
+  finishReasonOf,
+  isAbandonedToolCall,
+  readReply,
+  replyTokens,
+} from "./reply";
 import type { ReplyEvent } from "./reply";
 import { sseStream } from "./testing/sse";
 import { FENCE_CLOSE, FENCE_OPEN } from "./tools";
@@ -59,6 +64,28 @@ test("keeps the finish reason upstream gave, and hands an error over", async () 
   ]);
   expect(tally.reasoningChars).toBe(3);
   expect(finishReasonOf(tally)).toBe("length");
+});
+
+test("calls a turn that finished on tool-calls with no call an error", async () => {
+  const { tally } = await readAll([
+    delta("Sorry, I could not respond to this request."),
+    JSON.stringify({ finishReason: "tool-calls", type: "finish" }),
+  ]);
+  expect(isAbandonedToolCall(tally)).toBe(true);
+  expect(finishReasonOf(tally)).toBe("error");
+});
+
+test("leaves a tool call upstream reported and the splitter found alone", async () => {
+  const block = `${FENCE_OPEN}{"name":"get_weather","input":{"city":"Bangkok"}}${FENCE_CLOSE}`;
+  const { tally } = await readAll(
+    [
+      delta(block),
+      JSON.stringify({ finishReason: "tool-calls", type: "finish" }),
+    ],
+    [WEATHER]
+  );
+  expect(isAbandonedToolCall(tally)).toBe(false);
+  expect(finishReasonOf(tally)).toBe("tool-calls");
 });
 
 test("resolves a generated file into an asset without counting it as text", async () => {

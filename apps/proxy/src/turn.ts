@@ -23,6 +23,7 @@ import { guardController } from "@thaipass/core/lib/stream";
 import type { GuardedController } from "@thaipass/core/lib/stream";
 import {
   finishReasonOf,
+  isAbandonedToolCall,
   prepareTurn,
   readReply,
   replyTokens,
@@ -94,6 +95,7 @@ export interface TurnRequest {
 const encoder = new TextEncoder();
 const DETAIL_LIMIT = 300;
 const CLIENT_CLOSED_STATUS = 499;
+const ABANDONED = "upstream ended on tool-calls with no call to make";
 
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
@@ -305,6 +307,9 @@ const bufferedCompletion = async (
   const { after, usage } = await settleCredits(cookie, facts.credits);
   log.set({ creditsSpent: usage?.spent });
   await recordUpstream(facts, model, log, after);
+  if (isAbandonedToolCall(tally)) {
+    return failUpstream(wire, log, ABANDONED, ABANDONED);
+  }
   return wire.reply({
     calls,
     credits: usage,
