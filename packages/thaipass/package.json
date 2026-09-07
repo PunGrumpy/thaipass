@@ -36,7 +36,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/provider": "2.0.3",
+    "@ai-sdk/provider": "4.0.10",
     "@ai-sdk/provider-utils": "3.0.36",
     "zod": "4.5.4"
   },
