@@ -1,6 +1,6 @@
 {
   "name": "thaipass",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI SDK provider for AI Pass, using your own session cookie.",
   "keywords": [
     "ai-sdk",
