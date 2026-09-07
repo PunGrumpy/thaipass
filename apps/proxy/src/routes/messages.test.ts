@@ -218,7 +218,7 @@ test("refuses the apology upstream sends when its own tool failed", async () => 
   const body = errorSchema.parse(await response.json());
   expect(response.status).toBe(502);
   expect(body.error.type).toBe("api_error");
-  expect(body.error.message).toContain("search failed");
+  expect(body.error.message).toContain("failed on search");
   expect(upstream.calls).toContain(DELETE_PATH);
 });
 
