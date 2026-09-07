@@ -222,6 +222,33 @@ test("refuses the apology upstream sends when its own tool failed", async () => 
   expect(upstream.calls).toContain(DELETE_PATH);
 });
 
+test("refuses a reply that finished on tool-calls having made none", async () => {
+  upstream = stubUpstream(
+    sseResponse([
+      '{"type":"text-delta","delta":"Sorry, I could not respond to this request."}',
+      '{"type":"finish","finishReason":"tool-calls"}',
+    ])
+  );
+  const response = await app.fetch(messagesRequest({ tools: [WEATHER] }));
+  const body = errorSchema.parse(await response.json());
+  expect(response.status).toBe(502);
+  expect(body.error.message).toContain("no call to make");
+  expect(upstream.calls).toContain(DELETE_PATH);
+});
+
+test("still answers when upstream finished on tool-calls and made one", async () => {
+  upstream = stubUpstream(
+    sseResponse([
+      `{"type":"text-delta","delta":${JSON.stringify(callBlock)}}`,
+      '{"type":"finish","finishReason":"tool-calls"}',
+    ])
+  );
+  const response = await app.fetch(messagesRequest({ tools: [WEATHER] }));
+  const body = messageSchema.parse(await response.json());
+  expect(response.status).toBe(200);
+  expect(body.stop_reason).toBe("tool_use");
+});
+
 test("returns 502 in the anthropic error shape when upstream is not a stream", async () => {
   upstream = stubUpstream(
     () =>

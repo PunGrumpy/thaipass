@@ -215,6 +215,17 @@ test("surfaces a failed upstream tool as an error part", async () => {
   expect(parts.at(-1)).toMatchObject({ finishReason: "error" });
 });
 
+test("finishes as an error when upstream ends on tool-calls having made none", async () => {
+  upstream = stubUpstream(
+    sseResponse([
+      '{"type":"text-delta","delta":"Sorry, I could not respond to this request."}',
+      '{"type":"finish","finishReason":"tool-calls"}',
+    ])
+  );
+  const result = await aipass(MODEL).doGenerate(call());
+  expect(result.finishReason).toBe("error");
+});
+
 const WEATHER = {
   description: "Reads the weather.",
   inputSchema: { type: "object" },
