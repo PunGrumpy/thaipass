@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 
 import {
   DELETE_PATH,
+  SEND_PREFIX,
   quotaResponse,
   sseResponse,
   stubUpstream,
@@ -204,6 +205,81 @@ test("leaves a fence alone when no tools were offered", async () => {
   const body = messageSchema.parse(await response.json());
   expect(body.stop_reason).toBe("end_turn");
   expect(body.content).toEqual([{ text: callBlock, type: "text" }]);
+});
+
+const TOOL_FAILURE = [
+  '{"type":"tool-input-error","toolName":"search","errorText":"boom"}',
+  '{"type":"text-delta","delta":"Sorry, I could not respond to this request."}',
+  '{"type":"finish","finishReason":"tool-calls"}',
+];
+
+const sends = (stub: Upstream): number =>
+  stub.calls.filter((path) => path.startsWith(SEND_PREFIX)).length;
+
+/** Each call answers from the queue, so an attempt can differ from the one before it. */
+const sseSequence = (turns: readonly (readonly string[])[]) => {
+  let index = 0;
+  return (): Response => {
+    const frames = turns[Math.min(index, turns.length - 1)] ?? [];
+    index += 1;
+    return sseResponse(frames)();
+  };
+};
+
+test("tries again when upstream breaks the tool call", async () => {
+  upstream = stubUpstream(
+    sseSequence([
+      TOOL_FAILURE,
+      [`{"type":"text-delta","delta":${JSON.stringify(callBlock)}}`],
+    ])
+  );
+  const response = await app.fetch(messagesRequest({ tools: [WEATHER] }));
+  const body = messageSchema.parse(await response.json());
+  expect(response.status).toBe(200);
+  expect(body.stop_reason).toBe("tool_use");
+  expect(sends(upstream)).toBe(2);
+});
+
+test("tries again when upstream abandons the tool call", async () => {
+  upstream = stubUpstream(
+    sseSequence([
+      [
+        '{"type":"text-delta","delta":"Sorry, I could not respond to this request."}',
+        '{"type":"finish","finishReason":"tool-calls"}',
+      ],
+      [`{"type":"text-delta","delta":${JSON.stringify(callBlock)}}`],
+    ])
+  );
+  const response = await app.fetch(messagesRequest({ tools: [WEATHER] }));
+  expect(response.status).toBe(200);
+  expect(sends(upstream)).toBe(2);
+});
+
+test("gives up after three attempts rather than looping", async () => {
+  upstream = stubUpstream(sseResponse(TOOL_FAILURE));
+  const response = await app.fetch(messagesRequest({ tools: [WEATHER] }));
+  expect(response.status).toBe(502);
+  expect(sends(upstream)).toBe(3);
+});
+
+test("does not try again when upstream refuses the request itself", async () => {
+  upstream = stubUpstream(
+    sseResponse(['{"type":"error","errorText":"quota exceeded"}'])
+  );
+  const response = await app.fetch(messagesRequest({ tools: [WEATHER] }));
+  const body = errorSchema.parse(await response.json());
+  expect(response.status).toBe(502);
+  expect(body.error.message).toContain("quota exceeded");
+  expect(sends(upstream)).toBe(1);
+});
+
+test("does not try again once a streamed reply has left", async () => {
+  upstream = stubUpstream(sseResponse(TOOL_FAILURE));
+  const response = await app.fetch(
+    messagesRequest({ stream: true, tools: [WEATHER] })
+  );
+  await response.text();
+  expect(sends(upstream)).toBe(1);
 });
 
 test("refuses the apology upstream sends when its own tool failed", async () => {

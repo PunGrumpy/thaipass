@@ -97,6 +97,13 @@ const DETAIL_LIMIT = 300;
 const CLIENT_CLOSED_STATUS = 499;
 const ABANDONED = "upstream ended on tool-calls with no call to make";
 
+/**
+ * A broken tool call is upstream's own failure and a fresh conversation often
+ * survives it, so a buffered turn gets more than one go at it. Streaming does
+ * not: bytes are already on the wire by the time the failure arrives.
+ */
+const BUFFERED_ATTEMPTS = 3;
+
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
 
@@ -273,9 +280,13 @@ const streamCompletion = (
   });
 };
 
-const bufferedCompletion = async (
-  completion: Completion
-): Promise<Response> => {
+interface Attempt {
+  readonly response: Response;
+  /** Upstream broke the tool call itself, rather than refusing the request. */
+  readonly retry: boolean;
+}
+
+const bufferedCompletion = async (completion: Completion): Promise<Attempt> => {
   const { conversationId, cookie, facts, log, model, reader, wire } =
     completion;
   const { tally } = reader;
@@ -290,16 +301,22 @@ const bufferedCompletion = async (
       } else if (event.kind === "file") {
         text += renderAsset(event.asset);
       } else if (event.kind === "error") {
-        return failUpstream(
-          wire,
-          log,
-          `upstream stream: ${event.message}`,
-          event.message
-        );
+        return {
+          response: failUpstream(
+            wire,
+            log,
+            `upstream stream: ${event.message}`,
+            event.message
+          ),
+          retry: event.tool !== undefined,
+        };
       }
     }
   } catch (error) {
-    return failUpstream(wire, log, error, `stream error: ${error}`);
+    return {
+      response: failUpstream(wire, log, error, `stream error: ${error}`),
+      retry: false,
+    };
   } finally {
     await deleteConversation(cookie, conversationId);
     log.set(tallyFields(tally));
@@ -308,16 +325,118 @@ const bufferedCompletion = async (
   log.set({ creditsSpent: usage?.spent });
   await recordUpstream(facts, model, log, after);
   if (isAbandonedToolCall(tally)) {
-    return failUpstream(wire, log, ABANDONED, ABANDONED);
+    return {
+      response: failUpstream(wire, log, ABANDONED, ABANDONED),
+      retry: true,
+    };
   }
-  return wire.reply({
-    calls,
-    credits: usage,
-    finishReason: finishReasonOf(tally),
-    inputTokens: completion.inputTokens,
-    outputTokens: replyTokens(tally),
-    text,
+  return {
+    response: wire.reply({
+      calls,
+      credits: usage,
+      finishReason: finishReasonOf(tally),
+      inputTokens: completion.inputTokens,
+      outputTokens: replyTokens(tally),
+      text,
+    }),
+    retry: false,
+  };
+};
+
+interface Send {
+  readonly conversation: Conversation;
+  readonly cookie: string;
+  readonly facts: UpstreamFacts;
+  readonly log: RequestLogger;
+  readonly model: string;
+  readonly prepared: PreparedTurn;
+  readonly signal: AbortSignal;
+  readonly startedAt: number;
+  readonly wire: Wire;
+}
+
+/** One trip upstream: a throwaway conversation, the send, a reader over the reply. */
+const openAttempt = async (send: Send): Promise<Completion | Response> => {
+  const { conversation, cookie, facts, log, model, prepared, signal, wire } =
+    send;
+  let result: SendResult;
+  try {
+    result = await sendMessage(
+      cookie,
+      model,
+      toAipassMessages(prepared.prompt, model),
+      signal,
+      prepared.sendOptions
+    );
+  } catch (error) {
+    await recordUpstream(facts, model, log);
+    if (error instanceof UploadError) {
+      log.set({ status: 400 });
+      log.error(error);
+      return wire.fail({ message: error.message, status: 400 });
+    }
+    return failUpstream(wire, log, error, `upstream fetch failed: ${error}`);
+  }
+
+  const { response: upstream, conversationId, created } = result;
+  const contentType = upstream.headers.get("content-type") ?? "";
+  const upstreamBody = upstream.ok ? upstream.body : null;
+  log.set({
+    conversationId,
+    msToUpstream: Date.now() - send.startedAt,
+    upstreamStatus: upstream.status,
   });
+  if (!upstreamBody || !contentType.includes("event-stream")) {
+    await recordUpstream(facts, model, log);
+    return await upstreamError(
+      wire,
+      cookie,
+      upstream,
+      { created, id: conversationId },
+      log
+    );
+  }
+
+  return {
+    conversationId,
+    cookie,
+    facts,
+    inputTokens: prepared.inputTokens,
+    log,
+    model,
+    reader: readReply({
+      body: upstreamBody,
+      cookie,
+      signal,
+      startedAt: send.startedAt,
+      tools: conversation.tools,
+    }),
+    wire,
+  };
+};
+
+/**
+ * A buffered turn can be tried again, because nothing has reached the caller
+ * yet. Only a broken tool call earns a second go: every other failure repeats.
+ */
+const bufferedTurn = async (send: Send): Promise<Response> => {
+  const { log, signal } = send;
+  let attempts = 0;
+  // Each attempt decides whether there is another, so they cannot run together.
+  // oxlint-disable no-await-in-loop
+  for (;;) {
+    attempts += 1;
+    log.set({ attempts });
+    const opened = await openAttempt(send);
+    if (opened instanceof Response) {
+      return opened;
+    }
+    const attempt = await bufferedCompletion(opened);
+    if (!attempt.retry || attempts >= BUFFERED_ATTEMPTS || signal.aborted) {
+      return attempt.response;
+    }
+  }
+  // oxlint-enable no-await-in-loop
 };
 
 const runTurn = async (
@@ -377,63 +496,25 @@ const runTurn = async (
     });
   }
 
-  let result: SendResult;
-  try {
-    result = await sendMessage(
-      cookie,
-      model,
-      toAipassMessages(prompt, model),
-      signal,
-      sendOptions
-    );
-  } catch (error) {
-    await recordUpstream(facts, model, log);
-    if (error instanceof UploadError) {
-      log.set({ status: 400 });
-      log.error(error);
-      return wire.fail({ message: error.message, status: 400 });
-    }
-    return failUpstream(wire, log, error, `upstream fetch failed: ${error}`);
-  }
-
-  const { response: upstream, conversationId, created } = result;
-  const contentType = upstream.headers.get("content-type") ?? "";
-  const upstreamBody = upstream.ok ? upstream.body : null;
-  log.set({
-    conversationId,
-    msToUpstream: Date.now() - startedAt,
-    upstreamStatus: upstream.status,
-  });
-  if (!upstreamBody || !contentType.includes("event-stream")) {
-    await recordUpstream(facts, model, log);
-    return await upstreamError(
-      wire,
-      cookie,
-      upstream,
-      { created, id: conversationId },
-      log
-    );
-  }
-
-  const completion: Completion = {
-    conversationId,
+  const send: Send = {
+    conversation,
     cookie,
     facts,
-    inputTokens,
     log,
     model,
-    reader: readReply({
-      body: upstreamBody,
-      cookie,
-      signal,
-      startedAt,
-      tools: conversation.tools,
-    }),
+    prepared,
+    signal,
+    startedAt,
     wire,
   };
-  return stream
-    ? streamCompletion(completion, deferEmit)
-    : await bufferedCompletion(completion);
+  if (stream) {
+    log.set({ attempts: 1 });
+    const opened = await openAttempt(send);
+    return opened instanceof Response
+      ? opened
+      : streamCompletion(opened, deferEmit);
+  }
+  return await bufferedTurn(send);
 };
 
 export const serveTurn = (turn: TurnRequest): Promise<Response> | Response => {

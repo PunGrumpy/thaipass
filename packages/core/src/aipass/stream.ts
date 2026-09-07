@@ -27,7 +27,12 @@ export type StreamEvent =
   | { readonly kind: "reasoning"; readonly text: string }
   | { readonly kind: "file"; readonly file: FileEvent }
   | { readonly kind: "finish"; readonly reason: string }
-  | { readonly kind: "error"; readonly message: string };
+  | {
+      readonly kind: "error";
+      readonly message: string;
+      /** Set when a tool part carried the failure, which a fresh turn often survives. */
+      readonly tool?: string;
+    };
 
 const optionalText = z
   .union([
@@ -127,6 +132,7 @@ export const parseAipassSSE = async function* parseAipassSSE(
         yield {
           kind: "error",
           message: `upstream failed on ${tool}: ${detail}`,
+          tool,
         };
         break;
       }

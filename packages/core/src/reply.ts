@@ -62,7 +62,11 @@ export type ReplyEvent =
   | { readonly kind: "call"; readonly call: ToolCall }
   | { readonly kind: "reasoning"; readonly text: string }
   | { readonly kind: "file"; readonly asset: MediaAsset }
-  | { readonly kind: "error"; readonly message: string };
+  | {
+      readonly kind: "error";
+      readonly message: string;
+      readonly tool?: string;
+    };
 
 export interface ReplyTally {
   calls: number;
@@ -160,7 +164,7 @@ export const readReply = (options: ReadReplyOptions): ReplyReader => {
       } else if (event.kind === "finish") {
         tally.finishReason = event.reason;
       } else {
-        yield { kind: "error", message: event.message };
+        yield event;
       }
     }
     yield* fromParts(splitter.flush());
