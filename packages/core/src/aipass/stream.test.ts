@@ -66,6 +66,47 @@ test("falls back to a generic message when an error carries no text", async () =
   expect(events).toEqual([{ kind: "error", message: "upstream error" }]);
 });
 
+test("turns a failed upstream tool into an error, naming the tool", async () => {
+  const events = await collect([
+    '{"type":"tool-input-error","toolName":"search","errorText":"boom"}',
+  ]);
+  expect(events).toEqual([
+    { kind: "error", message: "AI Pass search failed: boom" },
+  ]);
+});
+
+test("turns a failed tool output into an error too", async () => {
+  const events = await collect([
+    '{"type":"tool-output-error","toolName":"search","errorText":"boom"}',
+  ]);
+  expect(events).toEqual([
+    { kind: "error", message: "AI Pass search failed: boom" },
+  ]);
+});
+
+test("reports a failed tool that carries neither a name nor a reason", async () => {
+  const events = await collect(['{"type":"tool-output-error"}']);
+  expect(events).toEqual([
+    { kind: "error", message: "AI Pass tool failed: no detail" },
+  ]);
+});
+
+test("stops counting failed tools as undecoded events", async () => {
+  const skips = newSkips();
+  const events = await collect(
+    [
+      '{"type":"tool-input-error","errorText":"boom"}',
+      '{"type":"text-delta","delta":"sorry"}',
+    ],
+    skips
+  );
+  expect(events).toEqual([
+    { kind: "error", message: "AI Pass tool failed: boom" },
+    { kind: "delta", text: "sorry" },
+  ]);
+  expect(skips.count).toBe(0);
+});
+
 test("skips unknown event types and records their names", async () => {
   const skips = newSkips();
   const events = await collect(

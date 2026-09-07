@@ -206,6 +206,22 @@ test("leaves a fence alone when no tools were offered", async () => {
   expect(body.content).toEqual([{ text: callBlock, type: "text" }]);
 });
 
+test("refuses the apology upstream sends when its own tool failed", async () => {
+  upstream = stubUpstream(
+    sseResponse([
+      '{"type":"tool-input-error","toolName":"search","errorText":"boom"}',
+      '{"type":"text-delta","delta":"Sorry, I could not respond to this request."}',
+      '{"type":"finish","finishReason":"tool-calls"}',
+    ])
+  );
+  const response = await app.fetch(messagesRequest({ tools: [WEATHER] }));
+  const body = errorSchema.parse(await response.json());
+  expect(response.status).toBe(502);
+  expect(body.error.type).toBe("api_error");
+  expect(body.error.message).toContain("search failed");
+  expect(upstream.calls).toContain(DELETE_PATH);
+});
+
 test("returns 502 in the anthropic error shape when upstream is not a stream", async () => {
   upstream = stubUpstream(
     () =>

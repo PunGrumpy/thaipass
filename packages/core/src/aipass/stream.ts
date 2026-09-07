@@ -42,17 +42,36 @@ const fileFrameSchema = fileEventSchema.extend({
   type: z.literal("file"),
 });
 
+const toolErrorSchema = <Type extends string>(type: Type) =>
+  z.object({
+    errorText: optionalText,
+    toolName: optionalText,
+    type: z.literal(type),
+  });
+
 const upstreamEventSchema = z.discriminatedUnion("type", [
   z.object({ delta: z.string(), type: z.literal("text-delta") }),
   z.object({ delta: z.string(), type: z.literal("reasoning-delta") }),
   fileFrameSchema,
   z.object({ finishReason: optionalText, type: z.literal("finish") }),
+  toolErrorSchema("tool-input-error"),
+  toolErrorSchema("tool-output-error"),
   z.object({
     error: optionalText,
     errorText: optionalText,
     type: z.literal("error"),
   }),
 ]);
+
+const toFileEvent = (frame: z.infer<typeof fileFrameSchema>): FileEvent => {
+  const { data } = frame;
+  return {
+    filename: frame.filename ?? data?.filename,
+    mediaType: frame.mediaType ?? data?.mediaType,
+    snapshotUrl: frame.snapshotUrl ?? data?.snapshotUrl,
+    url: frame.url ?? data?.url,
+  };
+};
 
 const skippedTypeSchema = z.object({ type: z.string() });
 
@@ -91,20 +110,20 @@ export const parseAipassSSE = async function* parseAipassSSE(
         break;
       }
       case "file": {
-        const { data } = event;
-        yield {
-          file: {
-            filename: event.filename ?? data?.filename,
-            mediaType: event.mediaType ?? data?.mediaType,
-            snapshotUrl: event.snapshotUrl ?? data?.snapshotUrl,
-            url: event.url ?? data?.url,
-          },
-          kind: "file",
-        };
+        yield { file: toFileEvent(event), kind: "file" };
         break;
       }
       case "finish": {
         yield { kind: "finish", reason: event.finishReason ?? "stop" };
+        break;
+      }
+      // AI Pass runs tools of its own, and a failed one leaves behind an
+      // apology that reads exactly like an answer.
+      case "tool-input-error":
+      case "tool-output-error": {
+        const tool = event.toolName ?? "tool";
+        const detail = event.errorText ?? "no detail";
+        yield { kind: "error", message: `AI Pass ${tool} failed: ${detail}` };
         break;
       }
       default: {
