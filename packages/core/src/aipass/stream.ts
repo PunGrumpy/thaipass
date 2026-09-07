@@ -117,13 +117,17 @@ export const parseAipassSSE = async function* parseAipassSSE(
         yield { kind: "finish", reason: event.finishReason ?? "stop" };
         break;
       }
-      // AI Pass runs tools of its own, and a failed one leaves behind an
-      // apology that reads exactly like an answer.
+      // The tool named is one of the caller's. The model behind AI Pass reads
+      // the tool guide out of the prompt and sometimes calls it natively, and
+      // AI Pass has no such tool to run, so the attempt errors.
       case "tool-input-error":
       case "tool-output-error": {
-        const tool = event.toolName ?? "tool";
+        const tool = event.toolName ?? "a tool";
         const detail = event.errorText ?? "no detail";
-        yield { kind: "error", message: `AI Pass ${tool} failed: ${detail}` };
+        yield {
+          kind: "error",
+          message: `upstream failed on ${tool}: ${detail}`,
+        };
         break;
       }
       default: {

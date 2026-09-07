@@ -71,7 +71,7 @@ test("turns a failed upstream tool into an error, naming the tool", async () => 
     '{"type":"tool-input-error","toolName":"search","errorText":"boom"}',
   ]);
   expect(events).toEqual([
-    { kind: "error", message: "AI Pass search failed: boom" },
+    { kind: "error", message: "upstream failed on search: boom" },
   ]);
 });
 
@@ -80,14 +80,14 @@ test("turns a failed tool output into an error too", async () => {
     '{"type":"tool-output-error","toolName":"search","errorText":"boom"}',
   ]);
   expect(events).toEqual([
-    { kind: "error", message: "AI Pass search failed: boom" },
+    { kind: "error", message: "upstream failed on search: boom" },
   ]);
 });
 
 test("reports a failed tool that carries neither a name nor a reason", async () => {
   const events = await collect(['{"type":"tool-output-error"}']);
   expect(events).toEqual([
-    { kind: "error", message: "AI Pass tool failed: no detail" },
+    { kind: "error", message: "upstream failed on a tool: no detail" },
   ]);
 });
 
@@ -101,7 +101,7 @@ test("stops counting failed tools as undecoded events", async () => {
     skips
   );
   expect(events).toEqual([
-    { kind: "error", message: "AI Pass tool failed: boom" },
+    { kind: "error", message: "upstream failed on a tool: boom" },
     { kind: "delta", text: "sorry" },
   ]);
   expect(skips.count).toBe(0);
