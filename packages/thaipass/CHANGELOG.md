@@ -1,5 +1,11 @@
 # thaipass
 
+## 0.1.2
+
+### Patch Changes
+
+- [#21](https://github.com/PunGrumpy/thaipass/pull/21) [`c4589f6`](https://github.com/PunGrumpy/thaipass/commit/c4589f6e08a9546cbb4027baf74bd61c356a9956) Thanks [@PunGrumpy](https://github.com/PunGrumpy)! - Name the caller's own tool in a failed tool call, rather than reporting it as a tool of AI Pass's. The error part now reads `upstream failed on <tool>: <detail>`.
+
 ## 0.1.1
 
 ### Patch Changes
