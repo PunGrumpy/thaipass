@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/provider-utils": "3.0.36",
+    "@ai-sdk/provider-utils": "5.0.36",
     "zod": "4.5.4"
   },
   "devDependencies": {
