@@ -1,5 +1,11 @@
 # thaipass
 
+## 0.1.1
+
+### Patch Changes
+
+- [#19](https://github.com/PunGrumpy/thaipass/pull/19) [`823cbbc`](https://github.com/PunGrumpy/thaipass/commit/823cbbcee59ed960cab26739a436c7bb85678678) Thanks [@PunGrumpy](https://github.com/PunGrumpy)! - Report a failed AI Pass tool as an error instead of returning the apology that follows it. A turn that ends on `tool-calls` with no call made now finishes as `error`.
+
 ## 0.1.0
 
 ### Minor Changes
