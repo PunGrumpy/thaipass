@@ -4,5 +4,8 @@ import core from "ultracite/oxlint/core";
 
 export default defineConfig({
   extends: [core, antiSlop],
-  ignorePatterns: core.ignorePatterns,
+  ignorePatterns: [
+    ...core.ignorePatterns,
+    "apps/dashboard/src/components/ui/**",
+  ],
 });

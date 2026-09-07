@@ -6,7 +6,7 @@
     },
     "build": {
       "dependsOn": ["^build", "transit"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
     "test": {
       "dependsOn": ["transit"]
