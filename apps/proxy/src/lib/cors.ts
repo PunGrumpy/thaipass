@@ -2,16 +2,6 @@ import { Elysia } from "elysia";
 
 import { env } from "./env";
 
-/**
- * The dashboard is a separate origin from the gateway (`:3000` calling
- * `:3001`), and it sends an `Authorization` header, so every request it makes
- * is preflighted. Without these headers the browser refuses to hand the
- * response back and the page only ever sees "Failed to fetch".
- *
- * The default allows loopback on any port — this is a personal gateway meant
- * to run on the user's own machine. `AIPASS_CORS_ORIGIN` overrides it with an
- * explicit comma-separated list, or `*` to allow anything.
- */
 const LOOPBACK = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/u;
 
 const ALLOWED_HEADERS = "authorization, content-type, anthropic-version";
@@ -23,6 +13,7 @@ const configured = env.AIPASS_CORS_ORIGIN?.split(",")
   .filter((entry) => entry.length > 0);
 
 const allowAny = configured?.includes("*") === true;
+const webOrigin = new URL(env.WEB_URL).origin;
 
 const isAllowed = (origin: string): boolean => {
   if (allowAny) {
@@ -30,6 +21,9 @@ const isAllowed = (origin: string): boolean => {
   }
   if (configured && configured.length > 0) {
     return configured.includes(origin);
+  }
+  if (origin === webOrigin) {
+    return true;
   }
   return LOOPBACK.test(origin);
 };
@@ -51,7 +45,6 @@ export const cors = new Elysia({ name: "cors" }).request(({ request, set }) => {
   const headers = corsHeaders(origin);
   set.headers = { ...set.headers, ...headers };
 
-  // A preflight never reaches a route, so it has to be answered here.
   if (request.method === "OPTIONS") {
     return new Response(null, { headers, status: 204 });
   }
