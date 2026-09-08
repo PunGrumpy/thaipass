@@ -12,7 +12,7 @@ import { ModelCatalog } from "@/components/model-catalog";
 import { Badge } from "@/components/ui/badge";
 import FluidOrb from "@/components/ui/fluid-orb";
 
-export default function Home() {
+const Home = () => {
   const [proxyUrl, setProxyUrl] = useState("http://127.0.0.1:3001");
   const [cookie, setCookie] = useState("");
   const [credits, setCredits] = useState<CreditBalanceData | null>(null);
@@ -24,7 +24,7 @@ export default function Home() {
         <FluidOrb size={480} color="#3B82F6" />
       </div>
 
-      <div className="pointer-events-none absolute top-[500px] -left-40 z-0 opacity-25 blur-3xl">
+      <div className="pointer-events-none absolute top-125 -left-40 z-0 opacity-25 blur-3xl">
         <FluidOrb size={440} color="#06B6D4" />
       </div>
 
@@ -131,4 +131,6 @@ export default function Home() {
       </footer>
     </div>
   );
-}
+};
+
+export default Home;

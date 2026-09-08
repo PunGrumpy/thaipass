@@ -1,9 +1,9 @@
+import "./globals.css";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import type { ReactNode } from "react";
 
 import { Toaster } from "@/components/ui/sonner";
-
-import "./globals.css";
 
 const geistSans = Geist({
   subsets: ["latin"],
@@ -21,20 +21,20 @@ export const metadata: Metadata = {
   title: "thaipass dashboard",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
-    >
-      <body className="bg-background text-foreground selection:bg-primary/20 selection:text-primary flex min-h-full flex-col">
-        {children}
-        <Toaster position="bottom-right" richColors />
-      </body>
-    </html>
-  );
+interface RootLayoutProps {
+  readonly children: ReactNode;
 }
+
+const RootLayout = ({ children }: RootLayoutProps) => (
+  <html
+    lang="en"
+    className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
+  >
+    <body className="bg-background text-foreground selection:bg-primary/20 selection:text-primary flex min-h-full flex-col">
+      {children}
+      <Toaster position="bottom-right" richColors />
+    </body>
+  </html>
+);
+
+export default RootLayout;
