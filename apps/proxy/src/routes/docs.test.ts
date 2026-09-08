@@ -77,6 +77,7 @@ test("documents every route the app serves", async () => {
     "/v1/messages",
     "/v1/messages/count_tokens",
     "/v1/models",
+    "/v1/responses",
     "/v1/usage",
     "/v1/videos",
   ]);
@@ -96,9 +97,9 @@ test("resolves every schema reference it makes", async () => {
   }
 });
 
-test("offers every known model as an example in both request schemas, without closing the field", async () => {
+test("offers every known model as an example in every request schema, without closing the field", async () => {
   const { components } = await document();
-  for (const name of ["ChatRequest", "MessagesRequest"]) {
+  for (const name of ["ChatRequest", "MessagesRequest", "ResponsesRequest"]) {
     const request = requestSchema.parse(components.schemas[name]);
     expect(request.properties.model.type).toBe("string");
     expect(request.properties.model.examples).toContain(
@@ -110,19 +111,26 @@ test("offers every known model as an example in both request schemas, without cl
 
 test("takes each request body from its registered model", async () => {
   const spec = await document();
-  const chat = postSchema.parse(spec.paths["/v1/chat/completions"]);
-  const messages = postSchema.parse(spec.paths["/v1/messages"]);
-  expect(chat.post.requestBody.content["application/json"].schema.$ref).toBe(
-    "#/components/schemas/ChatRequest"
-  );
-  expect(
-    messages.post.requestBody.content["application/json"].schema.$ref
-  ).toBe("#/components/schemas/MessagesRequest");
+  const bodies = {
+    "/v1/chat/completions": "ChatRequest",
+    "/v1/messages": "MessagesRequest",
+    "/v1/responses": "ResponsesRequest",
+  };
+  for (const [path, model] of Object.entries(bodies)) {
+    const route = postSchema.parse(spec.paths[path]);
+    expect(route.post.requestBody.content["application/json"].schema.$ref).toBe(
+      `#/components/schemas/${model}`
+    );
+  }
 });
 
-test("offers both the buffered and the streamed reply on both model routes", async () => {
+test("offers both the buffered and the streamed reply on every model route", async () => {
   const spec = await document();
-  for (const path of ["/v1/chat/completions", "/v1/messages"]) {
+  for (const path of [
+    "/v1/chat/completions",
+    "/v1/messages",
+    "/v1/responses",
+  ]) {
     const route = postSchema.parse(spec.paths[path]);
     expect(Object.keys(route.post.responses["200"].content).toSorted()).toEqual(
       ["application/json", "text/event-stream"]
@@ -137,6 +145,7 @@ test("marks the model routes and the usage route as needing the cookie", async (
     .map(([path]) => path);
   expect(secured).toEqual([
     "/v1/chat/completions",
+    "/v1/responses",
     "/v1/messages",
     "/v1/images/generations",
     "/v1/videos",

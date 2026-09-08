@@ -15,6 +15,7 @@ import { imageRoutes } from "./routes/images";
 import { lmsRoutes } from "./routes/lms";
 import { messageRoutes } from "./routes/messages";
 import { modelRoutes } from "./routes/models";
+import { responsesRoutes } from "./routes/responses";
 import { usageRoutes } from "./routes/usage";
 import { videoRoutes } from "./routes/videos";
 
@@ -86,6 +87,7 @@ export const app = new Elysia()
   .use(cors)
   .use(requestLogger)
   .use(chatRoutes)
+  .use(responsesRoutes)
   .use(messageRoutes)
   .use(imageRoutes)
   .use(videoRoutes)

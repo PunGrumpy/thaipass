@@ -54,7 +54,7 @@ const roleSchema = z
   .transform((value): TurnRole => value ?? "user");
 
 /** OpenAI sends arguments as a JSON string; anything unreadable becomes no arguments. */
-const parseArguments = (raw: string | undefined): ToolInput => {
+export const parseToolArguments = (raw: string | undefined): ToolInput => {
   if (raw === undefined || raw.length === 0) {
     return {};
   }
@@ -73,7 +73,7 @@ const toolCallSchema = z
   })
   .transform((call): ToolCall => ({
     id: call.id,
-    input: parseArguments(call.function.arguments),
+    input: parseToolArguments(call.function.arguments),
     name: call.function.name,
   }));
 
