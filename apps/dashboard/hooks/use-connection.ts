@@ -2,7 +2,7 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
-import { env } from "@/lib/env";
+import { env } from "@/env";
 import { readLocal, subscribeLocal, writeLocal } from "@/lib/local-store";
 import { normalizeCookie, normalizeProxyUrl } from "@/lib/proxy";
 
