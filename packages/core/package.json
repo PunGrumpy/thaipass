@@ -16,7 +16,6 @@
     "zod": "4.5.4"
   },
   "devDependencies": {
-    "@thaipass/typescript-config": "workspace:*",
     "@types/bun": "1.4.0",
     "typescript": "7.0.2"
   }

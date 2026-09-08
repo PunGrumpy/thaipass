@@ -25,7 +25,6 @@
   },
   "devDependencies": {
     "@thaipass/core": "workspace:*",
-    "@thaipass/typescript-config": "workspace:*",
     "@types/bun": "1.4.0",
     "tsdown": "0.23.0",
     "typescript": "7.0.2"

@@ -1,4 +1,9 @@
 {
-  "extends": "@thaipass/typescript-config/base.json",
-  "include": ["src"]
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["bun"],
+    "strictNullChecks": true
+  },
+  "include": ["src/**/*"]
 }
