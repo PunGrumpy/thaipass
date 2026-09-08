@@ -2,13 +2,14 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
+import { env } from "@/lib/env";
 import { readLocal, subscribeLocal, writeLocal } from "@/lib/local-store";
 import { normalizeCookie, normalizeProxyUrl } from "@/lib/proxy";
 
 const PROXY_URL_KEY = "thaipass:proxy-url";
 const COOKIE_KEY = "thaipass:cookie";
 
-export const DEFAULT_PROXY_URL = "http://127.0.0.1:3001";
+export const DEFAULT_PROXY_URL = env.NEXT_PUBLIC_PROXY_URL;
 
 export interface Connection {
   clear: () => void;
@@ -26,11 +27,6 @@ const serverProxyUrl = (): string => DEFAULT_PROXY_URL;
 const readCookie = (): string => readLocal(COOKIE_KEY) ?? "";
 const serverCookie = (): string => "";
 
-/**
- * The session lives in localStorage rather than React state, so every page
- * reads the same value without a provider and nothing is copied into a render
- * tree that a server pass cannot see.
- */
 export const useConnection = (): Connection => {
   const proxyUrl = useSyncExternalStore(
     subscribeLocal,
