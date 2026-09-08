@@ -1,5 +1,7 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
+  "envMode": "loose",
+  "ui": "tui",
   "tasks": {
     "transit": {
       "dependsOn": ["^transit"]
