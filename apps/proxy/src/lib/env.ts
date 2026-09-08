@@ -20,6 +20,7 @@ export const env = createEnv({
   runtimeEnv: process.env,
   server: {
     AIPASS_COOKIE: z.string().optional(),
+    AIPASS_CORS_ORIGIN: z.string().optional(),
     AIPASS_HOST: z.string().default("127.0.0.1"),
     AIPASS_ORIGIN: z.url().default("https://de.aipass.net"),
     AIPASS_PORT: z.coerce.number().int().positive().default(3001),
