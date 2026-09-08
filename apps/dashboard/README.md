@@ -18,7 +18,7 @@ The control surface for the thaipass gateway. Sidebar shell, five pages, and no 
 bun dev
 ```
 
-The dashboard listens on port 3000 and expects the proxy on `http://127.0.0.1:3001`. Change that under Settings if yours differs.
+The dashboard listens on port 3000 and expects the proxy on `http://localhost:3001`. Change that under Settings if yours differs.
 
 The proxy must allow this page's origin. Loopback on any port is allowed by default; set `AIPASS_CORS_ORIGIN` on the proxy to allow anything else.
 
