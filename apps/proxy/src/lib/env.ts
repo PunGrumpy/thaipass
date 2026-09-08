@@ -19,14 +19,12 @@ export const env = createEnv({
   },
   runtimeEnv: process.env,
   server: {
-    /** Read by the CLI only; the server takes the cookie from each request. */
     AIPASS_COOKIE: z.string().optional(),
     AIPASS_HOST: z.string().default("127.0.0.1"),
     AIPASS_ORIGIN: z.url().default("https://de.aipass.net"),
-    AIPASS_PORT: z.coerce.number().int().positive().default(3789),
+    AIPASS_PORT: z.coerce.number().int().positive().default(3001),
     POSTHOG_API_KEY: z.string().startsWith("phc_").optional(),
     POSTHOG_HOST: z.url().optional().default("https://us.i.posthog.com"),
-    /** Set by Vercel on its functions, whose duration is capped. */
     VERCEL: z.string().optional(),
   },
 });

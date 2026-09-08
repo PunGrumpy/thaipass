@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import FluidOrb from "@/components/ui/fluid-orb";
 
 export default function Home() {
-  const [proxyUrl, setProxyUrl] = useState("http://127.0.0.1:3789");
+  const [proxyUrl, setProxyUrl] = useState("http://127.0.0.1:3001");
   const [cookie, setCookie] = useState("");
   const [credits, setCredits] = useState<CreditBalanceData | null>(null);
   const [selectedModel, setSelectedModel] = useState("claude-sonnet-5@default");
@@ -65,7 +65,7 @@ export default function Home() {
               value={proxyUrl}
               onChange={(e) => setProxyUrl(e.target.value)}
               className="text-foreground w-44 bg-transparent font-mono text-xs focus:outline-none"
-              placeholder="http://127.0.0.1:3789"
+              placeholder="http://127.0.0.1:3001"
             />
           </div>
         </div>
