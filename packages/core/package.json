@@ -5,7 +5,8 @@
   "description": "The AI Pass protocol the proxy and the provider share.",
   "type": "module",
   "exports": {
-    "./*": "./src/*.ts"
+    "./*": "./src/*.ts",
+    "./*/*": "./src/*/*.ts"
   },
   "scripts": {
     "test": "bun test",
@@ -13,6 +14,7 @@
   },
   "dependencies": {
     "@ai-sdk/provider-utils": "3.0.36",
+    "@t3-oss/env-core": "0.13.11",
     "zod": "4.5.4"
   },
   "devDependencies": {
