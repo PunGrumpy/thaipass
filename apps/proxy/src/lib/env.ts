@@ -1,5 +1,5 @@
 import { createEnv } from "@t3-oss/env-core";
-import { keys as core } from "@thaipass/core/env/keys";
+import { keys as core } from "@thaipass/core/keys";
 import { log } from "evlog";
 import { z } from "zod";
 
@@ -29,4 +29,5 @@ export const env = createEnv({
     POSTHOG_HOST: z.url().optional().default("https://us.i.posthog.com"),
     VERCEL: z.string().optional(),
   },
+  skipValidation: process.env.SKIP_ENV_VALIDATION === "true",
 });
