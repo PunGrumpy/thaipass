@@ -17,9 +17,7 @@ const BAD_GATEWAY = 502;
 export type LmsMethod = "GET" | "POST" | "PUT" | "DELETE";
 
 /** What the proxy sends the LMS: ids, paging and playback figures, nothing nested. */
-export interface LmsBody {
-  readonly [field: string]: string | number | null;
-}
+export type LmsBody = Readonly<Record<string, string | number | null>>;
 
 const isRedirect = (status: number): boolean =>
   status >= REDIRECT_LOW && status < REDIRECT_HIGH;

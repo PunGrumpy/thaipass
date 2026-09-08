@@ -3,6 +3,7 @@ import { log } from "evlog";
 import { z } from "zod";
 
 import { anthropicError } from "./anthropic/errors";
+import { cors } from "./lib/cors";
 import { requestLogger } from "./lib/logger";
 import "./lib/settings";
 import { apiError } from "./openai/errors";
@@ -39,7 +40,6 @@ const reject = (
   return status(code, errorBody(path, code, message));
 };
 
-/** What a Bun ResolveMessage carries; other errors have only message. */
 const unhandledSchema = z.object({
   importKind: z.string().optional(),
   message: z.string().optional(),
@@ -83,6 +83,7 @@ export const app = new Elysia()
       errorBody(path, 500, named.length > 0 ? named : "unhandled error")
     );
   })
+  .use(cors)
   .use(requestLogger)
   .use(chatRoutes)
   .use(messageRoutes)

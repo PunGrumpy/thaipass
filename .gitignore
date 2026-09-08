@@ -1,8 +1,11 @@
 node_modules/
 dist/
 .turbo/
+.next/
+*.tsbuildinfo
 *.log
 .env
 .env.local
 !.env.example
 .DS_Store
+.next-verify/

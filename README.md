@@ -19,7 +19,7 @@ bun install
 bun run start
 ```
 
-The server listens on `http://127.0.0.1:3789`. No `.env` is needed. See [Settings](#settings) to change the port or turn on PostHog.
+The server listens on `http://127.0.0.1:3001`. No `.env` is needed. See [Settings](#settings) to change the port or turn on PostHog.
 
 ### 2. Copy your session cookie
 
@@ -30,7 +30,7 @@ That string is your API key. Send it as a bearer token, or as `x-api-key` from a
 ### 3. Send a request
 
 ```bash
-curl -sN localhost:3789/v1/chat/completions \
+curl -sN localhost:3001/v1/chat/completions \
   -H 'content-type: application/json' \
   -H "authorization: Bearer $AIPASS_COOKIE" \
   -d '{"model":"claude-sonnet-5@default","messages":[{"role":"user","content":"hi"}]}'
@@ -75,7 +75,7 @@ Point any OpenAI client at `/v1` with the cookie as the API key:
 import OpenAI from "openai";
 
 const client = new OpenAI({
-  baseURL: "http://127.0.0.1:3789/v1",
+  baseURL: "http://127.0.0.1:3001/v1",
   apiKey: process.env.AIPASS_COOKIE,
 });
 ```
@@ -133,7 +133,7 @@ Every setting has a default, so the proxy runs with no `.env`:
 | --- | --- | --- |
 | `AIPASS_ORIGIN` | `https://de.aipass.net` | Upstream origin |
 | `AIPASS_HOST` | `127.0.0.1` | Bind address, local only |
-| `AIPASS_PORT` | `3789` | Port, local only |
+| `AIPASS_PORT` | `3001` | Port, local only |
 | `POSTHOG_API_KEY` | none | Project token (`phc_…`), enables PostHog |
 | `POSTHOG_HOST` | `https://us.i.posthog.com` | PostHog ingestion host |
 
@@ -162,7 +162,7 @@ An Anthropic `thinking` block of type `adaptive` or `enabled` turns thinking on.
 Send a file inline and the proxy uploads it with the turn. OpenAI `image_url` and `file` parts, Anthropic `image` and `document` blocks, and AI SDK file parts all work:
 
 ```bash
-curl -s localhost:3789/v1/chat/completions \
+curl -s localhost:3001/v1/chat/completions \
   -H 'content-type: application/json' \
   -H "authorization: Bearer $AIPASS_COOKIE" \
   -d '{
@@ -183,7 +183,7 @@ Files go up to 20 MB. An upload takes three calls before the turn is sent: reser
 Each kind has its own endpoint. The same models also work through `/v1/chat/completions`, where the file comes back as a markdown image or link in the reply.
 
 ```bash
-curl -s localhost:3789/v1/images/generations \
+curl -s localhost:3001/v1/images/generations \
   -H 'content-type: application/json' \
   -H "authorization: Bearer $AIPASS_COOKIE" \
   -d '{"model":"gpt-image-2","prompt":"a cat in Chiang Mai","size":"1024x768"}'
@@ -268,7 +268,7 @@ Token counts are an estimate, not a tokeniser's output. The proxy counts about f
 `GET /v1/usage` returns the balance without spending anything:
 
 ```bash
-curl -s localhost:3789/v1/usage -H "authorization: Bearer $AIPASS_COOKIE"
+curl -s localhost:3001/v1/usage -H "authorization: Bearer $AIPASS_COOKIE"
 ```
 
 ## Earn LMS points
@@ -294,7 +294,7 @@ The command prints one line per course and lesson, redraws the stamp progress in
 `POST /v1/lms/learn` watches every unwatched video lesson until the account has earned a target, 100 EXP by default:
 
 ```bash
-curl -sN localhost:3789/v1/lms/learn \
+curl -sN localhost:3001/v1/lms/learn \
   -H 'content-type: application/json' \
   -H "authorization: Bearer $AIPASS_COOKIE" \
   -d '{"target":100,"pace":1}'
