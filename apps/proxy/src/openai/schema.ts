@@ -3,17 +3,11 @@ import { thinkingLevelSchema } from "@thaipass/core/aipass/thinking";
 import type { ThinkingLevel } from "@thaipass/core/aipass/thinking";
 import { toolInputSchema } from "@thaipass/core/tools";
 import type { ToolCall, ToolDefinition, ToolInput } from "@thaipass/core/tools";
-import type {
-  ChatTurn,
-  Conversation,
-  TurnRole,
-} from "@thaipass/core/translate";
+import type { Conversation, TurnRole } from "@thaipass/core/translate";
 import { z } from "zod";
 
-/** Files are collected rather than flattened: they go to the bucket, only text joins the prompt. */
-type ContentPart =
-  | { readonly kind: "text"; readonly text: string }
-  | { readonly kind: "file"; readonly uri: string; readonly filename?: string };
+import { contentOf, turnOf } from "./content";
+import type { ContentPart } from "./content";
 
 const imageUrlPartSchema = z
   .object({
@@ -49,20 +43,7 @@ const contentPartSchema = z.union([
   })),
 ]);
 
-const contentSchema = z
-  .union([
-    z.string().transform((text): ContentPart[] => [{ kind: "text", text }]),
-    z.array(contentPartSchema),
-    z.unknown().transform((): ContentPart[] => []),
-  ])
-  .optional()
-  .transform((value): ContentPart[] => value ?? []);
-
-const textOf = (parts: readonly ContentPart[]): string =>
-  parts
-    .filter((part) => part.kind === "text")
-    .map((part) => part.text)
-    .join("");
+const contentSchema = contentOf(contentPartSchema);
 
 const roleSchema = z
   .union([
@@ -103,14 +84,8 @@ const messageSchema = z
     tool_call_id: z.string().optional(),
     tool_calls: z.array(toolCallSchema).optional(),
   })
-  .transform((message): ChatTurn => {
-    const files = message.content
-      .filter((part) => part.kind === "file")
-      .map((part) => ({ filename: part.filename, uri: part.uri }));
-    const turn: ChatTurn =
-      files.length > 0
-        ? { content: textOf(message.content), files, role: message.role }
-        : { content: textOf(message.content), role: message.role };
+  .transform((message) => {
+    const turn = turnOf(message.role, message.content);
     if (message.tool_calls && message.tool_calls.length > 0) {
       return { ...turn, calls: message.tool_calls };
     }
