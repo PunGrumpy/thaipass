@@ -110,12 +110,19 @@ const toolSchema = z
     name: tool.function.name,
   }));
 
-/** `minimal` rounds to `low`; the other values line up with the AI Pass levels. */
-const reasoningEffortSchema = z
-  .enum(["minimal", "low", "medium", "high"])
-  .transform((effort): ThinkingLevel =>
-    effort === "minimal" ? "low" : effort
-  );
+/** `none` asks for no thinking; `minimal` rounds to `low` and `xhigh` to `max`. */
+const EFFORT_LEVELS = {
+  high: "high",
+  low: "low",
+  medium: "medium",
+  minimal: "low",
+  none: undefined,
+  xhigh: "max",
+} as const satisfies Record<string, ThinkingLevel | undefined>;
+
+export const reasoningEffortSchema = z
+  .enum(["none", "minimal", "low", "medium", "high", "xhigh"])
+  .transform((effort): ThinkingLevel | undefined => EFFORT_LEVELS[effort]);
 
 export const chatRequestSchema = z.object({
   messages: z.array(messageSchema).optional(),
