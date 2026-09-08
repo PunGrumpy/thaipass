@@ -3,17 +3,11 @@ import { thinkingLevelSchema } from "@thaipass/core/aipass/thinking";
 import type { ThinkingLevel } from "@thaipass/core/aipass/thinking";
 import { toolInputSchema } from "@thaipass/core/tools";
 import type { ToolCall, ToolDefinition, ToolInput } from "@thaipass/core/tools";
-import type {
-  ChatTurn,
-  Conversation,
-  TurnRole,
-} from "@thaipass/core/translate";
+import type { Conversation, TurnRole } from "@thaipass/core/translate";
 import { z } from "zod";
 
-/** Files are collected rather than flattened: they go to the bucket, only text joins the prompt. */
-type ContentPart =
-  | { readonly kind: "text"; readonly text: string }
-  | { readonly kind: "file"; readonly uri: string; readonly filename?: string };
+import { contentOf, turnOf } from "./content";
+import type { ContentPart } from "./content";
 
 const imageUrlPartSchema = z
   .object({
@@ -49,20 +43,7 @@ const contentPartSchema = z.union([
   })),
 ]);
 
-const contentSchema = z
-  .union([
-    z.string().transform((text): ContentPart[] => [{ kind: "text", text }]),
-    z.array(contentPartSchema),
-    z.unknown().transform((): ContentPart[] => []),
-  ])
-  .optional()
-  .transform((value): ContentPart[] => value ?? []);
-
-const textOf = (parts: readonly ContentPart[]): string =>
-  parts
-    .filter((part) => part.kind === "text")
-    .map((part) => part.text)
-    .join("");
+const contentSchema = contentOf(contentPartSchema);
 
 const roleSchema = z
   .union([
@@ -73,7 +54,7 @@ const roleSchema = z
   .transform((value): TurnRole => value ?? "user");
 
 /** OpenAI sends arguments as a JSON string; anything unreadable becomes no arguments. */
-const parseArguments = (raw: string | undefined): ToolInput => {
+export const parseToolArguments = (raw: string | undefined): ToolInput => {
   if (raw === undefined || raw.length === 0) {
     return {};
   }
@@ -92,7 +73,7 @@ const toolCallSchema = z
   })
   .transform((call): ToolCall => ({
     id: call.id,
-    input: parseArguments(call.function.arguments),
+    input: parseToolArguments(call.function.arguments),
     name: call.function.name,
   }));
 
@@ -103,14 +84,8 @@ const messageSchema = z
     tool_call_id: z.string().optional(),
     tool_calls: z.array(toolCallSchema).optional(),
   })
-  .transform((message): ChatTurn => {
-    const files = message.content
-      .filter((part) => part.kind === "file")
-      .map((part) => ({ filename: part.filename, uri: part.uri }));
-    const turn: ChatTurn =
-      files.length > 0
-        ? { content: textOf(message.content), files, role: message.role }
-        : { content: textOf(message.content), role: message.role };
+  .transform((message) => {
+    const turn = turnOf(message.role, message.content);
     if (message.tool_calls && message.tool_calls.length > 0) {
       return { ...turn, calls: message.tool_calls };
     }
@@ -135,12 +110,19 @@ const toolSchema = z
     name: tool.function.name,
   }));
 
-/** `minimal` rounds to `low`; the other values line up with the AI Pass levels. */
-const reasoningEffortSchema = z
-  .enum(["minimal", "low", "medium", "high"])
-  .transform((effort): ThinkingLevel =>
-    effort === "minimal" ? "low" : effort
-  );
+/** `none` asks for no thinking; `minimal` rounds to `low` and `xhigh` to `max`. */
+const EFFORT_LEVELS = {
+  high: "high",
+  low: "low",
+  medium: "medium",
+  minimal: "low",
+  none: undefined,
+  xhigh: "max",
+} as const satisfies Record<string, ThinkingLevel | undefined>;
+
+export const reasoningEffortSchema = z
+  .enum(["none", "minimal", "low", "medium", "high", "xhigh"])
+  .transform((effort): ThinkingLevel | undefined => EFFORT_LEVELS[effort]);
 
 export const chatRequestSchema = z.object({
   messages: z.array(messageSchema).optional(),

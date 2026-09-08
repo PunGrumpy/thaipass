@@ -4,7 +4,7 @@
 
 Point your OpenAI or Anthropic client at [AI Pass](https://de.aipass.net) and use the models your account already sees in the web UI.
 
-thaipass is two things. The proxy in `apps/proxy` serves an OpenAI-compatible `/v1/chat/completions` and an Anthropic-compatible `/v1/messages` in front of the AI Pass chat backend. It also generates images, video and music, reports the account's credit balance, and can earn the monthly learning points for you. The `thaipass` package in `packages/thaipass` is an AI SDK provider that does the same without HTTP.
+thaipass is two things. The proxy in `apps/proxy` serves an OpenAI-compatible `/v1/chat/completions`, a Responses-compatible `/v1/responses`, and an Anthropic-compatible `/v1/messages` in front of the AI Pass chat backend. It also generates images, video and music, reports the account's credit balance, and can earn the monthly learning points for you. The `thaipass` package in `packages/thaipass` is an AI SDK provider that does the same without HTTP.
 
 Every request carries your own session cookie. The proxy stores no credential and drives no account but yours. See [Personal use only](#personal-use-only).
 
@@ -80,6 +80,25 @@ const client = new OpenAI({
 });
 ```
 
+### Codex
+
+Codex removed `wire_api = "chat"` in February 2026, so it speaks only the Responses protocol. Point a custom provider at `/v1` in `~/.codex/config.toml` and put the cookie in the environment variable it names:
+
+```toml
+model = "claude-sonnet-5@default"
+model_provider = "thaipass"
+
+[model_providers.thaipass]
+name = "thaipass"
+base_url = "http://127.0.0.1:3001/v1"
+wire_api = "responses"
+env_key = "AIPASS_COOKIE"
+```
+
+Codex sends a large `instructions` block and resends the whole conversation every turn, so one session can spend the daily allowance. That prompt is also the shape the AI Pass edge refuses most, so the first request may come back as a `400`. See [400: the edge refused the prompt](#400-the-edge-refused-the-prompt).
+
+Tool calls are the part to watch. AI Pass carries text only, so the proxy offers `shell` and the rest through the prompt and parses the calls back out of the reply. A session runs as far as the model keeps to that format, so start on `claude-sonnet-5@default` and expect a small model to describe a tool instead of calling it. A hosted tool such as `web_search` is dropped rather than offered to Codex.
+
 ### AI SDK provider
 
 The provider ships as the `thaipass` package. `createAipass` returns models that `streamText` and `generateText` accept, with no HTTP hop:
@@ -113,6 +132,7 @@ Every route the proxy serves:
 | Route | What it does | Cookie |
 | --- | --- | --- |
 | `POST /v1/chat/completions` | OpenAI protocol, streams by default | yes |
+| `POST /v1/responses` | OpenAI Responses protocol, buffered unless `stream: true` | yes |
 | `POST /v1/messages` | Anthropic protocol, buffered unless `stream: true` | yes |
 | `POST /v1/messages/count_tokens` | Estimated size of a prompt | no |
 | `POST /v1/images/generations` | One image, buffered | yes |
