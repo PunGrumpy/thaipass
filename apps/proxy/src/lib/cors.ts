@@ -13,7 +13,7 @@ const configured = env.AIPASS_CORS_ORIGIN?.split(",")
   .filter((entry) => entry.length > 0);
 
 const allowAny = configured?.includes("*") === true;
-const webOrigin = new URL(env.WEB_URL).origin;
+const webOrigin = new URL(env.NEXT_PUBLIC_WEB_URL).origin;
 
 const isAllowed = (origin: string): boolean => {
   if (allowAny) {
