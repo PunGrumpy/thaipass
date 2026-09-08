@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="spark" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#0008ff"/>
+      <stop offset="1" stop-color="#00b4ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#spark)"/>
+  <path fill="#fff" d="M16 5c.6 6.9 2.9 10.2 7.5 12.6C18.9 20 16.6 23.3 16 30.2c-.6-6.9-2.9-10.2-7.5-12.6C13.1 15.2 15.4 11.9 16 5Z" transform="translate(0 -1.5) scale(1 0.86) translate(0 2)"/>
+</svg>
