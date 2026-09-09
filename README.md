@@ -141,7 +141,7 @@ Every route the proxy serves:
 | `GET /v1/models` | The account's model catalog | yes |
 | `GET /v1/usage` | The account's credit balance | yes |
 | `GET /v1/lms/exp` | The account's learning EXP | yes |
-| `POST /v1/lms/learn` | Watches video lessons until a target EXP | yes |
+| `POST /v1/lms/learn` | Learns lessons until a target EXP | yes |
 | `GET /health` | Liveness | no |
 | `GET /` | OpenAPI docs rendered by Scalar, JSON at `/openapi.json` | no |
 
@@ -293,7 +293,13 @@ curl -s localhost:3001/v1/usage -H "authorization: Bearer $AIPASS_COOKIE"
 
 ## Earn LMS points
 
-AI Pass runs a learning site at `/lms` that pays EXP per completed lesson, and the membership tier wants a monthly minimum. The proxy can do the watching for you, from a command on your machine or from a scheduler through the API.
+AI Pass runs a learning site at `/lms` that pays EXP per completed lesson, and the membership tier wants a monthly minimum. The proxy can do the learning for you, from a command on your machine or from a scheduler through the API.
+
+A course mixes four kinds of lesson, and the proxy replays what the lesson page does for each: it watches a **video** by stamping the seconds watched, reads an **attachment** or an **article** by opening it and marking it read, and answers a **quiz** — the pre-test and the post-test — by asking an AI Pass model the questions and submitting the attempt. Videos and the two readings run by default. Quizzes do not: the LMS usually allows one attempt per test and does not give it back, so they wait for `--quiz`.
+
+A run walks the courses the account is enrolled in, and the ones already started come first: a course pays for finishing the course as well as for its lessons, so a half-done course is the cheapest EXP left and finishing it leaves less behind. `--course` narrows the run to the codes you name.
+
+The tier prices each type separately, and the proxy reports what it would earn from that price list: 100 EXP a video, 50 an attachment, 30 an article, 25 a pre-test and 50 a post-test on the account I read it from. What a completed lesson actually paid is the period's own figure before and after.
 
 ### On your machine
 
@@ -302,16 +308,20 @@ AI Pass runs a learning site at `/lms` that pays EXP per completed lesson, and t
 ```bash
 AIPASS_COOKIE='your_cookie_header_here' bun run lms             # reach 100 this period
 AIPASS_COOKIE='your_cookie_header_here' bun run lms --earn 200  # earn 200 more
-bun run lms --cookie-file ~/.aipass-cookie --dry-run            # see what it would watch
+AIPASS_COOKIE='your_cookie_header_here' bun run lms --quiz      # answer the tests too
+AIPASS_COOKIE='your_cookie_header_here' bun run lms -C 31,25    # only these two courses
+bun run lms --cookie-file ~/.aipass-cookie --dry-run            # see what it would learn
 ```
 
-Run `--dry-run` first. It reads the catalogue and reports each lesson it would watch, with the tier's EXP per video lesson, and changes nothing.
+Run `--dry-run` first. It reads the catalogue and reports each lesson it would learn, with the tier's EXP for that kind of lesson, and changes nothing.
+
+`--quiz` turns the tests on and `--quiz-model` names the model that answers them, `gemini-3.1-pro-preview` by default. `--no-attachments` and `--no-articles` leave the reading to you.
 
 The command prints one line per course and lesson, redraws the stamp progress in place, and exits 0 when the goal is reached, 1 when it is not, and 2 on a usage error. `--json` prints the same lines the route streams. This command is the one place in the repo that reads a cookie from the environment. The server never does.
 
 ### Through the API
 
-`POST /v1/lms/learn` watches every unwatched video lesson until the account has earned a target, 100 EXP by default:
+`POST /v1/lms/learn` learns every open lesson until the account has earned a target, 100 EXP by default:
 
 ```bash
 curl -sN localhost:3001/v1/lms/learn \
@@ -320,7 +330,7 @@ curl -sN localhost:3001/v1/lms/learn \
   -d '{"target":100,"pace":1}'
 ```
 
-The reply is one JSON object per line as the run goes: the period's EXP before, a `course` line per course it enters, a `lesson` line when a lesson starts and when it completes, a `stamp` line per ten seconds of video, the EXP after, and a `done` line saying how much was earned and why it stopped. Pass `-N` to curl so the lines show as they arrive. Articles and quizzes are left alone, because the proxy only watches video.
+The reply is one JSON object per line as the run goes: the period's EXP before, a `course` line per course it enters, a `lesson` line when a lesson starts and when it completes, a `stamp` line per ten seconds of video, a `quiz` line with the score when a test is submitted, the EXP after, and a `done` line saying how much was earned and why it stopped. Every `lesson` line carries the `kind` it is: `video`, `attachment`, `article` or `quiz`. Pass `-N` to curl so the lines show as they arrive. A lesson type the proxy has not met is left alone.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -328,6 +338,11 @@ The reply is one JSON object per line as the run goes: the period's EXP before, 
 | `earn` | none | Earn this much EXP in this run, whatever the period already has. Overrides `target` |
 | `pace` | 1 | Playback speed, up to 16. At 1 a ten minute video takes ten minutes |
 | `max_lessons` | 50 | Stop after this many lessons regardless |
+| `courses` | none | Course codes to learn. The whole catalogue when this names none; a code the catalogue does not carry is reported as an `error` line and the rest of the run goes on |
+| `attachments` | true | Open attachment lessons and mark them read |
+| `articles` | true | Open article lessons and mark them read |
+| `quiz` | false | Answer the pre-test and the post-test and submit the attempt |
+| `quiz_model` | `gemini-3.1-pro-preview` | The AI Pass model that answers the questions, on the same cookie |
 | `dry_run` | false | List what would be learned and change nothing |
 | `budget_seconds` | none, 270 on Vercel | End the run before this much wall-clock has passed. The `done` line then has `paused: true`, and the next call resumes from the last stamp |
 
@@ -359,6 +374,8 @@ The sleep keeps a refused request from becoming a tight loop, and the cap bounds
 Three things to know before relying on it:
 
 - **The stamp is the player's own.** I read it off the lesson page and confirmed it against a live session. Each stamp carries the video content id, the enrolment, the progress record and the whole seconds watched, never more than ten past the last one. A stamp the LMS answers with `COMPLETED` is what earns the EXP. The proxy then asks the course to close, as the page does, and prices the lesson by how much the period's EXP moved.
+- **An article is read, not answered.** The lesson page marks an article read with the same call it uses for an attachment, and it never waits for the exercise blocks inside the article to be answered, so neither does the proxy. The questions in the body of an article are left untouched; they gate neither the lesson nor its EXP.
+- **A quiz spends an attempt.** The LMS hides which choice is right until the attempt is submitted, so the answers come from a model, not from the page. The proxy sends one answer per question the way a click does, then submits, and the `quiz` line reports the score the LMS gave back. A quiz the model answers only in part is left untouched rather than submitted half filled, and a quiz whose attempts are already spent is skipped. What the model scores is what the account scores.
 - **The LMS needs its own cookies.** Copy the `Cookie` header from a request made while the browser is on a `/lms` page, not from the chat, so the tenant cookie the LMS sets travels with the session token. A `401` from the LMS means the cookie is stale or came from the wrong page.
 - **Keep the pace at 1.** The player blocks seeking on a first watch and never lets a stamp advance more than ten seconds, so a run takes as long as the videos do.
 

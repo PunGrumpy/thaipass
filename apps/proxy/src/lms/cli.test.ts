@@ -6,13 +6,18 @@ const COOKIE = "app_lang=th; __Secure-ai_passport_auth.session_token=abc.def";
 
 test("parses the flags and leaves the rest to the learner's defaults", () => {
   expect(parseCliArgs([])).toEqual({
+    articles: true,
+    attachments: true,
     cookieFile: undefined,
+    courses: [],
     dryRun: false,
     earn: undefined,
     help: false,
     json: false,
     maxLessons: undefined,
     pace: undefined,
+    quiz: false,
+    quizModel: undefined,
     target: undefined,
   });
   expect(
@@ -36,6 +41,15 @@ test("parses the flags and leaves the rest to the learner's defaults", () => {
     pace: 2,
     target: 150,
   });
+});
+
+test("takes the courses comma separated, repeated, or both", () => {
+  expect(parseCliArgs(["-C", "31"]).courses).toEqual(["31"]);
+  expect(parseCliArgs(["--course", "31, 25"]).courses).toEqual(["31", "25"]);
+  expect(parseCliArgs(["--course", "31", "--course", "25,26"]).courses).toEqual(
+    ["31", "25", "26"]
+  );
+  expect(parseCliArgs(["--course", " , "]).courses).toEqual([]);
 });
 
 test("refuses a pace or target that is not a positive number", () => {
@@ -67,13 +81,14 @@ test("describes a run in a few lines and keeps stamps transient", () => {
     describe({ event: "exp", monthly: 325, phase: "after" })
   ).toBeUndefined();
   expect(
-    describe({ code: "56", event: "course", title: "AI", videos: 10 })?.text
-  ).toBe("course 56 · AI — 10 videos");
+    describe({ code: "56", event: "course", lessons: 10, title: "AI" })?.text
+  ).toBe("course 56 · AI — 10 lessons");
   expect(
     describe({
       code: "56",
       duration: 348,
       event: "lesson",
+      kind: "video",
       lesson: "l-1",
       status: "started",
       title: "Intro",
@@ -96,6 +111,7 @@ test("describes a run in a few lines and keeps stamps transient", () => {
       earned: 100,
       event: "lesson",
       exp: 100,
+      kind: "video",
       lesson: "l-1",
       monthly: 425,
       status: "completed",

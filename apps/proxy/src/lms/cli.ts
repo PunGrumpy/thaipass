@@ -6,13 +6,14 @@ import { cookieFromValue } from "@thaipass/core/aipass/session";
 
 import { env } from "../lib/env";
 import "../lib/settings";
+import { DEFAULT_QUIZ_MODEL } from "./answer";
 import { DEFAULT_TARGET, learn } from "./learn";
-import type { LearnEvent } from "./learn";
+import type { LearnEvent, LessonKind } from "./learn";
 
 /**
  * Runs the learner in-process, on the machine, with no function limit to
  * work around and no loop to write: one command, until the period has the
- * target or the videos run out.
+ * target or the lessons run out.
  */
 
 const SECONDS_PER_MINUTE = 60;
@@ -25,9 +26,11 @@ const CLEAR_LINE = "\r\u001B[2K";
 
 export const USAGE = `Usage: bun run lms [options]
 
-Watches video lessons in the AI Pass LMS until the period's EXP reaches the
-target, or until this run has earned what --earn asks for. Reads the session
-cookie from AIPASS_COOKIE, or from --cookie-file.
+Watches videos and reads attachments and articles in the AI Pass LMS until the
+period's EXP reaches the target, or until this run has earned what --earn asks
+for. Courses already started come first, so a half-done course is finished
+before a new one begins. Reads the session cookie from AIPASS_COOKIE, or from
+--cookie-file.
 
 Options:
   -t, --target <exp>        The period's EXP to reach (default ${DEFAULT_TARGET});
@@ -35,7 +38,14 @@ Options:
   -e, --earn <exp>          Earn this much in this run, whatever the period has
   -p, --pace <speed>        Playback speed, 1 is real time (default 1, max ${MAX_PACE})
   -m, --max-lessons <n>     Stop after this many lessons (default 50)
+  -C, --course <codes>      Only these courses, by code, comma separated or repeated;
+                            the whole catalogue when this names none
   -c, --cookie-file <path>  Read the Cookie header from a file instead of the environment
+      --quiz                Answer and submit quizzes too. An attempt is spent for
+                            good, so this is off unless asked for
+      --quiz-model <id>     The AI Pass model that answers them (default ${DEFAULT_QUIZ_MODEL})
+      --no-attachments      Leave attachment lessons unread instead of marking them read
+      --no-articles         Leave article lessons unread as well
       --dry-run             List what would be learned and change nothing
       --json                One JSON object per line, as the proxy streams it
   -h, --help                Show this message
@@ -43,6 +53,9 @@ Options:
 Exit status: 0 when the goal is there, 1 when it is not, 2 on a usage error.`;
 
 export interface CliOptions {
+  readonly articles: boolean;
+  readonly courses: readonly string[];
+  readonly attachments: boolean;
   readonly cookieFile: string | undefined;
   readonly dryRun: boolean;
   readonly earn: number | undefined;
@@ -50,6 +63,8 @@ export interface CliOptions {
   readonly json: boolean;
   readonly maxLessons: number | undefined;
   readonly pace: number | undefined;
+  readonly quiz: boolean;
+  readonly quizModel: string | undefined;
   readonly target: number | undefined;
 }
 
@@ -74,16 +89,30 @@ const positiveNumber = (
   return value;
 };
 
+/** Comma separated or repeated; both are how a person writes a short list. */
+const courseCodes = (values: readonly string[] | undefined): string[] =>
+  (values ?? []).flatMap((value) =>
+    value
+      .split(",")
+      .map((code) => code.trim())
+      .filter(Boolean)
+  );
+
 const spec = {
   allowPositionals: false,
   options: {
     "cookie-file": { short: "c", type: "string" },
+    course: { multiple: true, short: "C", type: "string" },
     "dry-run": { type: "boolean" },
     earn: { short: "e", type: "string" },
     help: { short: "h", type: "boolean" },
     json: { type: "boolean" },
     "max-lessons": { short: "m", type: "string" },
+    "no-articles": { type: "boolean" },
+    "no-attachments": { type: "boolean" },
     pace: { short: "p", type: "string" },
+    quiz: { type: "boolean" },
+    "quiz-model": { type: "string" },
     target: { short: "t", type: "string" },
   },
 } as const;
@@ -102,13 +131,18 @@ export const parseCliArgs = (args: readonly string[]): CliOptions => {
     throw new UsageError(`--pace goes up to ${MAX_PACE}`);
   }
   return {
+    articles: !values["no-articles"],
+    attachments: !values["no-attachments"],
     cookieFile: values["cookie-file"],
+    courses: courseCodes(values.course),
     dryRun: values["dry-run"] ?? false,
     earn: positiveNumber("earn", values.earn),
     help: values.help ?? false,
     json: values.json ?? false,
     maxLessons: positiveNumber("max-lessons", values["max-lessons"]),
     pace,
+    quiz: values.quiz ?? false,
+    quizModel: values["quiz-model"],
     target: positiveNumber("target", values.target),
   };
 };
@@ -151,13 +185,21 @@ export interface Line {
 
 type LessonEvent = Extract<LearnEvent, { event: "lesson" }>;
 
+/** What the run would do with a lesson of each kind, for the dry run's listing. */
+const PLANNED: Record<LessonKind, string> = {
+  article: "would read",
+  attachment: "would read",
+  quiz: "would answer",
+  video: "would watch",
+};
+
 const describeLesson = (event: LessonEvent): Line | undefined => {
   const title = event.title ?? event.lesson;
   const length = event.duration ? ` (${clock(event.duration)})` : "";
   switch (event.status) {
     case "planned": {
       return {
-        text: `  · ${title}${length} — would watch, about ${event.exp ?? "?"} EXP`,
+        text: `  · ${title}${length} — ${PLANNED[event.kind]}, about ${event.exp ?? "?"} EXP`,
       };
     }
     case "started": {
@@ -193,7 +235,7 @@ export const describe = (event: LearnEvent): Line | undefined => {
     }
     case "course": {
       return {
-        text: `course ${event.code} · ${event.title ?? "untitled"} — ${plural(event.videos, "video")}`,
+        text: `course ${event.code} · ${event.title ?? "untitled"} — ${plural(event.lessons, "lesson")}`,
       };
     }
     case "lesson": {
@@ -205,6 +247,17 @@ export const describe = (event: LearnEvent): Line | undefined => {
       return {
         text: `    ${clock(event.at)} / ${clock(event.duration)}  ${percent}%${status}`,
         transient: true,
+      };
+    }
+    case "quiz": {
+      const score =
+        event.score === null || event.total === null
+          ? "no score"
+          : `${event.score}/${event.total}`;
+      const passed =
+        event.passed === null ? "" : `, ${event.passed ? "passed" : "failed"}`;
+      return {
+        text: `    answered ${event.answered} of ${plural(event.questions, "question")} — ${score}${passed}`,
       };
     }
     case "course_completed": {
@@ -273,11 +326,16 @@ export const run = async (args: readonly string[]): Promise<number> => {
   let reached = false;
   try {
     for await (const event of learn({
+      articles: options.articles,
+      attachments: options.attachments,
       cookie,
+      courses: options.courses,
       dryRun: options.dryRun,
       earn: options.earn,
       maxLessons: options.maxLessons,
       pace: options.pace,
+      quiz: options.quiz,
+      quizModel: options.quizModel,
       signal: controller.signal,
       target: options.target,
     })) {

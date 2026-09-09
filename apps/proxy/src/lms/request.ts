@@ -16,8 +16,17 @@ const BAD_GATEWAY = 502;
 
 export type LmsMethod = "GET" | "POST" | "PUT" | "DELETE";
 
-/** What the proxy sends the LMS: ids, paging and playback figures, nothing nested. */
-export type LmsBody = Readonly<Record<string, string | number | null>>;
+/** A field of an LMS body: an id, a figure, or the nested answers a quiz sends. */
+export type LmsValue =
+  | boolean
+  | number
+  | string
+  | null
+  | readonly LmsValue[]
+  | { readonly [field: string]: LmsValue };
+
+/** What the proxy sends the LMS: ids, paging, playback figures and quiz answers. */
+export type LmsBody = Readonly<Record<string, LmsValue>>;
 
 const isRedirect = (status: number): boolean =>
   status >= REDIRECT_LOW && status < REDIRECT_HIGH;

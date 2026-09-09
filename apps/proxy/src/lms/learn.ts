@@ -1,28 +1,36 @@
+import { DEFAULT_QUIZ_MODEL, modelAnswerer } from "./answer";
+import type { Answerer, QuizPick } from "./answer";
 import {
   completeCourse,
+  completeLesson,
   enrollCourse,
   listCourses,
   listLessons,
   openLesson,
   readSessionExp,
   readSessionTier,
+  stampQuizAnswer,
   stampVideo,
+  submitQuiz,
 } from "./api";
 import type {
   Course,
   Lesson,
   LessonContent,
+  QuizContent,
   SessionExp,
+  SessionTier,
   VideoStamp,
 } from "./api";
 import { findNumber } from "./payload";
 import { LmsError } from "./request";
 
 /**
- * Replays what the lesson page does for a video lesson: open it, stamp the
- * seconds watched as the video plays, and close the course once a stamp
- * reports the lesson complete. The LMS awards EXP per completed lesson, and
- * the run stops once it has earned the target.
+ * Replays what the lesson page does, lesson type by lesson type: a video is
+ * opened and stamped second by second, an attachment or an article is opened
+ * and marked read, a quiz is answered and submitted. The course is asked to
+ * close after each one, the LMS awards EXP per completed lesson, and the run
+ * stops once it has earned the target.
  */
 
 export const DEFAULT_TARGET = 100;
@@ -36,8 +44,33 @@ const PERCENT_DONE = 100;
 const MS_PER_S = 1000;
 const FORBIDDEN = 403;
 const NOT_FOUND = 404;
-const VIDEO = "video";
 const COMPLETED = "COMPLETED";
+
+/** What the proxy can learn: how a lesson is finished, not what it is called. */
+export type LessonKind = "article" | "attachment" | "quiz" | "video";
+
+/** The lesson types the listing sends; the two tests are both quizzes. */
+const KIND_BY_TYPE = new Map<string, LessonKind>([
+  ["ARTICLE", "article"],
+  ["ATTACHMENT", "attachment"],
+  ["POST_TEST", "quiz"],
+  ["PRE_TEST", "quiz"],
+  ["QUIZ", "quiz"],
+  ["VIDEO", "video"],
+]);
+
+/**
+ * What the tier calls each lesson type where it prices them. A pre-test and a
+ * post-test are one kind to learn and two lines on the price list.
+ */
+const EXP_KEY_BY_TYPE = new Map<string, string>([
+  ["ARTICLE", "article"],
+  ["ATTACHMENT", "attachment"],
+  ["POST_TEST", "quiz_post_test"],
+  ["PRE_TEST", "quiz_pre_test"],
+  ["QUIZ", "quiz"],
+  ["VIDEO", "video"],
+]);
 
 /** `member.expEarn` is what a live session-exp carries; the rest are the names the bundle hints at. */
 const MONTHLY_KEYS = [
@@ -51,6 +84,13 @@ const MONTHLY_KEYS = [
 ] as const;
 
 const DONE_STATUSES = new Set([COMPLETED, "COMPLETE", "DONE", "PASSED"]);
+
+const STARTED_STATUSES = new Set([
+  "IN_PROGRESS",
+  "INPROGRESS",
+  "LEARNING",
+  "STARTED",
+]);
 
 /** A course or a lesson the account has already finished; the LMS marks both the same ways. */
 export const isDone = (record: Course | Lesson): boolean => {
@@ -70,12 +110,27 @@ export const isDone = (record: Course | Lesson): boolean => {
     : false;
 };
 
+/**
+ * A course the account has opened and not finished. These go first: a course
+ * pays for the course as well as for its lessons, so the half-done ones are
+ * the cheapest EXP left on the account, and finishing them leaves less behind.
+ */
+export const isStarted = (course: Course): boolean => {
+  const status = course.learnerStatus ?? course.status;
+  if (status && STARTED_STATUSES.has(status.toUpperCase())) {
+    return true;
+  }
+  return course.progress !== undefined && course.progress !== null
+    ? course.progress > 0
+    : false;
+};
+
 /** The routes take the course code; a bare id carries a `course-` prefix the web client strips. */
 export const courseCode = (course: Course): string | undefined =>
   course.code || course.id?.replace(/^course-/u, "") || undefined;
 
-export const isVideo = (lesson: Lesson): boolean =>
-  lesson.lessonType?.toLowerCase() === VIDEO;
+export const kindOf = (lesson: Lesson): LessonKind | undefined =>
+  KIND_BY_TYPE.get(lesson.lessonType?.toUpperCase() ?? "");
 
 const positive = (value: number | undefined): number | undefined =>
   value !== undefined && value > 0 ? value : undefined;
@@ -163,13 +218,14 @@ export type LearnEvent =
       readonly event: "course";
       readonly code: string;
       readonly title: string | null;
-      readonly videos: number;
+      readonly lessons: number;
     }
   | {
       readonly event: "lesson";
       readonly code: string;
       readonly lesson: string;
       readonly title: string | null;
+      readonly kind: LessonKind;
       readonly status: LessonStatus;
       readonly duration?: number;
       readonly watched?: number;
@@ -186,6 +242,16 @@ export type LearnEvent =
       readonly at: number;
       readonly duration: number;
       readonly status: string | null;
+    }
+  | {
+      readonly event: "quiz";
+      readonly code: string;
+      readonly lesson: string;
+      readonly questions: number;
+      readonly answered: number;
+      readonly score: number | null;
+      readonly total: number | null;
+      readonly passed: boolean | null;
     }
   | { readonly event: "course_completed"; readonly code: string }
   | {
@@ -220,6 +286,18 @@ export interface LearnOptions {
   /** Playback speed: 1 stamps in real time, 4 gets through a video in a quarter of its length. */
   readonly pace?: number;
   readonly maxLessons?: number;
+  /** Marks attachment lessons read, which is what earns their EXP. On by default. */
+  readonly attachments?: boolean;
+  /** Marks article lessons read the same way. On by default. */
+  readonly articles?: boolean;
+  /** Course codes to learn; the whole catalogue when this names none. */
+  readonly courses?: readonly string[];
+  /** Answers and submits quizzes. Off by default: an attempt is spent for good. */
+  readonly quiz?: boolean;
+  /** The AI Pass model that answers quiz questions. */
+  readonly quizModel?: string;
+  /** Stands in for that model, so a test can answer without a chat turn. */
+  readonly answer?: Answerer;
   /** Lists what would be learned and sends nothing that changes the account. */
   readonly dryRun?: boolean;
   readonly signal?: AbortSignal;
@@ -242,9 +320,15 @@ interface Run {
   readonly sleep: Sleep;
   readonly now: () => number;
   readonly deadline: number | undefined;
+  /** The lesson kinds this run is allowed to learn. */
+  readonly kinds: ReadonlySet<LessonKind>;
+  /** The course codes this run is held to; empty means the whole catalogue. */
+  readonly courses: ReadonlySet<string>;
+  readonly answer: Answerer;
   /** Set when a lesson stopped for the budget rather than for the LMS. */
   paused: boolean;
-  videoExp: number | undefined;
+  /** The tier's price list, keyed by the lesson type names it uses. */
+  lessonExp: ReadonlyMap<string, number>;
   /** The period's EXP as last read, so a lesson's worth is what the LMS actually added. */
   monthly: number | undefined;
   earned: number;
@@ -319,8 +403,23 @@ const readMonthly = async (run: Run): Promise<number | undefined> => {
   }
 };
 
+/** What the tier says this lesson pays, by its own type, or by its kind. */
+const expFor = (run: Run, lesson: Lesson, kind: LessonKind): number => {
+  const type = lesson.lessonType?.toUpperCase() ?? "";
+  const key = EXP_KEY_BY_TYPE.get(type);
+  return (
+    (key === undefined ? undefined : run.lessonExp.get(key)) ??
+    run.lessonExp.get(kind) ??
+    0
+  );
+};
+
 /** What the LMS added for the lesson, or the tier's figure when it cannot be read. */
-const settleLesson = async (run: Run): Promise<number> => {
+const settleLesson = async (
+  run: Run,
+  lesson: Lesson,
+  kind: LessonKind
+): Promise<number> => {
   const before = run.monthly;
   const after = await readMonthly(run);
   if (after !== undefined) {
@@ -329,8 +428,41 @@ const settleLesson = async (run: Run): Promise<number> => {
   if (before !== undefined && after !== undefined) {
     return Math.max(0, after - before);
   }
-  return run.videoExp ?? 0;
+  return expFor(run, lesson, kind);
 };
+
+/** One lesson being learned: what the listing said, and what opening it answered. */
+interface Attempt {
+  readonly code: string;
+  readonly content: LessonContent;
+  readonly enrollmentId: string;
+  readonly id: string;
+  readonly kind: LessonKind;
+  readonly lesson: Lesson;
+  readonly title: string | null;
+}
+
+const skipped = (at: Attempt, reason: string): LearnEvent => ({
+  code: at.code,
+  event: "lesson",
+  kind: at.kind,
+  lesson: at.id,
+  reason,
+  status: "skipped",
+  title: at.title,
+});
+
+const started = (at: Attempt): LearnEvent => ({
+  code: at.code,
+  event: "lesson",
+  kind: at.kind,
+  lesson: at.id,
+  status: "started",
+  title: at.title,
+});
+
+const messageOf = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
 
 interface Playback {
   readonly duration: number;
@@ -384,56 +516,19 @@ const stampLesson = async function* stampLesson(
   return status;
 };
 
-// Learns one video lesson; true when the lesson was completed.
-const learnLesson = async function* learnLesson(
+// Plays the video out; true when the LMS marked the lesson complete.
+const watchVideo = async function* watchVideo(
   run: Run,
-  code: string,
-  enrollmentId: string,
-  lesson: Lesson
+  at: Attempt
 ): AsyncGenerator<LearnEvent, boolean> {
-  const id = lesson.lessonVersionId ?? "";
-  const title = titleOf(lesson);
-  if (run.dryRun) {
-    run.lessons += 1;
-    run.earned += run.videoExp ?? 0;
-    yield {
-      code,
-      duration: positive(lesson.durationSeconds ?? lesson.durationInSeconds),
-      earned: run.earned,
-      event: "lesson",
-      exp: run.videoExp,
-      lesson: id,
-      status: "planned",
-      title,
-    };
-    return true;
-  }
-  const content = await openLesson(
-    run.cookie,
-    code,
-    id,
-    enrollmentId,
-    run.signal
-  );
-  const skip = (reason: string): LearnEvent => ({
-    code,
-    event: "lesson",
-    lesson: id,
-    reason,
-    status: "skipped",
-    title,
-  });
-  const duration = durationOf(content, lesson);
+  const { code, content, enrollmentId, id, kind, title } = at;
+  const duration = durationOf(content, at.lesson);
   if (!duration) {
-    yield skip("no video duration in the lesson content");
+    yield skipped(at, "no video duration in the lesson content");
     return false;
   }
   if (!content.videoContent?.videoContentId) {
-    yield skip("no video content id in the lesson content");
-    return false;
-  }
-  if (content.lessonProgressStatus?.toUpperCase() === COMPLETED) {
-    yield skip("the LMS already marks this lesson complete");
+    yield skipped(at, "no video content id in the lesson content");
     return false;
   }
   const watched = Math.min(
@@ -444,6 +539,7 @@ const learnLesson = async function* learnLesson(
     code,
     duration,
     event: "lesson",
+    kind,
     lesson: id,
     stamp: stampBody(content, enrollmentId, watched, duration),
     status: "started",
@@ -461,6 +557,7 @@ const learnLesson = async function* learnLesson(
     yield {
       code,
       event: "lesson",
+      kind,
       lesson: id,
       reason: `${TIME_BUDGET_SPENT}; the next call resumes from the last stamp`,
       status: "paused",
@@ -469,19 +566,226 @@ const learnLesson = async function* learnLesson(
     return false;
   }
   if (status?.toUpperCase() !== COMPLETED) {
-    yield skip(
+    yield skipped(
+      at,
       `the LMS left the lesson ${status ?? "without a status"} after the last stamp`
     );
     return false;
   }
-  // The page asks the course to close after every completed video; the LMS decides whether it can.
+  return true;
+};
+
+/** Whether the lesson carries the file or the page it says it does. */
+const hasReading = (at: Attempt): boolean =>
+  at.kind === "article"
+    ? at.content.articleContent?.articleContentId !== undefined
+    : at.content.lessonContentAttachment?.attachmentContentId !== undefined;
+
+// What the reader does at the bottom of the file or the page: mark as read.
+const readLesson = async function* readLesson(
+  run: Run,
+  at: Attempt
+): AsyncGenerator<LearnEvent, boolean> {
+  if (!hasReading(at)) {
+    yield skipped(at, `no ${at.kind} in the lesson content`);
+    return false;
+  }
+  yield started(at);
+  const result = await completeLesson(
+    run.cookie,
+    at.code,
+    at.id,
+    {
+      enrollmentId: at.enrollmentId,
+      lessonProgressId: at.content.lessonProgressId ?? null,
+    },
+    run.signal
+  );
+  if (result.status?.toUpperCase() !== COMPLETED) {
+    yield skipped(
+      at,
+      `the LMS left the lesson ${result.status ?? "without a status"} after it was marked read`
+    );
+    return false;
+  }
+  return true;
+};
+
+/** Why this quiz cannot be taken, or nothing when it can. */
+const quizBlocked = (quiz: QuizContent): string | undefined => {
+  if (quiz.submittedAt) {
+    return "the attempt is already submitted";
+  }
+  const spent = quiz.attemptCount ?? 0;
+  if (quiz.maxAttempt !== undefined && spent >= quiz.maxAttempt) {
+    return `no attempts left, ${spent} of ${quiz.maxAttempt} spent`;
+  }
+  return quiz.questions.some((question) => question.questionId)
+    ? undefined
+    : "the quiz has no questions";
+};
+
+/** Sends one answer per question, as the page does on every click. */
+const stampAnswers = async (
+  run: Run,
+  at: Attempt,
+  picks: readonly QuizPick[],
+  opening: string | undefined
+): Promise<string | undefined> => {
+  let attemptId = opening;
+  // oxlint-disable no-await-in-loop
+  for (const pick of picks) {
+    const result = await stampQuizAnswer(
+      run.cookie,
+      at.code,
+      at.id,
+      {
+        attemptId: attemptId ?? null,
+        choices: pick.choiceIds.map((choiceId) => ({
+          choiceId,
+          isSelected: true,
+        })),
+        questionId: pick.questionId,
+      },
+      run.signal
+    );
+    attemptId = result.attemptId ?? attemptId;
+  }
+  // oxlint-enable no-await-in-loop
+  return attemptId;
+};
+
+// Answers every question and submits the attempt. A quiz answered only in part
+// is left alone: an attempt spent is rarely one the LMS gives back.
+const takeQuiz = async function* takeQuiz(
+  run: Run,
+  at: Attempt
+): AsyncGenerator<LearnEvent, boolean> {
+  const quiz = at.content.quizContent;
+  if (!quiz) {
+    yield skipped(at, "no quiz in the lesson content");
+    return false;
+  }
+  const blocked = quizBlocked(quiz);
+  if (blocked) {
+    yield skipped(at, blocked);
+    return false;
+  }
+  yield started(at);
+  const { questions } = quiz;
+  let picks: readonly QuizPick[];
   try {
-    await completeCourse(run.cookie, code, id, { enrollmentId }, run.signal);
-    yield { code, event: "course_completed" };
+    picks = await run.answer(questions, run.signal);
+  } catch (error) {
+    yield skipped(at, `the quiz went unanswered: ${messageOf(error)}`);
+    return false;
+  }
+  if (picks.length < questions.length) {
+    yield skipped(
+      at,
+      `only ${picks.length} of ${questions.length} questions came back answered, so nothing was submitted`
+    );
+    return false;
+  }
+  const attemptId = await stampAnswers(run, at, picks, quiz.attemptId);
+  if (!attemptId) {
+    yield skipped(at, "the LMS named no attempt to submit");
+    return false;
+  }
+  const result = await submitQuiz(
+    run.cookie,
+    at.code,
+    at.id,
+    { attemptId },
+    run.signal
+  );
+  yield {
+    answered: picks.length,
+    code: at.code,
+    event: "quiz",
+    lesson: at.id,
+    passed: result.passed ?? null,
+    questions: questions.length,
+    score: result.score ?? null,
+    total: result.totalScore ?? null,
+  };
+  return true;
+};
+
+const attemptLesson = (
+  run: Run,
+  at: Attempt
+): AsyncGenerator<LearnEvent, boolean> => {
+  if (at.kind === "quiz") {
+    return takeQuiz(run, at);
+  }
+  return at.kind === "video" ? watchVideo(run, at) : readLesson(run, at);
+};
+
+// The page asks the course to close after every completed lesson; the LMS decides whether it can.
+const closeCourse = async function* closeCourse(
+  run: Run,
+  at: Attempt
+): AsyncGenerator<LearnEvent> {
+  try {
+    await completeCourse(
+      run.cookie,
+      at.code,
+      at.id,
+      { enrollmentId: at.enrollmentId },
+      run.signal
+    );
+    yield { code: at.code, event: "course_completed" };
   } catch (error) {
     yield failure(error, "course", false);
   }
-  const exp = await settleLesson(run);
+};
+
+// Learns one lesson of any kind; true when the lesson was completed.
+const learnLesson = async function* learnLesson(
+  run: Run,
+  code: string,
+  enrollmentId: string,
+  lesson: Lesson,
+  kind: LessonKind
+): AsyncGenerator<LearnEvent, boolean> {
+  const id = lesson.lessonVersionId ?? "";
+  const title = titleOf(lesson);
+  if (run.dryRun) {
+    const exp = expFor(run, lesson, kind);
+    run.lessons += 1;
+    run.earned += exp;
+    yield {
+      code,
+      duration: positive(lesson.durationSeconds ?? lesson.durationInSeconds),
+      earned: run.earned,
+      event: "lesson",
+      exp,
+      kind,
+      lesson: id,
+      status: "planned",
+      title,
+    };
+    return true;
+  }
+  const content = await openLesson(
+    run.cookie,
+    code,
+    id,
+    enrollmentId,
+    run.signal
+  );
+  const at: Attempt = { code, content, enrollmentId, id, kind, lesson, title };
+  if (content.lessonProgressStatus?.toUpperCase() === COMPLETED) {
+    yield skipped(at, "the LMS already marks this lesson complete");
+    return false;
+  }
+  const completed = yield* attemptLesson(run, at);
+  if (!completed) {
+    return false;
+  }
+  yield* closeCourse(run, at);
+  const exp = await settleLesson(run, lesson, kind);
   run.earned += exp;
   run.lessons += 1;
   yield {
@@ -489,6 +793,7 @@ const learnLesson = async function* learnLesson(
     earned: run.earned,
     event: "lesson",
     exp,
+    kind,
     lesson: id,
     monthly: run.monthly ?? null,
     status: "completed",
@@ -502,6 +807,23 @@ const enrollmentFrom = (
   fallback: string | undefined
 ): string | undefined =>
   lessons.map((lesson) => lesson.enrollmentId).find(Boolean) ?? fallback;
+
+/** One lesson of a kind this run learns, still open, in the order the course lists them. */
+interface Pending {
+  readonly kind: LessonKind;
+  readonly lesson: Lesson;
+}
+
+const pendingOf = (run: Run, lessons: readonly Lesson[]): Pending[] => {
+  const pending: Pending[] = [];
+  for (const lesson of lessons) {
+    const kind = kindOf(lesson);
+    if (kind && run.kinds.has(kind) && !isDone(lesson)) {
+      pending.push({ kind, lesson });
+    }
+  }
+  return pending;
+};
 
 /** Enrols, then reads the id back off the listing when the enrolment did not name it. */
 const enrol = async (run: Run, code: string): Promise<string | undefined> => {
@@ -533,9 +855,7 @@ const learnCourse = async function* learnCourse(
     throw error;
   }
   const lessons = listing.lessons.filter((lesson) => lesson.lessonVersionId);
-  const pending = lessons.filter(
-    (lesson) => isVideo(lesson) && !isDone(lesson)
-  );
+  const pending = pendingOf(run, lessons);
   if (pending.length === 0) {
     return;
   }
@@ -554,14 +874,14 @@ const learnCourse = async function* learnCourse(
   yield {
     code,
     event: "course",
+    lessons: pending.length,
     title: titleOf(course),
-    videos: pending.length,
   };
-  for (const lesson of pending) {
+  for (const { kind, lesson } of pending) {
     if (limitReached(run)) {
       return;
     }
-    yield* learnLesson(run, code, enrollmentId ?? "", lesson);
+    yield* learnLesson(run, code, enrollmentId ?? "", lesson, kind);
   }
 };
 
@@ -581,44 +901,100 @@ const expEvent = async (
   }
 };
 
-/** The tier names what a video lesson pays, for when the period's figure cannot be read. */
-const videoExpOf = async (run: Run): Promise<number | undefined> => {
+const readTier = async (run: Run): Promise<SessionTier | undefined> => {
   try {
-    const tier = await readSessionTier(run.cookie, run.signal);
-    return tier.member?.lessonTypeExp?.find(
-      (entry) => entry.lessonType?.toLowerCase() === VIDEO
-    )?.exp;
+    return await readSessionTier(run.cookie, run.signal);
   } catch {
     return undefined;
   }
 };
 
-// Walks the catalogue a page at a time; the return value says why it stopped.
-const learnPages = async function* learnPages(
-  run: Run
-): AsyncGenerator<LearnEvent, string> {
+/** The tier's price list as it sends it, for when the period's figure cannot be read. */
+const lessonExpOf = async (run: Run): Promise<ReadonlyMap<string, number>> => {
+  const priced = new Map<string, number>();
+  const tier = await readTier(run);
+  for (const entry of tier?.member?.lessonTypeExp ?? []) {
+    if (entry.lessonType && entry.exp !== undefined) {
+      priced.set(entry.lessonType.toLowerCase(), entry.exp);
+    }
+  }
+  return priced;
+};
+
+const readCatalogue = async (run: Run): Promise<Course[]> => {
+  const courses: Course[] = [];
   // oxlint-disable no-await-in-loop
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const listing = await listCourses(run.cookie, page, PAGE_SIZE, run.signal);
     if (listing.courses.length === 0) {
       break;
     }
-    for (const course of listing.courses) {
-      if (!isDone(course)) {
-        yield* learnCourse(run, course);
-      }
-      const reason = limitReached(run);
-      if (reason) {
-        return reason;
-      }
-    }
+    courses.push(...listing.courses);
     const total = listing.total ?? undefined;
     if (total !== undefined && page * PAGE_SIZE >= total) {
       break;
     }
   }
   // oxlint-enable no-await-in-loop
-  return "no more video lessons to learn";
+  return courses;
+};
+
+/** Every course when the run named none, else the ones it named. */
+const chosen = (run: Run, course: Course): boolean =>
+  run.courses.size === 0 || run.courses.has(courseCode(course) ?? "");
+
+/** What is left to learn: the courses already opened first, catalogue order within each. */
+const toLearn = (run: Run, catalogue: readonly Course[]): Course[] => {
+  const open = catalogue.filter(
+    (course) => !isDone(course) && chosen(run, course)
+  );
+  return [
+    ...open.filter((course) => isStarted(course)),
+    ...open.filter((course) => !isStarted(course)),
+  ];
+};
+
+/** A code the run named that the account's catalogue does not carry. */
+const missing = (run: Run, catalogue: readonly Course[]): string[] => {
+  const known = new Set(catalogue.map((course) => courseCode(course)));
+  return [...run.courses].filter((code) => !known.has(code));
+};
+
+// Walks the catalogue; the return value says why it stopped.
+const learnPages = async function* learnPages(
+  run: Run
+): AsyncGenerator<LearnEvent, string> {
+  const catalogue = await readCatalogue(run);
+  for (const code of missing(run, catalogue)) {
+    yield failure(
+      new Error(`course ${code} is not in the account's catalogue`),
+      "course",
+      false
+    );
+  }
+  for (const course of toLearn(run, catalogue)) {
+    yield* learnCourse(run, course);
+    const reason = limitReached(run);
+    if (reason) {
+      return reason;
+    }
+  }
+  return "no more lessons to learn";
+};
+
+/** Video always; the readings unless they are turned off, quizzes only when asked. */
+const kindsOf = (options: LearnOptions): ReadonlySet<LessonKind> => {
+  const kinds = new Set<LessonKind>(["video"]);
+  if (options.attachments ?? true) {
+    kinds.add("attachment");
+  }
+  if (options.articles ?? true) {
+    kinds.add("article");
+  }
+  if (options.quiz) {
+    kinds.add("quiz");
+  }
+  return kinds;
 };
 
 // The whole run, as a stream of events ending on `done`.
@@ -627,13 +1003,19 @@ export const learn = async function* learn(
 ): AsyncGenerator<LearnEvent> {
   const now = options.now ?? Date.now;
   const run: Run = {
+    answer:
+      options.answer ??
+      modelAnswerer(options.cookie, options.quizModel ?? DEFAULT_QUIZ_MODEL),
     cookie: options.cookie,
+    courses: new Set(options.courses),
     deadline:
       options.budgetMs === undefined ? undefined : now() + options.budgetMs,
     dryRun: options.dryRun ?? false,
     earn: options.earn,
     earned: 0,
     interval: options.stampIntervalS ?? STAMP_INTERVAL_S,
+    kinds: kindsOf(options),
+    lessonExp: new Map(),
     lessons: 0,
     maxLessons: options.maxLessons ?? DEFAULT_MAX_LESSONS,
     monthly: undefined,
@@ -643,7 +1025,6 @@ export const learn = async function* learn(
     signal: options.signal,
     sleep: options.sleep ?? pause,
     target: options.target ?? DEFAULT_TARGET,
-    videoExp: undefined,
   };
   const done = (reached: boolean, reason: string): LearnEvent => ({
     earned: run.earned,
@@ -665,7 +1046,7 @@ export const learn = async function* learn(
     yield done(true, "the period already has the target");
     return;
   }
-  run.videoExp = await videoExpOf(run);
+  run.lessonExp = await lessonExpOf(run);
   let reason: string;
   try {
     reason = yield* learnPages(run);
