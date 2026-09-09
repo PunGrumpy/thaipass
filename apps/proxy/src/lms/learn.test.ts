@@ -29,6 +29,7 @@ const VIDEO_EXP = 30;
 const ATTACHMENT_EXP = 20;
 const ARTICLE_EXP = 15;
 const QUIZ_EXP = 5;
+const PRE_TEST_EXP = 8;
 const MONTHLY = 25;
 const DURATION = 25;
 const NO_SLEEP = (): Promise<void> => Promise.resolve();
@@ -237,6 +238,7 @@ const lmsUpstream = (fixture: Fixture = {}): Upstream => {
             { exp: ATTACHMENT_EXP, lessonType: "attachment" },
             { exp: ARTICLE_EXP, lessonType: "article" },
             { exp: QUIZ_EXP, lessonType: "quiz" },
+            { exp: PRE_TEST_EXP, lessonType: "quiz_pre_test" },
           ],
         },
       });
@@ -570,6 +572,22 @@ test("leaves a lesson type it does not know alone", async () => {
   const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
   expect(upstream.calls).not.toContain(`${LMS}/course/c-2/lesson/l-9`);
   expect(doneOf(events).lessons).toBe(0);
+});
+
+test("prices a pre-test by the tier's own line for it", async () => {
+  upstream = lmsUpstream({
+    contents: { "l-4": QUIZ_CONTENT },
+    expMoves: false,
+    lessons: QUIZ_LESSONS,
+  });
+  const events = await collect({
+    answer: ANSWER,
+    cookie: COOKIE,
+    dryRun: true,
+    quiz: true,
+    sleep: NO_SLEEP,
+  });
+  expect(lessonWith(events, "planned")?.exp).toBe(PRE_TEST_EXP);
 });
 
 test("answers every question, then submits the attempt", async () => {

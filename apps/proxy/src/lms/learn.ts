@@ -59,6 +59,19 @@ const KIND_BY_TYPE = new Map<string, LessonKind>([
   ["VIDEO", "video"],
 ]);
 
+/**
+ * What the tier calls each lesson type where it prices them. A pre-test and a
+ * post-test are one kind to learn and two lines on the price list.
+ */
+const EXP_KEY_BY_TYPE = new Map<string, string>([
+  ["ARTICLE", "article"],
+  ["ATTACHMENT", "attachment"],
+  ["POST_TEST", "quiz_post_test"],
+  ["PRE_TEST", "quiz_pre_test"],
+  ["QUIZ", "quiz"],
+  ["VIDEO", "video"],
+]);
+
 /** `member.expEarn` is what a live session-exp carries; the rest are the names the bundle hints at. */
 const MONTHLY_KEYS = [
   "expEarn",
@@ -288,8 +301,8 @@ interface Run {
   readonly answer: Answerer;
   /** Set when a lesson stopped for the budget rather than for the LMS. */
   paused: boolean;
-  /** What the tier says each kind pays, for when the period's figure cannot be read. */
-  lessonExp: ReadonlyMap<LessonKind, number>;
+  /** The tier's price list, keyed by the lesson type names it uses. */
+  lessonExp: ReadonlyMap<string, number>;
   /** The period's EXP as last read, so a lesson's worth is what the LMS actually added. */
   monthly: number | undefined;
   earned: number;
@@ -364,12 +377,23 @@ const readMonthly = async (run: Run): Promise<number | undefined> => {
   }
 };
 
-/** What the tier says a lesson of this kind pays. */
-const expFor = (run: Run, kind: LessonKind): number =>
-  run.lessonExp.get(kind) ?? 0;
+/** What the tier says this lesson pays, by its own type, or by its kind. */
+const expFor = (run: Run, lesson: Lesson, kind: LessonKind): number => {
+  const type = lesson.lessonType?.toUpperCase() ?? "";
+  const key = EXP_KEY_BY_TYPE.get(type);
+  return (
+    (key === undefined ? undefined : run.lessonExp.get(key)) ??
+    run.lessonExp.get(kind) ??
+    0
+  );
+};
 
 /** What the LMS added for the lesson, or the tier's figure when it cannot be read. */
-const settleLesson = async (run: Run, kind: LessonKind): Promise<number> => {
+const settleLesson = async (
+  run: Run,
+  lesson: Lesson,
+  kind: LessonKind
+): Promise<number> => {
   const before = run.monthly;
   const after = await readMonthly(run);
   if (after !== undefined) {
@@ -378,7 +402,7 @@ const settleLesson = async (run: Run, kind: LessonKind): Promise<number> => {
   if (before !== undefined && after !== undefined) {
     return Math.max(0, after - before);
   }
-  return expFor(run, kind);
+  return expFor(run, lesson, kind);
 };
 
 /** One lesson being learned: what the listing said, and what opening it answered. */
@@ -702,7 +726,7 @@ const learnLesson = async function* learnLesson(
   const id = lesson.lessonVersionId ?? "";
   const title = titleOf(lesson);
   if (run.dryRun) {
-    const exp = expFor(run, kind);
+    const exp = expFor(run, lesson, kind);
     run.lessons += 1;
     run.earned += exp;
     yield {
@@ -735,7 +759,7 @@ const learnLesson = async function* learnLesson(
     return false;
   }
   yield* closeCourse(run, at);
-  const exp = await settleLesson(run, kind);
+  const exp = await settleLesson(run, lesson, kind);
   run.earned += exp;
   run.lessons += 1;
   yield {
@@ -859,16 +883,13 @@ const readTier = async (run: Run): Promise<SessionTier | undefined> => {
   }
 };
 
-/** The tier prices each lesson kind, for when the period's figure cannot be read. */
-const lessonExpOf = async (
-  run: Run
-): Promise<ReadonlyMap<LessonKind, number>> => {
-  const priced = new Map<LessonKind, number>();
+/** The tier's price list as it sends it, for when the period's figure cannot be read. */
+const lessonExpOf = async (run: Run): Promise<ReadonlyMap<string, number>> => {
+  const priced = new Map<string, number>();
   const tier = await readTier(run);
   for (const entry of tier?.member?.lessonTypeExp ?? []) {
-    const kind = KIND_BY_TYPE.get(entry.lessonType?.toUpperCase() ?? "");
-    if (kind && entry.exp !== undefined) {
-      priced.set(kind, entry.exp);
+    if (entry.lessonType && entry.exp !== undefined) {
+      priced.set(entry.lessonType.toLowerCase(), entry.exp);
     }
   }
   return priced;
