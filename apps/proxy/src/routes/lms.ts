@@ -39,6 +39,8 @@ export const learnRequestSchema = z.object({
   earn: z.number().int().min(1).optional(),
   max_lessons: z.number().int().min(1).max(MAX_LESSONS).optional(),
   pace: z.number().min(1).max(MAX_PACE).optional(),
+  quiz: z.boolean().optional(),
+  quiz_model: z.string().min(1).optional(),
   target: z.number().int().min(1).optional(),
 });
 
@@ -132,11 +134,11 @@ export const lmsRoutes = new Elysia()
       body: "LearnRequest",
       detail: {
         description:
-          "Learns lessons in the LMS until the period's EXP reaches the target, 100 by default; a run whose period already has it ends after one read. earn asks instead for that much EXP in this run, whatever the period has. The proxy enrols in each course that still has an open lesson and then replays what the lesson page does: a video is opened and the seconds watched are stamped every ten seconds, and a stamp the LMS answers with COMPLETED is what earns the EXP; an attachment or an article is opened and marked read, which attachments false and articles false turn off; pace is the playback speed: 1 stamps in real time, so a ten minute video takes ten minutes. The reply streams one JSON object per line as the run goes, ending with a done line, so it holds the connection for as long as the videos take. budget_seconds ends the run cleanly before that much wall-clock has passed, with paused true on the done line, and the next call resumes from the last stamp; on Vercel it defaults to 270, under the function limit. dry_run lists what would be learned and sends nothing that changes the account.",
+          "Learns lessons in the LMS until the period's EXP reaches the target, 100 by default; a run whose period already has it ends after one read. earn asks instead for that much EXP in this run, whatever the period has. The proxy enrols in each course that still has an open lesson and then replays what the lesson page does: a video is opened and the seconds watched are stamped every ten seconds, and a stamp the LMS answers with COMPLETED is what earns the EXP; an attachment or an article is opened and marked read, which attachments false and articles false turn off; a quiz is answered and submitted, which only quiz true turns on, since the LMS rarely gives an attempt back. quiz_model names the AI Pass model that answers the questions, on the same cookie. pace is the playback speed: 1 stamps in real time, so a ten minute video takes ten minutes. The reply streams one JSON object per line as the run goes, ending with a done line, so it holds the connection for as long as the videos take. budget_seconds ends the run cleanly before that much wall-clock has passed, with paused true on the done line, and the next call resumes from the last stamp; on Vercel it defaults to 270, under the function limit. dry_run lists what would be learned and sends nothing that changes the account.",
         responses: {
           "200": ndjson(
             "Progress, one JSON object per line",
-            "Lines of exp, course, lesson, stamp, course_completed, error and done events, in that order of occurrence. Every lesson line carries the kind it is: video, attachment or article. Nothing about the account but its EXP figure appears here; GET /v1/lms/exp has the rest."
+            "Lines of exp, course, lesson, stamp, quiz, course_completed, error and done events, in that order of occurrence. Every lesson line carries the kind it is: video, attachment, article or quiz. Nothing about the account but its EXP figure appears here; GET /v1/lms/exp has the rest."
           ),
           "400": json("ApiError", "Malformed body"),
           "401": json("ApiError", "Missing or malformed session cookie"),
@@ -161,6 +163,7 @@ export const lmsRoutes = new Elysia()
         lmsAttachments: body.attachments ?? true,
         lmsDryRun: body.dry_run ?? false,
         lmsPace: body.pace ?? 1,
+        lmsQuiz: body.quiz ?? false,
         lmsTarget: target,
       });
       const deferred: DeferredEmit = deferEmit;
@@ -178,6 +181,8 @@ export const lmsRoutes = new Elysia()
         earn: body.earn,
         maxLessons: body.max_lessons,
         pace: body.pace,
+        quiz: body.quiz,
+        quizModel: body.quiz_model,
         signal: request.signal,
         target,
       });

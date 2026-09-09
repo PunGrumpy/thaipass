@@ -15,6 +15,8 @@ test("parses the flags and leaves the rest to the learner's defaults", () => {
     json: false,
     maxLessons: undefined,
     pace: undefined,
+    quiz: false,
+    quizModel: undefined,
     target: undefined,
   });
   expect(

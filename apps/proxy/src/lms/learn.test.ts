@@ -28,6 +28,7 @@ const LMS = "/lms/api/v1";
 const VIDEO_EXP = 30;
 const ATTACHMENT_EXP = 20;
 const ARTICLE_EXP = 15;
+const QUIZ_EXP = 5;
 const MONTHLY = 25;
 const DURATION = 25;
 const NO_SLEEP = (): Promise<void> => Promise.resolve();
@@ -113,6 +114,35 @@ const ATTACHMENT_CONTENT = {
   lessonVersionId: "l-3",
 };
 
+/** As opening a live quiz answers: the choices carry no `isCorrect` until it is submitted. */
+const QUIZ_CONTENT = {
+  lessonProgressId: "p-4",
+  lessonProgressStatus: "IN_PROGRESS",
+  lessonType: "QUIZ",
+  lessonVersionId: "l-4",
+  quizContent: {
+    attemptCount: 0,
+    attemptId: "a-1",
+    maxAttempt: 1,
+    passScorePercentage: 60,
+    questions: [
+      {
+        choices: [
+          { choiceId: "ch-1", choiceText: "หนึ่ง", orderIndex: 1 },
+          { choiceId: "ch-2", choiceText: "สอง", orderIndex: 2 },
+        ],
+        orderIndex: 1,
+        questionId: "q-1",
+        questionText: "ข้อไหนถูก",
+        questionType: "single_choice",
+      },
+    ],
+    quizContentId: "qc-1",
+    submittedAt: null,
+    totalScore: 1,
+  },
+};
+
 /** As opening a live lesson answers. */
 const DEFAULT_CONTENT = {
   durationSeconds: DURATION,
@@ -175,6 +205,13 @@ const writeReply = (
     progress.exp += ATTACHMENT_EXP;
     return ok({ lessonProgressId: "p-3", status: "COMPLETED" });
   }
+  if (route.endsWith("/quiz-stamp-answer")) {
+    return ok({ attemptId: "a-1" });
+  }
+  if (route.endsWith("/quiz-submit")) {
+    progress.exp += QUIZ_EXP;
+    return ok({ passed: true, score: 1, totalScore: 1 });
+  }
   return undefined;
 };
 
@@ -199,6 +236,7 @@ const lmsUpstream = (fixture: Fixture = {}): Upstream => {
             { exp: VIDEO_EXP, lessonType: "video" },
             { exp: ATTACHMENT_EXP, lessonType: "attachment" },
             { exp: ARTICLE_EXP, lessonType: "article" },
+            { exp: QUIZ_EXP, lessonType: "quiz" },
           ],
         },
       });
@@ -446,6 +484,13 @@ const ATTACHMENT_LESSONS = [
   { lessonType: "ATTACHMENT", lessonVersionId: "l-3", title: "Ebook" },
 ];
 
+const QUIZ_LESSONS = [
+  { lessonType: "PRE_TEST", lessonVersionId: "l-4", title: "ก่อนเรียน" },
+];
+
+const ANSWER = () =>
+  Promise.resolve([{ choiceIds: ["ch-2"], questionId: "q-1" }]);
+
 test("marks an attachment read, which is what pays for it", async () => {
   upstream = lmsUpstream({
     contents: { "l-3": ATTACHMENT_CONTENT },
@@ -524,6 +569,104 @@ test("leaves a lesson type it does not know alone", async () => {
   });
   const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
   expect(upstream.calls).not.toContain(`${LMS}/course/c-2/lesson/l-9`);
+  expect(doneOf(events).lessons).toBe(0);
+});
+
+test("answers every question, then submits the attempt", async () => {
+  upstream = lmsUpstream({
+    contents: { "l-4": QUIZ_CONTENT },
+    lessons: QUIZ_LESSONS,
+  });
+  const events = await collect({
+    answer: ANSWER,
+    cookie: COOKIE,
+    quiz: true,
+    sleep: NO_SLEEP,
+  });
+  expect(bodyOf("/quiz-stamp-answer")).toEqual({
+    attemptId: "a-1",
+    choices: [{ choiceId: "ch-2", isSelected: true }],
+    questionId: "q-1",
+  });
+  expect(bodyOf("/quiz-submit")).toEqual({ attemptId: "a-1" });
+  const quiz = events.find((event) => event.event === "quiz");
+  expect(quiz).toMatchObject({
+    answered: 1,
+    passed: true,
+    questions: 1,
+    score: 1,
+    total: 1,
+  });
+  const completed = lessonWith(events, "completed");
+  expect(completed?.kind).toBe("quiz");
+  expect(doneOf(events).earned).toBe(QUIZ_EXP);
+});
+
+test("leaves quizzes alone unless the run asks for them", async () => {
+  upstream = lmsUpstream({
+    contents: { "l-4": QUIZ_CONTENT },
+    lessons: QUIZ_LESSONS,
+  });
+  const events = await collect({
+    answer: ANSWER,
+    cookie: COOKIE,
+    sleep: NO_SLEEP,
+  });
+  expect(upstream.calls).not.toContain(`${LMS}/course/c-2/lesson/l-4`);
+  expect(doneOf(events).lessons).toBe(0);
+});
+
+test("submits nothing when a question comes back unanswered", async () => {
+  upstream = lmsUpstream({
+    contents: { "l-4": QUIZ_CONTENT },
+    lessons: QUIZ_LESSONS,
+  });
+  const events = await collect({
+    answer: () => Promise.resolve([]),
+    cookie: COOKIE,
+    quiz: true,
+    sleep: NO_SLEEP,
+  });
+  expect(upstream.calls.some((path) => path.endsWith("/quiz-submit"))).toBe(
+    false
+  );
+  expect(lessonWith(events, "skipped")?.reason).toContain("0 of 1");
+});
+
+test("skips a quiz whose attempts are spent", async () => {
+  upstream = lmsUpstream({
+    contents: {
+      "l-4": {
+        ...QUIZ_CONTENT,
+        quizContent: { ...QUIZ_CONTENT.quizContent, attemptCount: 1 },
+      },
+    },
+    lessons: QUIZ_LESSONS,
+  });
+  const events = await collect({
+    answer: ANSWER,
+    cookie: COOKIE,
+    quiz: true,
+    sleep: NO_SLEEP,
+  });
+  expect(lessonWith(events, "skipped")?.reason).toContain("no attempts left");
+  expect(
+    upstream.calls.some((path) => path.endsWith("/quiz-stamp-answer"))
+  ).toBe(false);
+});
+
+test("skips a quiz the model could not be asked about", async () => {
+  upstream = lmsUpstream({
+    contents: { "l-4": QUIZ_CONTENT },
+    lessons: QUIZ_LESSONS,
+  });
+  const events = await collect({
+    answer: () => Promise.reject(new Error("the model answered 429")),
+    cookie: COOKIE,
+    quiz: true,
+    sleep: NO_SLEEP,
+  });
+  expect(lessonWith(events, "skipped")?.reason).toContain("429");
   expect(doneOf(events).lessons).toBe(0);
 });
 

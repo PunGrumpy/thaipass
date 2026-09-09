@@ -6,6 +6,7 @@ import { cookieFromValue } from "@thaipass/core/aipass/session";
 
 import { env } from "../lib/env";
 import "../lib/settings";
+import { DEFAULT_QUIZ_MODEL } from "./answer";
 import { DEFAULT_TARGET, learn } from "./learn";
 import type { LearnEvent, LessonKind } from "./learn";
 
@@ -36,6 +37,9 @@ Options:
   -p, --pace <speed>        Playback speed, 1 is real time (default 1, max ${MAX_PACE})
   -m, --max-lessons <n>     Stop after this many lessons (default 50)
   -c, --cookie-file <path>  Read the Cookie header from a file instead of the environment
+      --quiz                Answer and submit quizzes too. An attempt is spent for
+                            good, so this is off unless asked for
+      --quiz-model <id>     The AI Pass model that answers them (default ${DEFAULT_QUIZ_MODEL})
       --no-attachments      Leave attachment lessons unread instead of marking them read
       --no-articles         Leave article lessons unread as well
       --dry-run             List what would be learned and change nothing
@@ -54,6 +58,8 @@ export interface CliOptions {
   readonly json: boolean;
   readonly maxLessons: number | undefined;
   readonly pace: number | undefined;
+  readonly quiz: boolean;
+  readonly quizModel: string | undefined;
   readonly target: number | undefined;
 }
 
@@ -90,6 +96,8 @@ const spec = {
     "no-articles": { type: "boolean" },
     "no-attachments": { type: "boolean" },
     pace: { short: "p", type: "string" },
+    quiz: { type: "boolean" },
+    "quiz-model": { type: "string" },
     target: { short: "t", type: "string" },
   },
 } as const;
@@ -117,6 +125,8 @@ export const parseCliArgs = (args: readonly string[]): CliOptions => {
     json: values.json ?? false,
     maxLessons: positiveNumber("max-lessons", values["max-lessons"]),
     pace,
+    quiz: values.quiz ?? false,
+    quizModel: values["quiz-model"],
     target: positiveNumber("target", values.target),
   };
 };
@@ -163,6 +173,7 @@ type LessonEvent = Extract<LearnEvent, { event: "lesson" }>;
 const PLANNED: Record<LessonKind, string> = {
   article: "would read",
   attachment: "would read",
+  quiz: "would answer",
   video: "would watch",
 };
 
@@ -220,6 +231,17 @@ export const describe = (event: LearnEvent): Line | undefined => {
       return {
         text: `    ${clock(event.at)} / ${clock(event.duration)}  ${percent}%${status}`,
         transient: true,
+      };
+    }
+    case "quiz": {
+      const score =
+        event.score === null || event.total === null
+          ? "no score"
+          : `${event.score}/${event.total}`;
+      const passed =
+        event.passed === null ? "" : `, ${event.passed ? "passed" : "failed"}`;
+      return {
+        text: `    answered ${event.answered} of ${plural(event.questions, "question")} — ${score}${passed}`,
       };
     }
     case "course_completed": {
@@ -295,6 +317,8 @@ export const run = async (args: readonly string[]): Promise<number> => {
       earn: options.earn,
       maxLessons: options.maxLessons,
       pace: options.pace,
+      quiz: options.quiz,
+      quizModel: options.quizModel,
       signal: controller.signal,
       target: options.target,
     })) {

@@ -1,3 +1,5 @@
+import { DEFAULT_QUIZ_MODEL, modelAnswerer } from "./answer";
+import type { Answerer, QuizPick } from "./answer";
 import {
   completeCourse,
   completeLesson,
@@ -7,12 +9,15 @@ import {
   openLesson,
   readSessionExp,
   readSessionTier,
+  stampQuizAnswer,
   stampVideo,
+  submitQuiz,
 } from "./api";
 import type {
   Course,
   Lesson,
   LessonContent,
+  QuizContent,
   SessionExp,
   SessionTier,
   VideoStamp,
@@ -23,8 +28,9 @@ import { LmsError } from "./request";
 /**
  * Replays what the lesson page does, lesson type by lesson type: a video is
  * opened and stamped second by second, an attachment or an article is opened
- * and marked read. The course is asked to close after each one, the LMS awards
- * EXP per completed lesson, and the run stops once it has earned the target.
+ * and marked read, a quiz is answered and submitted. The course is asked to
+ * close after each one, the LMS awards EXP per completed lesson, and the run
+ * stops once it has earned the target.
  */
 
 export const DEFAULT_TARGET = 100;
@@ -41,12 +47,15 @@ const NOT_FOUND = 404;
 const COMPLETED = "COMPLETED";
 
 /** What the proxy can learn: how a lesson is finished, not what it is called. */
-export type LessonKind = "article" | "attachment" | "video";
+export type LessonKind = "article" | "attachment" | "quiz" | "video";
 
-/** The lesson types the listing sends, for the ones the proxy knows how to learn. */
+/** The lesson types the listing sends; the two tests are both quizzes. */
 const KIND_BY_TYPE = new Map<string, LessonKind>([
   ["ARTICLE", "article"],
   ["ATTACHMENT", "attachment"],
+  ["POST_TEST", "quiz"],
+  ["PRE_TEST", "quiz"],
+  ["QUIZ", "quiz"],
   ["VIDEO", "video"],
 ]);
 
@@ -199,6 +208,16 @@ export type LearnEvent =
       readonly duration: number;
       readonly status: string | null;
     }
+  | {
+      readonly event: "quiz";
+      readonly code: string;
+      readonly lesson: string;
+      readonly questions: number;
+      readonly answered: number;
+      readonly score: number | null;
+      readonly total: number | null;
+      readonly passed: boolean | null;
+    }
   | { readonly event: "course_completed"; readonly code: string }
   | {
       readonly event: "error";
@@ -236,6 +255,12 @@ export interface LearnOptions {
   readonly attachments?: boolean;
   /** Marks article lessons read the same way. On by default. */
   readonly articles?: boolean;
+  /** Answers and submits quizzes. Off by default: an attempt is spent for good. */
+  readonly quiz?: boolean;
+  /** The AI Pass model that answers quiz questions. */
+  readonly quizModel?: string;
+  /** Stands in for that model, so a test can answer without a chat turn. */
+  readonly answer?: Answerer;
   /** Lists what would be learned and sends nothing that changes the account. */
   readonly dryRun?: boolean;
   readonly signal?: AbortSignal;
@@ -260,6 +285,7 @@ interface Run {
   readonly deadline: number | undefined;
   /** The lesson kinds this run is allowed to learn. */
   readonly kinds: ReadonlySet<LessonKind>;
+  readonly answer: Answerer;
   /** Set when a lesson stopped for the budget rather than for the LMS. */
   paused: boolean;
   /** What the tier says each kind pays, for when the period's figure cannot be read. */
@@ -384,6 +410,9 @@ const started = (at: Attempt): LearnEvent => ({
   status: "started",
   title: at.title,
 });
+
+const messageOf = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
 
 interface Playback {
   readonly duration: number;
@@ -532,11 +561,116 @@ const readLesson = async function* readLesson(
   return true;
 };
 
+/** Why this quiz cannot be taken, or nothing when it can. */
+const quizBlocked = (quiz: QuizContent): string | undefined => {
+  if (quiz.submittedAt) {
+    return "the attempt is already submitted";
+  }
+  const spent = quiz.attemptCount ?? 0;
+  if (quiz.maxAttempt !== undefined && spent >= quiz.maxAttempt) {
+    return `no attempts left, ${spent} of ${quiz.maxAttempt} spent`;
+  }
+  return quiz.questions.some((question) => question.questionId)
+    ? undefined
+    : "the quiz has no questions";
+};
+
+/** Sends one answer per question, as the page does on every click. */
+const stampAnswers = async (
+  run: Run,
+  at: Attempt,
+  picks: readonly QuizPick[],
+  opening: string | undefined
+): Promise<string | undefined> => {
+  let attemptId = opening;
+  // oxlint-disable no-await-in-loop
+  for (const pick of picks) {
+    const result = await stampQuizAnswer(
+      run.cookie,
+      at.code,
+      at.id,
+      {
+        attemptId: attemptId ?? null,
+        choices: pick.choiceIds.map((choiceId) => ({
+          choiceId,
+          isSelected: true,
+        })),
+        questionId: pick.questionId,
+      },
+      run.signal
+    );
+    attemptId = result.attemptId ?? attemptId;
+  }
+  // oxlint-enable no-await-in-loop
+  return attemptId;
+};
+
+// Answers every question and submits the attempt. A quiz answered only in part
+// is left alone: an attempt spent is rarely one the LMS gives back.
+const takeQuiz = async function* takeQuiz(
+  run: Run,
+  at: Attempt
+): AsyncGenerator<LearnEvent, boolean> {
+  const quiz = at.content.quizContent;
+  if (!quiz) {
+    yield skipped(at, "no quiz in the lesson content");
+    return false;
+  }
+  const blocked = quizBlocked(quiz);
+  if (blocked) {
+    yield skipped(at, blocked);
+    return false;
+  }
+  yield started(at);
+  const { questions } = quiz;
+  let picks: readonly QuizPick[];
+  try {
+    picks = await run.answer(questions, run.signal);
+  } catch (error) {
+    yield skipped(at, `the quiz went unanswered: ${messageOf(error)}`);
+    return false;
+  }
+  if (picks.length < questions.length) {
+    yield skipped(
+      at,
+      `only ${picks.length} of ${questions.length} questions came back answered, so nothing was submitted`
+    );
+    return false;
+  }
+  const attemptId = await stampAnswers(run, at, picks, quiz.attemptId);
+  if (!attemptId) {
+    yield skipped(at, "the LMS named no attempt to submit");
+    return false;
+  }
+  const result = await submitQuiz(
+    run.cookie,
+    at.code,
+    at.id,
+    { attemptId },
+    run.signal
+  );
+  yield {
+    answered: picks.length,
+    code: at.code,
+    event: "quiz",
+    lesson: at.id,
+    passed: result.passed ?? null,
+    questions: questions.length,
+    score: result.score ?? null,
+    total: result.totalScore ?? null,
+  };
+  return true;
+};
+
 const attemptLesson = (
   run: Run,
   at: Attempt
-): AsyncGenerator<LearnEvent, boolean> =>
-  at.kind === "video" ? watchVideo(run, at) : readLesson(run, at);
+): AsyncGenerator<LearnEvent, boolean> => {
+  if (at.kind === "quiz") {
+    return takeQuiz(run, at);
+  }
+  return at.kind === "video" ? watchVideo(run, at) : readLesson(run, at);
+};
 
 // The page asks the course to close after every completed lesson; the LMS decides whether it can.
 const closeCourse = async function* closeCourse(
@@ -768,7 +902,7 @@ const learnPages = async function* learnPages(
   return "no more lessons to learn";
 };
 
-/** Video always; the readings unless they are turned off. */
+/** Video always; the readings unless they are turned off, quizzes only when asked. */
 const kindsOf = (options: LearnOptions): ReadonlySet<LessonKind> => {
   const kinds = new Set<LessonKind>(["video"]);
   if (options.attachments ?? true) {
@@ -776,6 +910,9 @@ const kindsOf = (options: LearnOptions): ReadonlySet<LessonKind> => {
   }
   if (options.articles ?? true) {
     kinds.add("article");
+  }
+  if (options.quiz) {
+    kinds.add("quiz");
   }
   return kinds;
 };
@@ -786,6 +923,9 @@ export const learn = async function* learn(
 ): AsyncGenerator<LearnEvent> {
   const now = options.now ?? Date.now;
   const run: Run = {
+    answer:
+      options.answer ??
+      modelAnswerer(options.cookie, options.quizModel ?? DEFAULT_QUIZ_MODEL),
     cookie: options.cookie,
     deadline:
       options.budgetMs === undefined ? undefined : now() + options.budgetMs,

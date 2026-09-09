@@ -74,6 +74,39 @@ export const lessonSchema = completionFieldsSchema.extend({
   lessonVersionId: optionalIdSchema,
 });
 
+/** One answer a learner can pick; `isCorrect` stays null until the attempt is submitted. */
+const choiceSchema = z.looseObject({
+  choiceId: optionalIdSchema,
+  choiceText: optionalTextSchema,
+  isAnswerSelected: optionalFlagSchema,
+  isCorrect: optionalFlagSchema,
+  orderIndex: optionalNumberSchema,
+});
+
+const questionSchema = z.looseObject({
+  choices: z.array(choiceSchema).default([]),
+  orderIndex: optionalNumberSchema,
+  questionId: optionalIdSchema,
+  questionText: optionalTextSchema,
+  /** `single_choice` or `multiple_choice`, as the quiz page switches on. */
+  questionType: optionalTextSchema,
+});
+
+/** The quiz a PRE_TEST, POST_TEST or QUIZ lesson opens with, attempt and all. */
+export const quizContentSchema = z.looseObject({
+  attemptCount: optionalNumberSchema,
+  attemptId: optionalIdSchema,
+  isPreTest: optionalFlagSchema,
+  learnerScore: optionalNumberSchema,
+  maxAttempt: optionalNumberSchema,
+  passScorePercentage: optionalNumberSchema,
+  questions: z.array(questionSchema).default([]),
+  quizContentId: optionalIdSchema,
+  /** Set once the attempt has been submitted, which is what closes the lesson. */
+  submittedAt: optionalTextSchema,
+  totalScore: optionalNumberSchema,
+});
+
 /** The page an ARTICLE lesson asks the learner to read, block by block. */
 export const articleContentSchema = z.looseObject({
   articleContentId: optionalIdSchema,
@@ -97,6 +130,7 @@ export const lessonContentSchema = z.looseObject({
   lessonProgressId: optionalIdSchema,
   lessonProgressStatus: optionalTextSchema,
   lessonType: optionalTextSchema,
+  quizContent: lenient(quizContentSchema),
   videoContent: lenient(
     z.looseObject({
       durationSeconds: optionalNumberSchema,
@@ -104,6 +138,20 @@ export const lessonContentSchema = z.looseObject({
       watchedSeconds: optionalNumberSchema,
     })
   ),
+});
+
+/** What stamping an answer answers with: the attempt the LMS filed it under. */
+export const quizAttemptSchema = z.looseObject({
+  attemptId: optionalIdSchema,
+});
+
+/** What submitting an attempt answers with; the page reads the score off this. */
+export const quizResultSchema = z.looseObject({
+  isPreTest: optionalFlagSchema,
+  passed: optionalFlagSchema,
+  quizType: optionalTextSchema,
+  score: optionalNumberSchema,
+  totalScore: optionalNumberSchema,
 });
 
 /** What a stamp answers with: the progress record and where the LMS says the lesson stands. */
@@ -165,6 +213,11 @@ export type LessonList = z.infer<typeof lessonListSchema>;
 export type SessionTier = z.infer<typeof sessionTierSchema>;
 export type LessonContent = z.infer<typeof lessonContentSchema>;
 export type StampResult = z.infer<typeof stampResultSchema>;
+export type QuizContent = z.infer<typeof quizContentSchema>;
+export type QuizQuestion = z.infer<typeof questionSchema>;
+export type QuizChoice = z.infer<typeof choiceSchema>;
+export type QuizAttempt = z.infer<typeof quizAttemptSchema>;
+export type QuizResult = z.infer<typeof quizResultSchema>;
 export type AttachmentContent = z.infer<typeof attachmentContentSchema>;
 export type ArticleContent = z.infer<typeof articleContentSchema>;
 
@@ -189,6 +242,24 @@ export interface LessonCompletion extends LmsBody {
   readonly lessonProgressId: string | null;
 }
 
+/** One choice as picked; the page sends only the choices it wants selected. */
+export interface PickedChoice extends LmsBody {
+  readonly choiceId: string;
+  readonly isSelected: boolean;
+}
+
+/** What the quiz page sends on every click, question by question. */
+export interface QuizAnswer extends LmsBody {
+  readonly questionId: string;
+  readonly choices: readonly PickedChoice[];
+  /** Null on the first answer of an attempt the LMS has not opened yet. */
+  readonly attemptId: string | null;
+}
+
+/** What closes a quiz: the attempt the answers were stamped against. */
+export interface QuizSubmission extends LmsBody {
+  readonly attemptId: string;
+}
 export type Completion = Payload;
 export type SessionExp = Payload;
 export type Achievement = Payload;
@@ -288,6 +359,40 @@ export const completeLesson = (
     "PUT",
     `${lessonPath(codeId, lessonVersionId)}/lesson-completed`,
     stampResultSchema,
+    body,
+    signal
+  );
+
+/** Records one question's answer; the reply names the attempt it belongs to. */
+export const stampQuizAnswer = (
+  cookie: string,
+  codeId: string,
+  lessonVersionId: string,
+  body: QuizAnswer,
+  signal?: AbortSignal
+): Promise<QuizAttempt> =>
+  lmsRequest(
+    cookie,
+    "PUT",
+    `${lessonPath(codeId, lessonVersionId)}/quiz-stamp-answer`,
+    quizAttemptSchema,
+    body,
+    signal
+  );
+
+/** Closes the attempt and returns the score the LMS gave it. */
+export const submitQuiz = (
+  cookie: string,
+  codeId: string,
+  lessonVersionId: string,
+  body: QuizSubmission,
+  signal?: AbortSignal
+): Promise<QuizResult> =>
+  lmsRequest(
+    cookie,
+    "PUT",
+    `${lessonPath(codeId, lessonVersionId)}/quiz-submit`,
+    quizResultSchema,
     body,
     signal
   );
