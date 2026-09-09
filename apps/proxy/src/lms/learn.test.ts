@@ -26,6 +26,8 @@ import type { Payload } from "./payload";
 const COOKIE = "__Secure-ai_passport_auth.session_token=abc.def";
 const LMS = "/lms/api/v1";
 const VIDEO_EXP = 30;
+const ATTACHMENT_EXP = 20;
+const ARTICLE_EXP = 15;
 const MONTHLY = 25;
 const DURATION = 25;
 const NO_SLEEP = (): Promise<void> => Promise.resolve();
@@ -56,6 +58,8 @@ interface Fixture {
   readonly courses?: readonly Payload[];
   readonly lessons?: readonly Payload[];
   readonly content?: Payload;
+  /** Lesson content by lesson version id, for a course with more than one open lesson. */
+  readonly contents?: Record<string, Payload>;
   /** What the LMS says after the stamp that reaches the end. */
   readonly endStatus?: string;
   /** Whether the period's EXP moves when a lesson completes. */
@@ -81,8 +85,33 @@ const DEFAULT_LESSONS = [
     lessonVersionId: "l-1",
     title: "Intro",
   },
-  { lessonType: "ARTICLE", lessonVersionId: "l-2", title: "Read" },
+  { lessonType: "LIVE_SESSION", lessonVersionId: "l-9", title: "Live" },
 ];
+
+/** As opening a live article answers; the blocks are the page, not the proxy's business. */
+const ARTICLE_CONTENT = {
+  articleContent: {
+    articleContentId: "arc-1",
+    blocks: [{ blockType: "text", id: "b-1", orderIndex: 1 }],
+  },
+  lessonProgressId: "p-5",
+  lessonProgressStatus: "IN_PROGRESS",
+  lessonType: "ARTICLE",
+  lessonVersionId: "l-2",
+};
+
+/** As opening a live attachment lesson answers. */
+const ATTACHMENT_CONTENT = {
+  lessonContentAttachment: {
+    attachmentContentId: "ac-1",
+    attachmentFileName: "ebook.pdf",
+    attachmentPath: "https://cdn.test/ebook.pdf",
+  },
+  lessonProgressId: "p-3",
+  lessonProgressStatus: "IN_PROGRESS",
+  lessonType: "ATTACHMENT",
+  lessonVersionId: "l-3",
+};
 
 /** As opening a live lesson answers. */
 const DEFAULT_CONTENT = {
@@ -109,6 +138,8 @@ const stampSchema = z.object({
 
 interface Progress {
   completed: boolean;
+  /** What the period gained from the lessons this run has finished. */
+  exp: number;
 }
 
 /** Answers a stamp the way the LMS does: in progress until the end, then whatever the fixture says. */
@@ -117,22 +148,39 @@ const stampReply = (fixture: Fixture, progress: Progress): Response => {
   const stamp = stampSchema.parse(JSON.parse(sent?.body ?? "{}"));
   const atEnd = stamp.watchedSeconds >= stamp.durationSeconds;
   const status = atEnd ? (fixture.endStatus ?? "COMPLETED") : "IN_PROGRESS";
-  progress.completed ||= status === "COMPLETED";
+  if (status === "COMPLETED" && !progress.completed) {
+    progress.completed = true;
+    progress.exp += VIDEO_EXP;
+  }
   return ok({ lessonProgressId: "p-1", status });
 };
 
 const expReply = (fixture: Fixture, progress: Progress): Response => {
-  const paid = progress.completed && (fixture.expMoves ?? true);
+  const paid = (fixture.expMoves ?? true) ? progress.exp : 0;
   const monthly = fixture.monthly ?? MONTHLY;
   return ok({
-    member: { expEarn: String(monthly + (paid ? VIDEO_EXP : 0)) },
+    member: { expEarn: String(monthly + paid) },
     user: { name: "Grumpy" },
   });
 };
 
-/** The LMS as the lesson page sees it: one course with one video and one article. */
+const LESSON_PATH = /^\/course\/c-2\/lesson\/(?<lesson>[^/]+)$/u;
+
+/** The writes the lessons that are not videos send, and what they pay. */
+const writeReply = (
+  route: string,
+  progress: Progress
+): Response | undefined => {
+  if (route.endsWith("/lesson-completed")) {
+    progress.exp += ATTACHMENT_EXP;
+    return ok({ lessonProgressId: "p-3", status: "COMPLETED" });
+  }
+  return undefined;
+};
+
+/** The LMS as the lesson page sees it: one course with one video and one lesson it leaves alone. */
 const lmsUpstream = (fixture: Fixture = {}): Upstream => {
-  const progress: Progress = { completed: false };
+  const progress: Progress = { completed: false, exp: 0 };
   return stubUpstream(sseResponse([]), (path) => {
     if (!path.startsWith(LMS)) {
       return;
@@ -146,7 +194,13 @@ const lmsUpstream = (fixture: Fixture = {}): Upstream => {
     }
     if (route === "/session/session-tier") {
       return ok({
-        member: { lessonTypeExp: [{ exp: VIDEO_EXP, lessonType: "VIDEO" }] },
+        member: {
+          lessonTypeExp: [
+            { exp: VIDEO_EXP, lessonType: "video" },
+            { exp: ATTACHMENT_EXP, lessonType: "attachment" },
+            { exp: ARTICLE_EXP, lessonType: "article" },
+          ],
+        },
       });
     }
     if (route === "/course/v2") {
@@ -163,13 +217,16 @@ const lmsUpstream = (fixture: Fixture = {}): Upstream => {
     if (route === "/course/c-2/enrollment") {
       return ok({ enrollmentId: "e-9" });
     }
-    if (route === "/course/c-2/lesson/l-1") {
-      return ok(fixture.content ?? DEFAULT_CONTENT);
+    const opened = LESSON_PATH.exec(route)?.groups?.lesson;
+    if (opened) {
+      return ok(
+        fixture.contents?.[opened] ?? fixture.content ?? DEFAULT_CONTENT
+      );
     }
     if (route.endsWith("/video-stamp")) {
       return stampReply(fixture, progress);
     }
-    return ok({});
+    return writeReply(route, progress) ?? ok({});
   });
 };
 
@@ -235,7 +292,7 @@ test("stamps what the player stamps, every ten seconds up to the end", async () 
   const done = doneOf(events);
   expect(done.earned).toBe(VIDEO_EXP);
   expect(done.lessons).toBe(1);
-  expect(done.reason).toContain("no more video lessons");
+  expect(done.reason).toContain("no more lessons");
 });
 
 test("opens the lesson with the enrolment id, as the page does", async () => {
@@ -383,6 +440,91 @@ test("skips a lesson whose content carries no video", async () => {
   const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
   expect(lessonWith(events, "skipped")).toBeDefined();
   expect(stampsSent()).toHaveLength(0);
+});
+
+const ATTACHMENT_LESSONS = [
+  { lessonType: "ATTACHMENT", lessonVersionId: "l-3", title: "Ebook" },
+];
+
+test("marks an attachment read, which is what pays for it", async () => {
+  upstream = lmsUpstream({
+    contents: { "l-3": ATTACHMENT_CONTENT },
+    lessons: ATTACHMENT_LESSONS,
+  });
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  expect(bodyOf("/lesson-completed")).toEqual({
+    enrollmentId: "e-9",
+    lessonProgressId: "p-3",
+  });
+  const completed = lessonWith(events, "completed");
+  expect(completed?.kind).toBe("attachment");
+  expect(completed?.exp).toBe(ATTACHMENT_EXP);
+  expect(bodyOf("/course-completed")).toEqual({ enrollmentId: "e-9" });
+  expect(doneOf(events).earned).toBe(ATTACHMENT_EXP);
+});
+
+test("leaves attachments alone when the run does not want them", async () => {
+  upstream = lmsUpstream({
+    contents: { "l-3": ATTACHMENT_CONTENT },
+    lessons: ATTACHMENT_LESSONS,
+  });
+  const events = await collect({
+    attachments: false,
+    cookie: COOKIE,
+    sleep: NO_SLEEP,
+  });
+  expect(upstream.calls).not.toContain(`${LMS}/course/c-2/lesson/l-3`);
+  expect(doneOf(events).lessons).toBe(0);
+});
+
+test("reads an article the way it marks an attachment read", async () => {
+  upstream = lmsUpstream({
+    contents: { "l-2": ARTICLE_CONTENT },
+    lessons: [{ lessonType: "ARTICLE", lessonVersionId: "l-2", title: "Read" }],
+  });
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  expect(bodyOf("/lesson-completed")).toEqual({
+    enrollmentId: "e-9",
+    lessonProgressId: "p-5",
+  });
+  expect(lessonWith(events, "completed")?.kind).toBe("article");
+  expect(bodyOf("/course-completed")).toEqual({ enrollmentId: "e-9" });
+});
+
+test("prices an article by the tier's line for it", async () => {
+  upstream = lmsUpstream({
+    contents: { "l-2": ARTICLE_CONTENT },
+    lessons: [{ lessonType: "ARTICLE", lessonVersionId: "l-2", title: "Read" }],
+  });
+  const events = await collect({
+    cookie: COOKIE,
+    dryRun: true,
+    sleep: NO_SLEEP,
+  });
+  expect(lessonWith(events, "planned")?.exp).toBe(ARTICLE_EXP);
+});
+
+test("leaves articles alone when the run does not want them", async () => {
+  upstream = lmsUpstream({
+    contents: { "l-2": ARTICLE_CONTENT },
+    lessons: [{ lessonType: "ARTICLE", lessonVersionId: "l-2", title: "Read" }],
+  });
+  const events = await collect({
+    articles: false,
+    cookie: COOKIE,
+    sleep: NO_SLEEP,
+  });
+  expect(upstream.calls).not.toContain(`${LMS}/course/c-2/lesson/l-2`);
+  expect(doneOf(events).lessons).toBe(0);
+});
+
+test("leaves a lesson type it does not know alone", async () => {
+  upstream = lmsUpstream({
+    lessons: [{ lessonType: "LIVE_SESSION", lessonVersionId: "l-9" }],
+  });
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  expect(upstream.calls).not.toContain(`${LMS}/course/c-2/lesson/l-9`);
+  expect(doneOf(events).lessons).toBe(0);
 });
 
 test("stops the run when the LMS refuses the session", async () => {

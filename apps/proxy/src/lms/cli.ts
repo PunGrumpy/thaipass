@@ -7,12 +7,12 @@ import { cookieFromValue } from "@thaipass/core/aipass/session";
 import { env } from "../lib/env";
 import "../lib/settings";
 import { DEFAULT_TARGET, learn } from "./learn";
-import type { LearnEvent } from "./learn";
+import type { LearnEvent, LessonKind } from "./learn";
 
 /**
  * Runs the learner in-process, on the machine, with no function limit to
  * work around and no loop to write: one command, until the period has the
- * target or the videos run out.
+ * target or the lessons run out.
  */
 
 const SECONDS_PER_MINUTE = 60;
@@ -25,9 +25,9 @@ const CLEAR_LINE = "\r\u001B[2K";
 
 export const USAGE = `Usage: bun run lms [options]
 
-Watches video lessons in the AI Pass LMS until the period's EXP reaches the
-target, or until this run has earned what --earn asks for. Reads the session
-cookie from AIPASS_COOKIE, or from --cookie-file.
+Watches videos and reads attachments and articles in the AI Pass LMS until the
+period's EXP reaches the target, or until this run has earned what --earn asks
+for. Reads the session cookie from AIPASS_COOKIE, or from --cookie-file.
 
 Options:
   -t, --target <exp>        The period's EXP to reach (default ${DEFAULT_TARGET});
@@ -36,6 +36,8 @@ Options:
   -p, --pace <speed>        Playback speed, 1 is real time (default 1, max ${MAX_PACE})
   -m, --max-lessons <n>     Stop after this many lessons (default 50)
   -c, --cookie-file <path>  Read the Cookie header from a file instead of the environment
+      --no-attachments      Leave attachment lessons unread instead of marking them read
+      --no-articles         Leave article lessons unread as well
       --dry-run             List what would be learned and change nothing
       --json                One JSON object per line, as the proxy streams it
   -h, --help                Show this message
@@ -43,6 +45,8 @@ Options:
 Exit status: 0 when the goal is there, 1 when it is not, 2 on a usage error.`;
 
 export interface CliOptions {
+  readonly articles: boolean;
+  readonly attachments: boolean;
   readonly cookieFile: string | undefined;
   readonly dryRun: boolean;
   readonly earn: number | undefined;
@@ -83,6 +87,8 @@ const spec = {
     help: { short: "h", type: "boolean" },
     json: { type: "boolean" },
     "max-lessons": { short: "m", type: "string" },
+    "no-articles": { type: "boolean" },
+    "no-attachments": { type: "boolean" },
     pace: { short: "p", type: "string" },
     target: { short: "t", type: "string" },
   },
@@ -102,6 +108,8 @@ export const parseCliArgs = (args: readonly string[]): CliOptions => {
     throw new UsageError(`--pace goes up to ${MAX_PACE}`);
   }
   return {
+    articles: !values["no-articles"],
+    attachments: !values["no-attachments"],
     cookieFile: values["cookie-file"],
     dryRun: values["dry-run"] ?? false,
     earn: positiveNumber("earn", values.earn),
@@ -151,13 +159,20 @@ export interface Line {
 
 type LessonEvent = Extract<LearnEvent, { event: "lesson" }>;
 
+/** What the run would do with a lesson of each kind, for the dry run's listing. */
+const PLANNED: Record<LessonKind, string> = {
+  article: "would read",
+  attachment: "would read",
+  video: "would watch",
+};
+
 const describeLesson = (event: LessonEvent): Line | undefined => {
   const title = event.title ?? event.lesson;
   const length = event.duration ? ` (${clock(event.duration)})` : "";
   switch (event.status) {
     case "planned": {
       return {
-        text: `  · ${title}${length} — would watch, about ${event.exp ?? "?"} EXP`,
+        text: `  · ${title}${length} — ${PLANNED[event.kind]}, about ${event.exp ?? "?"} EXP`,
       };
     }
     case "started": {
@@ -193,7 +208,7 @@ export const describe = (event: LearnEvent): Line | undefined => {
     }
     case "course": {
       return {
-        text: `course ${event.code} · ${event.title ?? "untitled"} — ${plural(event.videos, "video")}`,
+        text: `course ${event.code} · ${event.title ?? "untitled"} — ${plural(event.lessons, "lesson")}`,
       };
     }
     case "lesson": {
@@ -273,6 +288,8 @@ export const run = async (args: readonly string[]): Promise<number> => {
   let reached = false;
   try {
     for await (const event of learn({
+      articles: options.articles,
+      attachments: options.attachments,
       cookie,
       dryRun: options.dryRun,
       earn: options.earn,

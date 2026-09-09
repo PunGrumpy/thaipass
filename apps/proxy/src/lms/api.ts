@@ -74,11 +74,29 @@ export const lessonSchema = completionFieldsSchema.extend({
   lessonVersionId: optionalIdSchema,
 });
 
-/** What opening a lesson answers with; the video part is what a stamp is built from. */
+/** The page an ARTICLE lesson asks the learner to read, block by block. */
+export const articleContentSchema = z.looseObject({
+  articleContentId: optionalIdSchema,
+  /** Text and question blocks; the proxy reads the page rather than the blocks. */
+  blocks: z.array(payloadSchema).default([]),
+});
+
+/** The file an ATTACHMENT lesson asks the learner to read. */
+export const attachmentContentSchema = z.looseObject({
+  attachmentContentId: optionalIdSchema,
+  attachmentFileName: optionalTextSchema,
+  attachmentFileSize: optionalTextSchema,
+  attachmentPath: optionalTextSchema,
+});
+
+/** What opening a lesson answers with; one content field is filled, by lesson type. */
 export const lessonContentSchema = z.looseObject({
+  articleContent: lenient(articleContentSchema),
   durationSeconds: optionalNumberSchema,
+  lessonContentAttachment: lenient(attachmentContentSchema),
   lessonProgressId: optionalIdSchema,
   lessonProgressStatus: optionalTextSchema,
+  lessonType: optionalTextSchema,
   videoContent: lenient(
     z.looseObject({
       durationSeconds: optionalNumberSchema,
@@ -147,6 +165,8 @@ export type LessonList = z.infer<typeof lessonListSchema>;
 export type SessionTier = z.infer<typeof sessionTierSchema>;
 export type LessonContent = z.infer<typeof lessonContentSchema>;
 export type StampResult = z.infer<typeof stampResultSchema>;
+export type AttachmentContent = z.infer<typeof attachmentContentSchema>;
+export type ArticleContent = z.infer<typeof articleContentSchema>;
 
 /** What the lesson page sends as the video plays, field for field. */
 export interface VideoStamp extends LmsBody {
@@ -161,6 +181,14 @@ export interface VideoStamp extends LmsBody {
 export interface CourseCompletion extends LmsBody {
   readonly enrollmentId: string;
 }
+
+/** What the read-it-yourself lessons send to close themselves: mark as read. */
+export interface LessonCompletion extends LmsBody {
+  readonly enrollmentId: string;
+  /** The progress record opening the lesson answered with, as the page sends it. */
+  readonly lessonProgressId: string | null;
+}
+
 export type Completion = Payload;
 export type SessionExp = Payload;
 export type Achievement = Payload;
@@ -242,6 +270,23 @@ export const stampVideo = (
     cookie,
     "PUT",
     `${lessonPath(codeId, lessonVersionId)}/video-stamp`,
+    stampResultSchema,
+    body,
+    signal
+  );
+
+/** Marks an attachment or article lesson read, which is what its EXP is paid for. */
+export const completeLesson = (
+  cookie: string,
+  codeId: string,
+  lessonVersionId: string,
+  body: LessonCompletion,
+  signal?: AbortSignal
+): Promise<StampResult> =>
+  lmsRequest(
+    cookie,
+    "PUT",
+    `${lessonPath(codeId, lessonVersionId)}/lesson-completed`,
     stampResultSchema,
     body,
     signal

@@ -6,6 +6,8 @@ const COOKIE = "app_lang=th; __Secure-ai_passport_auth.session_token=abc.def";
 
 test("parses the flags and leaves the rest to the learner's defaults", () => {
   expect(parseCliArgs([])).toEqual({
+    articles: true,
+    attachments: true,
     cookieFile: undefined,
     dryRun: false,
     earn: undefined,
@@ -67,13 +69,14 @@ test("describes a run in a few lines and keeps stamps transient", () => {
     describe({ event: "exp", monthly: 325, phase: "after" })
   ).toBeUndefined();
   expect(
-    describe({ code: "56", event: "course", title: "AI", videos: 10 })?.text
-  ).toBe("course 56 · AI — 10 videos");
+    describe({ code: "56", event: "course", lessons: 10, title: "AI" })?.text
+  ).toBe("course 56 · AI — 10 lessons");
   expect(
     describe({
       code: "56",
       duration: 348,
       event: "lesson",
+      kind: "video",
       lesson: "l-1",
       status: "started",
       title: "Intro",
@@ -96,6 +99,7 @@ test("describes a run in a few lines and keeps stamps transient", () => {
       earned: 100,
       event: "lesson",
       exp: 100,
+      kind: "video",
       lesson: "l-1",
       monthly: 425,
       status: "completed",
