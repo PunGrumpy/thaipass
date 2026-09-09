@@ -36,6 +36,8 @@ Options:
   -e, --earn <exp>          Earn this much in this run, whatever the period has
   -p, --pace <speed>        Playback speed, 1 is real time (default 1, max ${MAX_PACE})
   -m, --max-lessons <n>     Stop after this many lessons (default 50)
+  -C, --course <codes>      Only these courses, by code, comma separated or repeated;
+                            the whole catalogue when this names none
   -c, --cookie-file <path>  Read the Cookie header from a file instead of the environment
       --quiz                Answer and submit quizzes too. An attempt is spent for
                             good, so this is off unless asked for
@@ -50,6 +52,7 @@ Exit status: 0 when the goal is there, 1 when it is not, 2 on a usage error.`;
 
 export interface CliOptions {
   readonly articles: boolean;
+  readonly courses: readonly string[];
   readonly attachments: boolean;
   readonly cookieFile: string | undefined;
   readonly dryRun: boolean;
@@ -84,10 +87,20 @@ const positiveNumber = (
   return value;
 };
 
+/** Comma separated or repeated; both are how a person writes a short list. */
+const courseCodes = (values: readonly string[] | undefined): string[] =>
+  (values ?? []).flatMap((value) =>
+    value
+      .split(",")
+      .map((code) => code.trim())
+      .filter(Boolean)
+  );
+
 const spec = {
   allowPositionals: false,
   options: {
     "cookie-file": { short: "c", type: "string" },
+    course: { multiple: true, short: "C", type: "string" },
     "dry-run": { type: "boolean" },
     earn: { short: "e", type: "string" },
     help: { short: "h", type: "boolean" },
@@ -119,6 +132,7 @@ export const parseCliArgs = (args: readonly string[]): CliOptions => {
     articles: !values["no-articles"],
     attachments: !values["no-attachments"],
     cookieFile: values["cookie-file"],
+    courses: courseCodes(values.course),
     dryRun: values["dry-run"] ?? false,
     earn: positiveNumber("earn", values.earn),
     help: values.help ?? false,
@@ -313,6 +327,7 @@ export const run = async (args: readonly string[]): Promise<number> => {
       articles: options.articles,
       attachments: options.attachments,
       cookie,
+      courses: options.courses,
       dryRun: options.dryRun,
       earn: options.earn,
       maxLessons: options.maxLessons,

@@ -9,6 +9,7 @@ test("parses the flags and leaves the rest to the learner's defaults", () => {
     articles: true,
     attachments: true,
     cookieFile: undefined,
+    courses: [],
     dryRun: false,
     earn: undefined,
     help: false,
@@ -40,6 +41,15 @@ test("parses the flags and leaves the rest to the learner's defaults", () => {
     pace: 2,
     target: 150,
   });
+});
+
+test("takes the courses comma separated, repeated, or both", () => {
+  expect(parseCliArgs(["-C", "31"]).courses).toEqual(["31"]);
+  expect(parseCliArgs(["--course", "31, 25"]).courses).toEqual(["31", "25"]);
+  expect(parseCliArgs(["--course", "31", "--course", "25,26"]).courses).toEqual(
+    ["31", "25", "26"]
+  );
+  expect(parseCliArgs(["--course", " , "]).courses).toEqual([]);
 });
 
 test("refuses a pace or target that is not a positive number", () => {

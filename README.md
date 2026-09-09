@@ -297,6 +297,8 @@ AI Pass runs a learning site at `/lms` that pays EXP per completed lesson, and t
 
 A course mixes four kinds of lesson, and the proxy replays what the lesson page does for each: it watches a **video** by stamping the seconds watched, reads an **attachment** or an **article** by opening it and marking it read, and answers a **quiz** — the pre-test and the post-test — by asking an AI Pass model the questions and submitting the attempt. Videos and the two readings run by default. Quizzes do not: the LMS usually allows one attempt per test and does not give it back, so they wait for `--quiz`.
 
+`--course` narrows a run to the courses you name.
+
 The tier prices each type separately, and the proxy reports what it would earn from that price list: 100 EXP a video, 50 an attachment, 30 an article, 25 a pre-test and 50 a post-test on the account I read it from. What a completed lesson actually paid is the period's own figure before and after.
 
 ### On your machine
@@ -307,6 +309,7 @@ The tier prices each type separately, and the proxy reports what it would earn f
 AIPASS_COOKIE='your_cookie_header_here' bun run lms             # reach 100 this period
 AIPASS_COOKIE='your_cookie_header_here' bun run lms --earn 200  # earn 200 more
 AIPASS_COOKIE='your_cookie_header_here' bun run lms --quiz      # answer the tests too
+AIPASS_COOKIE='your_cookie_header_here' bun run lms -C 31,25    # only these two courses
 bun run lms --cookie-file ~/.aipass-cookie --dry-run            # see what it would learn
 ```
 
@@ -335,6 +338,7 @@ The reply is one JSON object per line as the run goes: the period's EXP before, 
 | `earn` | none | Earn this much EXP in this run, whatever the period already has. Overrides `target` |
 | `pace` | 1 | Playback speed, up to 16. At 1 a ten minute video takes ten minutes |
 | `max_lessons` | 50 | Stop after this many lessons regardless |
+| `courses` | none | Course codes to learn. The whole catalogue when this names none; a code the catalogue does not carry is reported as an `error` line and the rest of the run goes on |
 | `attachments` | true | Open attachment lessons and mark them read |
 | `articles` | true | Open article lessons and mark them read |
 | `quiz` | false | Answer the pre-test and the post-test and submit the attempt |

@@ -195,7 +195,9 @@ const expReply = (fixture: Fixture, progress: Progress): Response => {
   });
 };
 
-const LESSON_PATH = /^\/course\/c-2\/lesson\/(?<lesson>[^/]+)$/u;
+const LESSON_PATH = /^\/course\/[^/]+\/lesson\/(?<lesson>[^/]+)$/u;
+const LESSONS_PATH = /^\/course\/[^/]+\/lesson$/u;
+const ENROLLMENT_PATH = /^\/course\/[^/]+\/enrollment$/u;
 
 /** The writes the lessons that are not videos send, and what they pay. */
 const writeReply = (
@@ -248,13 +250,13 @@ const lmsUpstream = (fixture: Fixture = {}): Upstream => {
       const courses = pages <= 1 ? (fixture.courses ?? DEFAULT_COURSES) : [];
       return ok({ courses, limit: 20, page: pages, total: courses.length });
     }
-    if (route === "/course/c-2/lesson") {
+    if (LESSONS_PATH.test(route)) {
       return ok({
         enrollmentId: "",
         lessons: fixture.lessons ?? DEFAULT_LESSONS,
       });
     }
-    if (route === "/course/c-2/enrollment") {
+    if (ENROLLMENT_PATH.test(route)) {
       return ok({ enrollmentId: "e-9" });
     }
     const opened = LESSON_PATH.exec(route)?.groups?.lesson;
@@ -686,6 +688,37 @@ test("skips a quiz the model could not be asked about", async () => {
   });
   expect(lessonWith(events, "skipped")?.reason).toContain("429");
   expect(doneOf(events).lessons).toBe(0);
+});
+
+const coursesOf = (events: readonly LearnEvent[]) =>
+  events.flatMap((event) => (event.event === "course" ? [event.code] : []));
+
+test("learns only the courses the run names", async () => {
+  upstream = lmsUpstream({
+    courses: [
+      { code: "c-2", learnerStatus: "IN_PROGRESS" },
+      { code: "c-3", learnerStatus: "IN_PROGRESS" },
+    ],
+  });
+  const events = await collect({
+    cookie: COOKIE,
+    courses: ["c-3"],
+    sleep: NO_SLEEP,
+  });
+  expect(coursesOf(events)).toEqual(["c-3"]);
+  expect(upstream.calls).not.toContain(`${LMS}/course/c-2/lesson`);
+});
+
+test("says so when a course the run names is not in the catalogue", async () => {
+  upstream = lmsUpstream();
+  const events = await collect({
+    cookie: COOKIE,
+    courses: ["c-2", "nope"],
+    sleep: NO_SLEEP,
+  });
+  expect(errorOf(events).message).toContain("nope");
+  expect(errorOf(events).fatal).toBe(false);
+  expect(coursesOf(events)).toEqual(["c-2"]);
 });
 
 test("stops the run when the LMS refuses the session", async () => {

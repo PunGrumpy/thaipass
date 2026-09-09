@@ -268,6 +268,8 @@ export interface LearnOptions {
   readonly attachments?: boolean;
   /** Marks article lessons read the same way. On by default. */
   readonly articles?: boolean;
+  /** Course codes to learn; the whole catalogue when this names none. */
+  readonly courses?: readonly string[];
   /** Answers and submits quizzes. Off by default: an attempt is spent for good. */
   readonly quiz?: boolean;
   /** The AI Pass model that answers quiz questions. */
@@ -298,6 +300,8 @@ interface Run {
   readonly deadline: number | undefined;
   /** The lesson kinds this run is allowed to learn. */
   readonly kinds: ReadonlySet<LessonKind>;
+  /** The course codes this run is held to; empty means the whole catalogue. */
+  readonly courses: ReadonlySet<string>;
   readonly answer: Answerer;
   /** Set when a lesson stopped for the budget rather than for the LMS. */
   paused: boolean;
@@ -895,31 +899,57 @@ const lessonExpOf = async (run: Run): Promise<ReadonlyMap<string, number>> => {
   return priced;
 };
 
-// Walks the catalogue a page at a time; the return value says why it stopped.
-const learnPages = async function* learnPages(
-  run: Run
-): AsyncGenerator<LearnEvent, string> {
+const readCatalogue = async (run: Run): Promise<Course[]> => {
+  const courses: Course[] = [];
   // oxlint-disable no-await-in-loop
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const listing = await listCourses(run.cookie, page, PAGE_SIZE, run.signal);
     if (listing.courses.length === 0) {
       break;
     }
-    for (const course of listing.courses) {
-      if (!isDone(course)) {
-        yield* learnCourse(run, course);
-      }
-      const reason = limitReached(run);
-      if (reason) {
-        return reason;
-      }
-    }
+    courses.push(...listing.courses);
     const total = listing.total ?? undefined;
     if (total !== undefined && page * PAGE_SIZE >= total) {
       break;
     }
   }
   // oxlint-enable no-await-in-loop
+  return courses;
+};
+
+/** Every course when the run named none, else the ones it named. */
+const chosen = (run: Run, course: Course): boolean =>
+  run.courses.size === 0 || run.courses.has(courseCode(course) ?? "");
+
+/** What is left to learn, in the order the catalogue lists it. */
+const toLearn = (run: Run, catalogue: readonly Course[]): Course[] =>
+  catalogue.filter((course) => !isDone(course) && chosen(run, course));
+
+/** A code the run named that the account's catalogue does not carry. */
+const missing = (run: Run, catalogue: readonly Course[]): string[] => {
+  const known = new Set(catalogue.map((course) => courseCode(course)));
+  return [...run.courses].filter((code) => !known.has(code));
+};
+
+// Walks the catalogue; the return value says why it stopped.
+const learnPages = async function* learnPages(
+  run: Run
+): AsyncGenerator<LearnEvent, string> {
+  const catalogue = await readCatalogue(run);
+  for (const code of missing(run, catalogue)) {
+    yield failure(
+      new Error(`course ${code} is not in the account's catalogue`),
+      "course",
+      false
+    );
+  }
+  for (const course of toLearn(run, catalogue)) {
+    yield* learnCourse(run, course);
+    const reason = limitReached(run);
+    if (reason) {
+      return reason;
+    }
+  }
   return "no more lessons to learn";
 };
 
@@ -948,6 +978,7 @@ export const learn = async function* learn(
       options.answer ??
       modelAnswerer(options.cookie, options.quizModel ?? DEFAULT_QUIZ_MODEL),
     cookie: options.cookie,
+    courses: new Set(options.courses),
     deadline:
       options.budgetMs === undefined ? undefined : now() + options.budgetMs,
     dryRun: options.dryRun ?? false,
