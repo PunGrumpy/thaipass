@@ -297,7 +297,7 @@ AI Pass runs a learning site at `/lms` that pays EXP per completed lesson, and t
 
 A course mixes four kinds of lesson, and the proxy replays what the lesson page does for each: it watches a **video** by stamping the seconds watched, reads an **attachment** or an **article** by opening it and marking it read, and answers a **quiz** — the pre-test and the post-test — by asking an AI Pass model the questions and submitting the attempt. Videos and the two readings run by default. Quizzes do not: the LMS usually allows one attempt per test and does not give it back, so they wait for `--quiz`.
 
-`--course` narrows a run to the courses you name.
+A run walks the courses the account is enrolled in, and the ones already started come first: a course pays for finishing the course as well as for its lessons, so a half-done course is the cheapest EXP left and finishing it leaves less behind. `--course` narrows the run to the codes you name.
 
 The tier prices each type separately, and the proxy reports what it would earn from that price list: 100 EXP a video, 50 an attachment, 30 an article, 25 a pre-test and 50 a post-test on the account I read it from. What a completed lesson actually paid is the period's own figure before and after.
 

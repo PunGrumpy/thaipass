@@ -709,6 +709,18 @@ test("learns only the courses the run names", async () => {
   expect(upstream.calls).not.toContain(`${LMS}/course/c-2/lesson`);
 });
 
+test("finishes a course already started before it opens a new one", async () => {
+  upstream = lmsUpstream({
+    courses: [
+      { code: "fresh", learnerStatus: "NOT_START" },
+      { code: "open", learnerStatus: "IN_PROGRESS" },
+      { code: "half", progress: 40 },
+    ],
+  });
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  expect(coursesOf(events)).toEqual(["open", "half", "fresh"]);
+});
+
 test("says so when a course the run names is not in the catalogue", async () => {
   upstream = lmsUpstream();
   const events = await collect({

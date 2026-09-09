@@ -28,7 +28,9 @@ export const USAGE = `Usage: bun run lms [options]
 
 Watches videos and reads attachments and articles in the AI Pass LMS until the
 period's EXP reaches the target, or until this run has earned what --earn asks
-for. Reads the session cookie from AIPASS_COOKIE, or from --cookie-file.
+for. Courses already started come first, so a half-done course is finished
+before a new one begins. Reads the session cookie from AIPASS_COOKIE, or from
+--cookie-file.
 
 Options:
   -t, --target <exp>        The period's EXP to reach (default ${DEFAULT_TARGET});

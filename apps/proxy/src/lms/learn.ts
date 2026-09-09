@@ -85,6 +85,13 @@ const MONTHLY_KEYS = [
 
 const DONE_STATUSES = new Set([COMPLETED, "COMPLETE", "DONE", "PASSED"]);
 
+const STARTED_STATUSES = new Set([
+  "IN_PROGRESS",
+  "INPROGRESS",
+  "LEARNING",
+  "STARTED",
+]);
+
 /** A course or a lesson the account has already finished; the LMS marks both the same ways. */
 export const isDone = (record: Course | Lesson): boolean => {
   if (record.isCompleted === true || record.completed === true) {
@@ -100,6 +107,21 @@ export const isDone = (record: Course | Lesson): boolean => {
   }
   return record.progress !== undefined && record.progress !== null
     ? record.progress >= PERCENT_DONE
+    : false;
+};
+
+/**
+ * A course the account has opened and not finished. These go first: a course
+ * pays for the course as well as for its lessons, so the half-done ones are
+ * the cheapest EXP left on the account, and finishing them leaves less behind.
+ */
+export const isStarted = (course: Course): boolean => {
+  const status = course.learnerStatus ?? course.status;
+  if (status && STARTED_STATUSES.has(status.toUpperCase())) {
+    return true;
+  }
+  return course.progress !== undefined && course.progress !== null
+    ? course.progress > 0
     : false;
 };
 
@@ -921,9 +943,16 @@ const readCatalogue = async (run: Run): Promise<Course[]> => {
 const chosen = (run: Run, course: Course): boolean =>
   run.courses.size === 0 || run.courses.has(courseCode(course) ?? "");
 
-/** What is left to learn, in the order the catalogue lists it. */
-const toLearn = (run: Run, catalogue: readonly Course[]): Course[] =>
-  catalogue.filter((course) => !isDone(course) && chosen(run, course));
+/** What is left to learn: the courses already opened first, catalogue order within each. */
+const toLearn = (run: Run, catalogue: readonly Course[]): Course[] => {
+  const open = catalogue.filter(
+    (course) => !isDone(course) && chosen(run, course)
+  );
+  return [
+    ...open.filter((course) => isStarted(course)),
+    ...open.filter((course) => !isStarted(course)),
+  ];
+};
 
 /** A code the run named that the account's catalogue does not carry. */
 const missing = (run: Run, catalogue: readonly Course[]): string[] => {
