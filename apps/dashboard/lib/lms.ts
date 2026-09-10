@@ -90,6 +90,73 @@ export const fetchLearningExp = async (
   };
 };
 
+const courseSchema = z.looseObject({
+  bonus_exp: z.number().nullable().catch(null),
+  code: z.string(),
+  done: z.boolean().catch(false),
+  duration_seconds: z.number().nullable().catch(null),
+  exp: z.number().nullable().catch(null),
+  progress: z.number().nullable().catch(null),
+  started: z.boolean().catch(false),
+  title: z.string().nullable().catch(null),
+});
+
+const courseListSchema = z.looseObject({
+  courses: z.array(courseSchema).catch([]),
+});
+
+/** A course as the picker reads it; the wire's snake_case stops at this file. */
+export interface LmsCourse {
+  /** Paid once the course closes, where it carries one. */
+  bonus: number | null;
+  code: string;
+  done: boolean;
+  duration: number | null;
+  /** What the course itself pays, apart from its lessons. */
+  exp: number | null;
+  /** How far through the account already is, 0 to 100. */
+  progress: number | null;
+  started: boolean;
+  title: string | null;
+}
+
+/**
+ * Every course the account can reach, in the order a run would take them.
+ * Read on demand rather than with the page: the proxy pages the whole
+ * catalogue out of the LMS, which is many upstream calls for a list nobody
+ * has asked to see yet.
+ */
+export const fetchCourses = async (
+  proxyUrl: string,
+  cookie: string,
+  signal?: AbortSignal
+): Promise<readonly LmsCourse[]> => {
+  const response = await gatewayFetch(
+    `${normalizeProxyUrl(proxyUrl)}/v1/lms/courses`,
+    {
+      cache: "no-store",
+      headers: { authorization: `Bearer ${cookie}` },
+      signal,
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(await readLmsError(response));
+  }
+
+  const payload = courseListSchema.parse(await response.json());
+  return payload.courses.map((course) => ({
+    bonus: course.bonus_exp,
+    code: course.code,
+    done: course.done,
+    duration: course.duration_seconds,
+    exp: course.exp,
+    progress: course.progress,
+    started: course.started,
+    title: course.title,
+  }));
+};
+
 /*
  * A learning run: POST /v1/lms/learn streams one JSON object per line for as
  * long as the lessons take, so the dashboard follows the same events the CLI
