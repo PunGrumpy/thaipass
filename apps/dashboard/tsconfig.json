@@ -10,7 +10,8 @@
     "paths": {
       "@/*": ["./*"]
     },
-    "strictNullChecks": true
+    "strictNullChecks": true,
+    "types": ["bun"]
   },
   "include": [
     "next-env.d.ts",

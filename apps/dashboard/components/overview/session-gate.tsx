@@ -14,12 +14,12 @@ const STEPS = [
     label: "Sign in to AI Pass",
   },
   {
-    body: "In DevTools → Network, copy the whole Cookie header off any request.",
-    label: "Copy the Cookie header",
+    body: "In DevTools → Network, right-click any request and choose Copy as cURL (or copy the Cookie header).",
+    label: "Copy as cURL or Cookie",
   },
   {
-    body: "Paste it into Settings. It stays in this browser and is sent only to your own gateway.",
-    label: "Paste it into Settings",
+    body: "Paste into Settings. The dashboard automatically parses and extracts your session cookie.",
+    label: "Paste into Settings",
   },
 ] as const;
 

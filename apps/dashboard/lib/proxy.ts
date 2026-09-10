@@ -43,20 +43,116 @@ export interface ChatMessage {
   role: "assistant" | "system" | "user";
 }
 
+export const SESSION_TOKEN_NAME = "__Secure-ai_passport_auth.session_token";
+
+export const hasSessionToken = (raw: string): boolean =>
+  raw.includes(SESSION_TOKEN_NAME);
+
 const TRAILING_SLASHES = /\/+$/u;
 const COOKIE_PREFIX = /^cookie:\s*/iu;
 const BEARER_PREFIX = /^(?:authorization:\s*)?bearer\s+/iu;
+const COOKIE_LINE_PREFIX = /^\s*cookie:\s*/iu;
+const LINE_BREAK_REGEX = /\r?\n/u;
+const TRAILING_BACKSLASH_REGEX = /\\\s*$/u;
+
+const CURL_HEADER_REGEX =
+  /(?:-H|--header)\s+(?:'cookie:\s*(?<single>[^']+)'|"cookie:\s*(?<double>[^"]+)")/iu;
+
+const CURL_COOKIE_FLAG_REGEX =
+  /(?:-b|--cookie)\s+(?:'(?<single>[^']+)'|"(?<double>[^"]+)"|(?<bare>\S+))/iu;
+
+const CURL_LOOSE_REGEX =
+  /(?:-H|--header)\s+['"]?(?:cookie:\s*)?(?<loose>[^\r\n"';]+__Secure-ai_passport_auth\.session_token[^\r\n"';]*)/iu;
+
+const ENV_ASSIGNMENT_REGEX =
+  /(?:(?:export\s+)?(?:AIPASS_COOKIE|COOKIE)\s*=\s*|set\s+-x\s+(?:AIPASS_COOKIE|COOKIE)\s+)['"]?(?<val>[^'"\r\n]+)['"]?/iu;
+
+const JSON_PROPERTY_REGEX =
+  /["']?cookie["']?\s*[:=]\s*["'](?<val>[^"']+)["']/iu;
+
+const extractCurlCookie = (text: string): string | null => {
+  const headerMatch = text.match(CURL_HEADER_REGEX);
+  if (headerMatch?.groups) {
+    return headerMatch.groups.single ?? headerMatch.groups.double ?? null;
+  }
+  const flagMatch = text.match(CURL_COOKIE_FLAG_REGEX);
+  if (flagMatch?.groups) {
+    return (
+      flagMatch.groups.single ??
+      flagMatch.groups.double ??
+      flagMatch.groups.bare ??
+      null
+    );
+  }
+  const looseMatch = text.match(CURL_LOOSE_REGEX);
+  if (looseMatch?.groups?.loose) {
+    return looseMatch.groups.loose;
+  }
+  return null;
+};
+
+const extractHeaderLineCookie = (text: string): string | null => {
+  const lines = text.split(LINE_BREAK_REGEX);
+  const cookieLine = lines.find((line) => COOKIE_LINE_PREFIX.test(line));
+  return cookieLine ? cookieLine.replace(COOKIE_LINE_PREFIX, "") : null;
+};
+
+const extractSnippetCookie = (text: string): string | null => {
+  const envMatch = text.match(ENV_ASSIGNMENT_REGEX);
+  if (envMatch?.groups?.val) {
+    return envMatch.groups.val;
+  }
+  const jsonMatch = text.match(JSON_PROPERTY_REGEX);
+  if (jsonMatch?.groups?.val) {
+    return jsonMatch.groups.val;
+  }
+  return null;
+};
+
+const stripQuotes = (val: string): string => {
+  if (
+    (val.startsWith('"') && val.endsWith('"')) ||
+    (val.startsWith("'") && val.endsWith("'")) ||
+    (val.startsWith("`") && val.endsWith("`"))
+  ) {
+    return val.slice(1, -1).trim();
+  }
+  return val;
+};
 
 /** `http://host:3001/` and `http://host:3001` have to build the same URL. */
 export const normalizeProxyUrl = (raw: string): string =>
   raw.trim().replace(TRAILING_SLASHES, "");
 
 /**
- * People paste the whole `Cookie:` header out of devtools, or an
- * `Authorization: Bearer …` line out of a config. Both carry the value we want.
+ * Normalizes input pasted by users:
+ * - A bare cookie or token string
+ * - A `Cookie:` header from devtools
+ * - An `Authorization: Bearer …` line out of a config
+ * - A full cURL command (-H "cookie: ...", --header, -b, --cookie)
+ * - Raw multi-line DevTools request headers
+ * - Shell env variables (AIPASS_COOKIE=..., COOKIE=...)
+ * - JSON / JS snippets
  */
-export const normalizeCookie = (raw: string): string =>
-  raw.trim().replace(COOKIE_PREFIX, "").replace(BEARER_PREFIX, "").trim();
+export const normalizeCookie = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const candidate =
+    extractCurlCookie(trimmed) ??
+    extractHeaderLineCookie(trimmed) ??
+    extractSnippetCookie(trimmed) ??
+    trimmed;
+
+  const stripped = candidate
+    .replace(COOKIE_PREFIX, "")
+    .replace(BEARER_PREFIX, "")
+    .trim();
+
+  return stripQuotes(stripped).replace(TRAILING_BACKSLASH_REGEX, "").trim();
+};
 
 interface ApiErrorBody {
   error?: { message?: string };
