@@ -42,7 +42,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         title: "Models",
       },
       {
-        description: "EXP the LMS has recorded for this account",
+        description: "EXP the LMS has recorded, and the runs that earn more",
         href: "/learning",
         icon: GraduationCap,
         title: "Learning",
