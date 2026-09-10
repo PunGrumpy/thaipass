@@ -81,8 +81,25 @@ test("describes a run in a few lines and keeps stamps transient", () => {
     describe({ event: "exp", monthly: 325, phase: "after" })
   ).toBeUndefined();
   expect(
-    describe({ code: "56", event: "course", lessons: 10, title: "AI" })?.text
+    describe({
+      bonus: null,
+      code: "56",
+      event: "course",
+      exp: null,
+      lessons: 10,
+      title: "AI",
+    })?.text
   ).toBe("course 56 · AI — 10 lessons");
+  expect(
+    describe({
+      bonus: 20,
+      code: "56",
+      event: "course",
+      exp: 8,
+      lessons: 10,
+      title: "AI",
+    })?.text
+  ).toBe("course 56 · AI — 10 lessons, +20 EXP on completion");
   expect(
     describe({
       code: "56",

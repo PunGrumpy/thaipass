@@ -234,8 +234,10 @@ export const describe = (event: LearnEvent): Line | undefined => {
         : undefined;
     }
     case "course": {
+      // Only worth a word when the course actually pays one.
+      const bonus = event.bonus ? `, +${event.bonus} EXP on completion` : "";
       return {
-        text: `course ${event.code} · ${event.title ?? "untitled"} — ${plural(event.lessons, "lesson")}`,
+        text: `course ${event.code} · ${event.title ?? "untitled"} — ${plural(event.lessons, "lesson")}${bonus}`,
       };
     }
     case "lesson": {

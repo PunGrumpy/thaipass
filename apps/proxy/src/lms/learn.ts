@@ -219,6 +219,10 @@ export type LearnEvent =
       readonly code: string;
       readonly title: string | null;
       readonly lessons: number;
+      /** What the course itself pays on top of its lessons, where it names a figure. */
+      readonly exp: number | null;
+      /** Paid once the course closes; some courses carry one, most do not. */
+      readonly bonus: number | null;
     }
   | {
       readonly event: "lesson";
@@ -872,8 +876,10 @@ const learnCourse = async function* learnCourse(
     }
   }
   yield {
+    bonus: course.bonusExp ?? null,
     code,
     event: "course",
+    exp: course.baseExp ?? null,
     lessons: pending.length,
     title: titleOf(course),
   };
