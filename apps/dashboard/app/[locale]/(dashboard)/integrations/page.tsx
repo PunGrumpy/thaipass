@@ -1,16 +1,22 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
+
 import { IntegrationPanel } from "@/components/integrations/integration-panel";
 import { PageHeader } from "@/components/layout/page-header";
 
-const IntegrationsPage = () => (
-  <>
-    <PageHeader
-      description="Point a coding agent or an SDK at the local gateway. Every snippet includes your gateway origin and the model you pick."
-      title="Integrations"
-    />
-    <IntegrationPanel />
-  </>
-);
+const IntegrationsPage = () => {
+  const { t } = useI18n();
+
+  return (
+    <>
+      <PageHeader
+        description={t.integrations.description}
+        title={t.integrations.title}
+      />
+      <IntegrationPanel />
+    </>
+  );
+};
 
 export default IntegrationsPage;

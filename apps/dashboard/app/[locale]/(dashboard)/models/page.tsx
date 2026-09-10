@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import { Info, RefreshCw } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
@@ -11,6 +12,7 @@ import { cn } from "@/lib/utils";
 
 const ModelsPage = () => {
   const catalog = useCatalog();
+  const { t } = useI18n();
 
   return (
     <>
@@ -22,11 +24,13 @@ const ModelsPage = () => {
             variant="outline"
           >
             <RefreshCw className={cn(catalog.loading && "animate-spin")} />
-            Refresh
+            {catalog.loading
+              ? t.common.actions.refreshing
+              : t.common.actions.refresh}
           </Button>
         }
-        description="Ids are case-sensitive, and Claude models include an @provider suffix. Kind decides which endpoint takes the model."
-        title="Models"
+        description={t.models.description}
+        title={t.models.title}
       />
 
       {catalog.builtin && !catalog.loading ? (

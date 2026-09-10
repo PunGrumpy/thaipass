@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import { ArrowRight, KeyRound } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -28,6 +29,7 @@ const STEP_MS = 4000;
 /** The first screen almost everyone sees, so it carries the whole setup path. */
 export const SessionGate = () => {
   const [step, setStep] = useState(0);
+  const { locale } = useI18n();
   const current = STEPS[step] ?? STEPS[0];
 
   return (
@@ -48,7 +50,10 @@ export const SessionGate = () => {
               the playground.
             </p>
           </div>
-          <Button nativeButton={false} render={<Link href="/settings" />}>
+          <Button
+            nativeButton={false}
+            render={<Link href={`/${locale}/settings`} />}
+          >
             Add session cookie
             <ArrowRight data-icon="inline-end" />
           </Button>

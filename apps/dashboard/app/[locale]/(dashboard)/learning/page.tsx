@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import { RefreshCw, TriangleAlert } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
 const LearningPage = () => {
   const { hasSession } = useConnection();
   const { data, error, loading, reload } = useLearning();
+  const { t } = useI18n();
   const {
     clear: handleClear,
     error: runError,
@@ -44,11 +46,11 @@ const LearningPage = () => {
             variant="outline"
           >
             <RefreshCw className={cn(loading && "animate-spin")} />
-            Refresh
+            {loading ? t.common.actions.refreshing : t.common.actions.refresh}
           </Button>
         }
-        description="EXP the LMS has recorded for this account, and the runs that earn more. A run completes lessons through the gateway, so it changes the account."
-        title="Learning"
+        description={t.learning.description}
+        title={t.learning.title}
       />
       {hasSession ? null : (
         <Alert>

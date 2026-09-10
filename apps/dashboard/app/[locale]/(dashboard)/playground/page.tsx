@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
@@ -12,16 +13,20 @@ const PlaygroundBody = () => {
   return <Playground initialModel={params.get("model")} />;
 };
 
-const PlaygroundPage = () => (
-  <>
-    <PageHeader
-      description="Send a prompt through your local gateway and watch how fast the first token comes back."
-      title="Playground"
-    />
-    <Suspense fallback={<Skeleton className="h-96 w-full" />}>
-      <PlaygroundBody />
-    </Suspense>
-  </>
-);
+const PlaygroundPage = () => {
+  const { t } = useI18n();
+
+  return (
+    <>
+      <PageHeader
+        description={t.playground.description}
+        title={t.playground.title}
+      />
+      <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+        <PlaygroundBody />
+      </Suspense>
+    </>
+  );
+};
 
 export default PlaygroundPage;
