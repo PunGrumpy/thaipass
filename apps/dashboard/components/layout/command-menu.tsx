@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
@@ -18,7 +19,7 @@ import {
 } from "@/components/ui/command";
 import { useCatalog } from "@/hooks/use-gateway";
 import { attempt } from "@/lib/attempt";
-import { NAV_SECTIONS } from "@/lib/nav";
+import { useNavSections } from "@/lib/nav";
 
 const MODEL_LIMIT = 8;
 
@@ -31,6 +32,8 @@ export const CommandMenu = ({ onOpenChange, open }: CommandMenuProps) => {
   const router = useRouter();
   const { setTheme } = useTheme();
   const { models } = useCatalog();
+  const { t } = useI18n();
+  const navSections = useNavSections();
 
   const run = useCallback(
     (action: () => Promise<void> | void) => {
@@ -51,12 +54,12 @@ export const CommandMenu = ({ onOpenChange, open }: CommandMenuProps) => {
       <Command>
         <CommandInput
           className="text-base sm:text-sm"
-          placeholder="Jump to a page, or search a model id…"
+          placeholder={t.commandMenu.placeholder}
         />
         <CommandList>
-          <CommandEmpty>No page or model matched.</CommandEmpty>
-          {NAV_SECTIONS.map((section) => (
-            <CommandGroup heading={section.label} key={section.label}>
+          <CommandEmpty>{t.commandMenu.empty}</CommandEmpty>
+          {navSections.map((section) => (
+            <CommandGroup heading={section.label} key={section.id}>
               {section.items.map((item) => (
                 <CommandItem
                   key={item.href}
@@ -102,18 +105,18 @@ export const CommandMenu = ({ onOpenChange, open }: CommandMenuProps) => {
 
           <CommandSeparator />
 
-          <CommandGroup heading="Theme">
+          <CommandGroup heading={t.commandMenu.groups.theme}>
             <CommandItem onSelect={() => run(() => setTheme("light"))}>
               <Sun />
-              Light
+              {t.common.theme.light}
             </CommandItem>
             <CommandItem onSelect={() => run(() => setTheme("dark"))}>
               <Moon />
-              Dark
+              {t.common.theme.dark}
             </CommandItem>
             <CommandItem onSelect={() => run(() => setTheme("system"))}>
               <Monitor />
-              System
+              {t.common.theme.system}
             </CommandItem>
           </CommandGroup>
         </CommandList>

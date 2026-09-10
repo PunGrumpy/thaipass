@@ -1,0 +1,28 @@
+{
+  "name": "@thaipass/internationalization",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Internationalization and localization dictionaries for ThaiPass.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./middleware": "./src/middleware.ts",
+    "./dictionaries/*": "./src/dictionaries/*.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.1",
+    "@types/node": "^26.5.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^7.0.2"
+  }
+}

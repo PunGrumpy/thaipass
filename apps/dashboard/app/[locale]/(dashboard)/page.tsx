@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
@@ -16,6 +17,7 @@ import { cn } from "@/lib/utils";
 const OverviewPage = () => {
   const { hasSession } = useConnection();
   const { catalog, credits, health, refresh } = useGateway();
+  const { t } = useI18n();
 
   const refreshing = health.loading || credits.loading || catalog.loading;
 
@@ -25,11 +27,13 @@ const OverviewPage = () => {
         action={
           <Button disabled={refreshing} onClick={refresh} variant="outline">
             <RefreshCw className={cn(refreshing && "animate-spin")} />
-            Refresh
+            {refreshing
+              ? t.common.actions.refreshing
+              : t.common.actions.refresh}
           </Button>
         }
-        description="Health of the local gateway, what the session has left to spend, and what it can reach."
-        title="Overview"
+        description={t.overview.description}
+        title={t.overview.title}
       />
 
       {hasSession ? null : <SessionGate />}
@@ -37,7 +41,7 @@ const OverviewPage = () => {
       {credits.error ? (
         <Alert variant="destructive">
           <AlertTriangle />
-          <AlertTitle>Could not read the balance</AlertTitle>
+          <AlertTitle>{t.overview.balanceError}</AlertTitle>
           <AlertDescription>{credits.error}</AlertDescription>
         </Alert>
       ) : null}

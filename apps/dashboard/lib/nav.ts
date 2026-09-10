@@ -1,3 +1,5 @@
+import type { Dictionary, Locale } from "@thaipass/internationalization";
+import { useI18n } from "@thaipass/internationalization";
 import {
   Boxes,
   GraduationCap,
@@ -7,70 +9,101 @@ import {
   TerminalSquare,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useMemo } from "react";
+
+export type NavItemId =
+  | "overview"
+  | "playground"
+  | "models"
+  | "learning"
+  | "integrations"
+  | "settings";
 
 export interface NavItem {
   description: string;
   href: string;
   icon: LucideIcon;
+  id: NavItemId;
   title: string;
 }
 
 export interface NavSection {
+  id: "gateway" | "configure";
   items: readonly NavItem[];
   label: string;
 }
 
-export const NAV_SECTIONS: readonly NavSection[] = [
+export const getNavSections = (
+  locale: Locale,
+  dictionary: Dictionary
+): readonly NavSection[] => [
   {
+    id: "gateway",
     items: [
       {
-        description: "Gateway health, quota, and catalog at a glance",
-        href: "/",
+        description: dictionary.navigation.items.overview.description,
+        href: `/${locale}`,
         icon: LayoutDashboard,
-        title: "Overview",
+        id: "overview",
+        title: dictionary.navigation.items.overview.title,
       },
       {
-        description: "Stream a prompt through the proxy and time it",
-        href: "/playground",
+        description: dictionary.navigation.items.playground.description,
+        href: `/${locale}/playground`,
         icon: TerminalSquare,
-        title: "Playground",
+        id: "playground",
+        title: dictionary.navigation.items.playground.title,
       },
       {
-        description: "Every model your session can reach",
-        href: "/models",
+        description: dictionary.navigation.items.models.description,
+        href: `/${locale}/models`,
         icon: Boxes,
-        title: "Models",
+        id: "models",
+        title: dictionary.navigation.items.models.title,
       },
       {
-        description: "EXP the LMS has recorded, and the runs that earn more",
-        href: "/learning",
+        description: dictionary.navigation.items.learning.description,
+        href: `/${locale}/learning`,
         icon: GraduationCap,
-        title: "Learning",
+        id: "learning",
+        title: dictionary.navigation.items.learning.title,
       },
     ],
-    label: "Gateway",
+    label: dictionary.navigation.sections.gateway,
   },
   {
+    id: "configure",
     items: [
       {
-        description: "Drop-in config for Claude Code, Cursor, SDKs, and cURL",
-        href: "/integrations",
+        description: dictionary.navigation.items.integrations.description,
+        href: `/${locale}/integrations`,
         icon: Plug,
-        title: "Integrations",
+        id: "integrations",
+        title: dictionary.navigation.items.integrations.title,
       },
       {
-        description: "Proxy origin, session cookie, and appearance",
-        href: "/settings",
+        description: dictionary.navigation.items.settings.description,
+        href: `/${locale}/settings`,
         icon: Settings2,
-        title: "Settings",
+        id: "settings",
+        title: dictionary.navigation.items.settings.title,
       },
     ],
-    label: "Configure",
+    label: dictionary.navigation.sections.configure,
   },
 ];
 
-export const NAV_ITEMS: readonly NavItem[] = NAV_SECTIONS.flatMap(
-  (section) => section.items
-);
+export const useNavSections = (): readonly NavSection[] => {
+  const { locale, t } = useI18n();
+  return useMemo(() => getNavSections(locale, t), [locale, t]);
+};
+
+export const useNavItems = (): readonly NavItem[] => {
+  const sections = useNavSections();
+  return useMemo(
+    () => sections.flatMap((section) => section.items),
+    [sections]
+  );
+};
 
 export const GITHUB_URL = "https://github.com/PunGrumpy/thaipass";

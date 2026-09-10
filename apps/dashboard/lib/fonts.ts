@@ -1,15 +1,15 @@
 import {
-  Geist as createSans,
   Geist_Mono as createMono,
+  IBM_Plex_Sans_Thai as createSans,
 } from "next/font/google";
 
 import { cn } from "./utils";
 
 const sans = createSans({
   display: "swap",
-  subsets: ["latin"],
+  subsets: ["thai", "latin"],
   variable: "--font-sans",
-  weight: "variable",
+  weight: ["300", "400", "500", "600", "700"],
 });
 
 const mono = createMono({
