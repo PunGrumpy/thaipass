@@ -90,6 +90,21 @@
         "typescript": "7.0.2",
       },
     },
+    "packages/internationalization": {
+      "name": "@thaipass/internationalization",
+      "version": "0.1.0",
+      "dependencies": {
+        "next": "16.3.4",
+        "react": "19.2.8",
+        "react-dom": "19.2.8",
+      },
+      "devDependencies": {
+        "@types/node": "^26.5.0",
+        "@types/react": "^19",
+        "@types/react-dom": "^19",
+        "typescript": "^7.0.2",
+      },
+    },
     "packages/thaipass": {
       "name": "thaipass",
       "version": "0.1.2",
@@ -610,6 +625,8 @@
     "@thaipass/core": ["@thaipass/core@workspace:packages/core"],
 
     "@thaipass/dashboard": ["@thaipass/dashboard@workspace:apps/dashboard"],
+
+    "@thaipass/internationalization": ["@thaipass/internationalization@workspace:packages/internationalization"],
 
     "@thaipass/proxy": ["@thaipass/proxy@workspace:apps/proxy"],
 
