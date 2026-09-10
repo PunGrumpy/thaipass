@@ -395,7 +395,7 @@ const isSkippable = (cause: unknown): boolean =>
 const isAuthFailure = (cause: unknown): boolean =>
   cause instanceof LmsError && cause.isAuth;
 
-const titleOf = (record: Course | Lesson): string | null =>
+export const titleOf = (record: Course | Lesson): string | null =>
   record.title ?? null;
 
 /** Best effort: the figure prices a lesson and is reported, the run does not depend on it. */
@@ -927,11 +927,19 @@ const lessonExpOf = async (run: Run): Promise<ReadonlyMap<string, number>> => {
   return priced;
 };
 
-const readCatalogue = async (run: Run): Promise<Course[]> => {
+/**
+ * The account's whole catalogue, page by page. Exported because the run is not
+ * the only reader: GET /v1/lms/courses answers with the same listing, so a
+ * caller can see what a run would have to choose from.
+ */
+export const readCatalogue = async (
+  cookie: string,
+  signal?: AbortSignal
+): Promise<Course[]> => {
   const courses: Course[] = [];
   // oxlint-disable no-await-in-loop
   for (let page = 1; page <= MAX_PAGES; page += 1) {
-    const listing = await listCourses(run.cookie, page, PAGE_SIZE, run.signal);
+    const listing = await listCourses(cookie, page, PAGE_SIZE, signal);
     if (listing.courses.length === 0) {
       break;
     }
@@ -970,7 +978,7 @@ const missing = (run: Run, catalogue: readonly Course[]): string[] => {
 const learnPages = async function* learnPages(
   run: Run
 ): AsyncGenerator<LearnEvent, string> {
-  const catalogue = await readCatalogue(run);
+  const catalogue = await readCatalogue(run.cookie, run.signal);
   for (const code of missing(run, catalogue)) {
     yield failure(
       new Error(`course ${code} is not in the account's catalogue`),

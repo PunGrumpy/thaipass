@@ -11,7 +11,17 @@ import { requestLogger } from "../lib/logger";
 import type { DeferredEmit } from "../lib/logger";
 import { json } from "../lib/openapi";
 import { readAchievement, readSessionExp, readSessionTier } from "../lms/api";
-import { DEFAULT_TARGET, learn, monthlyExpOf } from "../lms/learn";
+import type { Course } from "../lms/api";
+import {
+  courseCode,
+  DEFAULT_TARGET,
+  isDone,
+  isStarted,
+  learn,
+  monthlyExpOf,
+  readCatalogue,
+  titleOf,
+} from "../lms/learn";
 import type { LearnEvent } from "../lms/learn";
 import { LmsError } from "../lms/request";
 import { apiError, apiErrorSchema } from "../openai/errors";
@@ -46,6 +56,24 @@ export const learnRequestSchema = z.object({
   target: z.number().int().min(1).optional(),
 });
 
+export const lmsCourseSchema = z.object({
+  /** Paid once the course closes, where it carries one. */
+  bonus_exp: z.number().nullable(),
+  code: z.string(),
+  done: z.boolean(),
+  duration_seconds: z.number().nullable(),
+  /** What the course itself pays, apart from its lessons. */
+  exp: z.number().nullable(),
+  /** How far through the account already is, 0 to 100. */
+  progress: z.number().nullable(),
+  started: z.boolean(),
+  title: z.string().nullable(),
+});
+
+export const lmsCourseListSchema = z.object({
+  courses: z.array(lmsCourseSchema),
+});
+
 export const lmsExpSchema = z.object({
   achievement: z.unknown(),
   monthly: z.number().nullable(),
@@ -54,7 +82,41 @@ export const lmsExpSchema = z.object({
 });
 
 export type LearnRequest = z.infer<typeof learnRequestSchema>;
+export type LmsCourse = z.infer<typeof lmsCourseSchema>;
+export type LmsCourseList = z.infer<typeof lmsCourseListSchema>;
 export type LmsExp = z.infer<typeof lmsExpSchema>;
+
+/**
+ * The order a run works through them: the half-done first, because a started
+ * course is the cheapest EXP left, then the untouched, then the finished.
+ */
+const rank = (course: LmsCourse): number => {
+  if (course.done) {
+    return 2;
+  }
+  return course.started ? 0 : 1;
+};
+
+const byWhatIsLeft = (left: LmsCourse, right: LmsCourse): number =>
+  rank(left) - rank(right);
+
+/** A catalogue row as this API names it; a course with no code cannot be learned. */
+const summarize = (course: Course): LmsCourse | null => {
+  const code = courseCode(course);
+  if (!code) {
+    return null;
+  }
+  return {
+    bonus_exp: course.bonusExp ?? null,
+    code,
+    done: isDone(course),
+    duration_seconds: course.durationInSeconds ?? null,
+    exp: course.baseExp ?? null,
+    progress: course.progress ?? null,
+    started: isStarted(course),
+    title: titleOf(course),
+  };
+};
 
 const ndjson = (description: string, lines: string) => ({
   content: {
@@ -78,6 +140,7 @@ export const lmsRoutes = new Elysia()
   .model({
     ApiError: apiErrorSchema,
     LearnRequest: learnRequestSchema,
+    LmsCourseList: lmsCourseListSchema,
     LmsExp: lmsExpSchema,
   })
   .get(
@@ -119,6 +182,49 @@ export const lmsRoutes = new Elysia()
           session_exp: sessionExp,
           session_tier: sessionTier,
         };
+      } catch (error) {
+        const message =
+          error instanceof LmsError ? error.message : String(error);
+        log.set({
+          status: BAD_GATEWAY,
+          upstreamStatus: error instanceof LmsError ? error.status : undefined,
+        });
+        return status(BAD_GATEWAY, apiError(message));
+      }
+    }
+  )
+  .get(
+    "/v1/lms/courses",
+    {
+      detail: {
+        description:
+          "The account's course catalogue as the LMS lists it, every page of it: the code a learn run takes, the title, how far the account already is, and what the course pays. exp is what the course itself is worth apart from its lessons and bonus_exp is what closing it adds, both null where the LMS names no figure. Courses already started come first, then the untouched, then the finished, which is the order a run works through them. Reads only.",
+        responses: {
+          "200": json("LmsCourseList", "The account's courses"),
+          "401": json("ApiError", "Missing or malformed session cookie"),
+          "502": json("ApiError", "The LMS refused the cookie"),
+        },
+        security: [{ aipassCookie: [] }, { aipassCookieKey: [] }],
+        summary: "List the courses",
+        tags: ["LMS"],
+      },
+      response: { 200: "LmsCourseList", 401: "ApiError", 502: "ApiError" },
+    },
+    async ({ request, log }) => {
+      const lookup = cookieFromRequest(request);
+      if (!lookup.ok) {
+        log.set({ authReason: lookup.reason, status: 401 });
+        return status(401, apiError(lookup.reason));
+      }
+      const { cookie } = lookup;
+      log.set({ clientId: clientIdFromCookie(cookie) });
+      try {
+        const catalogue = await readCatalogue(cookie, request.signal);
+        const courses = catalogue
+          .map(summarize)
+          .filter((course) => course !== null);
+        log.set({ lmsCourses: courses.length });
+        return { courses: courses.toSorted(byWhatIsLeft) };
       } catch (error) {
         const message =
           error instanceof LmsError ? error.message : String(error);
