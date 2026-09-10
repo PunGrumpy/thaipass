@@ -46,10 +46,6 @@ const CommandDialog = ({
 }) => 
   (
     <Dialog {...props}>
-      <DialogHeader className="sr-only">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
-      </DialogHeader>
       <DialogContent
         className={cn(
           "top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0",
@@ -57,6 +53,13 @@ const CommandDialog = ({
         )}
         showCloseButton={showCloseButton}
       >
+        {/* Inside the popup, so it exists only while the dialog is open. As a
+            sibling of it the sr-only <h2> rendered on every page, and turned up
+            in the heading outline of pages that have no command menu open. */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
         {children}
       </DialogContent>
     </Dialog>
