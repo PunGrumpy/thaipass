@@ -47,9 +47,9 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --font-sans: var(--font-sans), var(--font-thai), sans-serif;
+  --font-sans: var(--font-sans), sans-serif;
   --font-mono: var(--font-mono);
-  --font-heading: var(--font-sans), var(--font-thai), sans-serif;
+  --font-heading: var(--font-sans), sans-serif;
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
