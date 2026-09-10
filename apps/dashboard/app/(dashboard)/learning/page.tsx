@@ -1,22 +1,34 @@
 "use client";
 
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { RefreshCw, TriangleAlert } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { LessonTypeTable } from "@/components/learning/lesson-type-table";
+import { RunFeed } from "@/components/learning/run-feed";
+import { RunPanel } from "@/components/learning/run-panel";
 import { StatCard } from "@/components/overview/stat-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConnection } from "@/hooks/use-connection";
+import { useLearnRun } from "@/hooks/use-learn-run";
 import { useLearning } from "@/hooks/use-learning";
 import { formatPercent } from "@/lib/format";
+import { isResumable, isRunEmpty } from "@/lib/learn-run";
 import { MONTHLY_TARGET } from "@/lib/lms";
 import { cn } from "@/lib/utils";
 
 const LearningPage = () => {
   const { hasSession } = useConnection();
   const { data, error, loading, reload } = useLearning();
+  const {
+    clear: handleClear,
+    error: runError,
+    running,
+    start: handleStart,
+    state: runState,
+    stop: handleStop,
+  } = useLearnRun(reload);
 
   const monthly = data?.monthly ?? null;
   const share =
@@ -35,22 +47,22 @@ const LearningPage = () => {
             Refresh
           </Button>
         }
-        description="EXP the LMS has recorded for this account, read through the gateway. Nothing on this page changes anything."
+        description="EXP the LMS has recorded for this account, and the runs that earn more. A run completes lessons through the gateway, so it changes the account."
         title="Learning"
       />
       {hasSession ? null : (
         <Alert>
-          <AlertTriangle />
+          <TriangleAlert />
           <AlertTitle>No session connected</AlertTitle>
           <AlertDescription>
-            Add a session cookie in Settings to read the LMS.
+            Add a session cookie in Settings to read the LMS and to run lessons.
           </AlertDescription>
         </Alert>
       )}
 
       {error ? (
         <Alert variant="destructive">
-          <AlertTriangle />
+          <TriangleAlert />
           <AlertTitle>Could not read the LMS</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -75,11 +87,28 @@ const LearningPage = () => {
         />
       </div>
 
-      {loading && !data ? (
-        <Skeleton className="h-48 w-full" />
-      ) : (
-        <LessonTypeTable rows={data?.perLessonType ?? []} />
-      )}
+      <RunPanel
+        canClear={!isRunEmpty(runState)}
+        hasSession={hasSession}
+        onClear={handleClear}
+        onStart={handleStart}
+        onStop={handleStop}
+        paused={isResumable(runState)}
+        running={running}
+      />
+
+      <RunFeed error={runError} running={running} state={runState} />
+
+      <section aria-labelledby="breakdown-heading" className="space-y-4">
+        <h2 className="text-base font-medium" id="breakdown-heading">
+          By lesson type
+        </h2>
+        {loading && !data ? (
+          <Skeleton className="h-48 w-full" />
+        ) : (
+          <LessonTypeTable rows={data?.perLessonType ?? []} />
+        )}
+      </section>
     </>
   );
 };

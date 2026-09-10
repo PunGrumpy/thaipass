@@ -28,6 +28,41 @@ const expSchema = z.object({
 
 const lineSchema = z.looseObject({ event: z.string() });
 
+/** One of each state a catalogue row can be in: finished, untouched, half-done. */
+const CATALOGUE = [
+  {
+    baseExp: 8,
+    bonusExp: 20,
+    code: "AI-101",
+    durationInSeconds: 3600,
+    isCompleted: true,
+    title: "Foundations of applied AI",
+  },
+  { baseExp: 6, code: "DATA-204", title: "Working with tabular data" },
+  {
+    baseExp: 4,
+    code: "SEC-110",
+    learnerStatus: "IN_PROGRESS",
+    progress: 40,
+    title: "Security basics",
+  },
+];
+
+const courseListSchema = z.object({
+  courses: z.array(
+    z.object({
+      bonus_exp: z.number().nullable(),
+      code: z.string(),
+      done: z.boolean(),
+      duration_seconds: z.number().nullable(),
+      exp: z.number().nullable(),
+      progress: z.number().nullable(),
+      started: z.boolean(),
+      title: z.string().nullable(),
+    })
+  ),
+});
+
 const ok = (data: Payload): Response => Response.json({ data, success: true });
 
 const unauthorized = (): Response =>
@@ -52,13 +87,16 @@ const lmsUpstream = (deadCookie = false): Upstream =>
       return ok({ courses: 2 });
     }
     if (route === "/course/v2") {
-      return ok({ courses: [], total: 0 });
+      return ok({ courses: CATALOGUE, total: CATALOGUE.length });
     }
     return ok({});
   });
 
 const get = (headers: Record<string, string> = {}): Request =>
   new Request("https://proxy.test/v1/lms/exp", { headers });
+
+const getCourses = (headers: Record<string, string> = {}): Request =>
+  new Request("https://proxy.test/v1/lms/courses", { headers });
 
 const learnRequest = (
   body: Record<string, boolean | number>,
@@ -139,4 +177,53 @@ test("streams the run as one JSON object per line and ends on done", async () =>
   expect(done?.target).toBe(50);
   expect(done?.reached).toBe(false);
   expect(done?.paused).toBe(false);
+});
+
+test("refuses to list courses without the session cookie", async () => {
+  upstream = lmsUpstream();
+  const response = await app.fetch(getCourses());
+  expect(response.status).toBe(401);
+});
+
+test("lists the catalogue with what each course pays", async () => {
+  upstream = lmsUpstream();
+  const response = await app.fetch(
+    getCourses({ authorization: `Bearer ${COOKIE}` })
+  );
+  expect(response.status).toBe(200);
+  const { courses } = courseListSchema.parse(await response.json());
+
+  // Started first, then untouched, then finished: the order a run takes them.
+  expect(courses.map((course) => course.code)).toEqual([
+    "SEC-110",
+    "DATA-204",
+    "AI-101",
+  ]);
+
+  const finished = courses.find((course) => course.code === "AI-101");
+  expect(finished).toMatchObject({
+    bonus_exp: 20,
+    done: true,
+    duration_seconds: 3600,
+    exp: 8,
+    started: false,
+    title: "Foundations of applied AI",
+  });
+
+  const half = courses.find((course) => course.code === "SEC-110");
+  expect(half).toMatchObject({ done: false, progress: 40, started: true });
+
+  // A course the LMS names no bonus for reports null rather than nothing.
+  expect(
+    courses.find((course) => course.code === "DATA-204")?.bonus_exp
+  ).toBeNull();
+});
+
+test("answers 502 when the LMS refuses the cookie on the catalogue", async () => {
+  upstream = lmsUpstream(true);
+  const response = await app.fetch(
+    getCourses({ authorization: `Bearer ${COOKIE}` })
+  );
+  expect(response.status).toBe(502);
+  expect(errorSchema.parse(await response.json()).error.message).toBeTruthy();
 });
