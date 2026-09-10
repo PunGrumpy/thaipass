@@ -80,7 +80,10 @@ const authHeaders = (cookie: string): HeadersInit => ({
  * place — the gateway is not running, or it is not allowing this origin — so
  * the message names both.
  */
-const request = async (url: string, init?: RequestInit): Promise<Response> => {
+export const gatewayFetch = async (
+  url: string,
+  init?: RequestInit
+): Promise<Response> => {
   try {
     return await fetch(url, init);
   } catch (error) {
@@ -99,7 +102,7 @@ export const fetchHealth = async (
   proxyUrl: string,
   signal?: AbortSignal
 ): Promise<ProxyHealth> => {
-  const response = await request(`${normalizeProxyUrl(proxyUrl)}/health`, {
+  const response = await gatewayFetch(`${normalizeProxyUrl(proxyUrl)}/health`, {
     cache: "no-store",
     signal,
   });
@@ -115,11 +118,14 @@ export const fetchCredits = async (
   cookie: string,
   signal?: AbortSignal
 ): Promise<CreditBalance> => {
-  const response = await request(`${normalizeProxyUrl(proxyUrl)}/v1/usage`, {
-    cache: "no-store",
-    headers: authHeaders(cookie),
-    signal,
-  });
+  const response = await gatewayFetch(
+    `${normalizeProxyUrl(proxyUrl)}/v1/usage`,
+    {
+      cache: "no-store",
+      headers: authHeaders(cookie),
+      signal,
+    }
+  );
   if (!response.ok) {
     throw new Error(await readError(response));
   }
@@ -133,11 +139,14 @@ export const fetchCatalog = async (
   cookie: string,
   signal?: AbortSignal
 ): Promise<CatalogModel[]> => {
-  const response = await request(`${normalizeProxyUrl(proxyUrl)}/v1/models`, {
-    cache: "no-store",
-    headers: authHeaders(cookie),
-    signal,
-  });
+  const response = await gatewayFetch(
+    `${normalizeProxyUrl(proxyUrl)}/v1/models`,
+    {
+      cache: "no-store",
+      headers: authHeaders(cookie),
+      signal,
+    }
+  );
   if (!response.ok) {
     throw new Error(await readError(response));
   }
@@ -185,7 +194,7 @@ export const streamChatCompletion = async ({
   proxyUrl,
   signal,
 }: StreamChatParams): Promise<void> => {
-  const response = await request(
+  const response = await gatewayFetch(
     `${normalizeProxyUrl(proxyUrl)}/v1/chat/completions`,
     {
       body: JSON.stringify({ messages, model, stream: true }),

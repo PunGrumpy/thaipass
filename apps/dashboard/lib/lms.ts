@@ -2,7 +2,7 @@
 import { z } from "zod";
 
 import { attempt } from "./attempt";
-import { normalizeProxyUrl } from "./proxy";
+import { gatewayFetch, normalizeProxyUrl } from "./proxy";
 
 /**
  * The proxy types `session_exp` and `achievement` as `unknown` and hands the
@@ -53,24 +53,31 @@ export interface LearningExp {
 /** What `learn` aims at by default, and the only target the LMS surface names. */
 export const MONTHLY_TARGET = 100;
 
+const readLmsError = async (response: Response): Promise<string> => {
+  const raw = await attempt(() => response.json());
+  const body = apiErrorSchema.safeParse(raw.ok ? raw.data : null);
+  return (
+    body.data?.error?.message ??
+    `HTTP ${response.status}: ${response.statusText}`
+  );
+};
+
 export const fetchLearningExp = async (
   proxyUrl: string,
   cookie: string,
   signal?: AbortSignal
 ): Promise<LearningExp> => {
-  const response = await fetch(`${normalizeProxyUrl(proxyUrl)}/v1/lms/exp`, {
-    cache: "no-store",
-    headers: { authorization: `Bearer ${cookie}` },
-    signal,
-  });
+  const response = await gatewayFetch(
+    `${normalizeProxyUrl(proxyUrl)}/v1/lms/exp`,
+    {
+      cache: "no-store",
+      headers: { authorization: `Bearer ${cookie}` },
+      signal,
+    }
+  );
 
   if (!response.ok) {
-    const raw = await attempt(() => response.json());
-    const body = apiErrorSchema.safeParse(raw.ok ? raw.data : null);
-    throw new Error(
-      body.data?.error?.message ??
-        `HTTP ${response.status}: ${response.statusText}`
-    );
+    throw new Error(await readLmsError(response));
   }
 
   const payload = expResponseSchema.parse(await response.json());
