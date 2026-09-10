@@ -141,6 +141,7 @@ Every route the proxy serves:
 | `GET /v1/models` | The account's model catalog | yes |
 | `GET /v1/usage` | The account's credit balance | yes |
 | `GET /v1/lms/exp` | The account's learning EXP | yes |
+| `GET /v1/lms/courses` | The account's course catalogue | yes |
 | `POST /v1/lms/learn` | Learns lessons until a target EXP | yes |
 | `GET /health` | Liveness | no |
 | `GET /` | OpenAPI docs rendered by Scalar, JSON at `/openapi.json` | no |
@@ -293,13 +294,17 @@ curl -s localhost:3001/v1/usage -H "authorization: Bearer $AIPASS_COOKIE"
 
 ## Earn LMS points
 
-AI Pass runs a learning site at `/lms` that pays EXP per completed lesson, and the membership tier wants a monthly minimum. The proxy can do the learning for you, from a command on your machine or from a scheduler through the API.
+AI Pass runs a learning site at `/lms` that pays EXP per completed lesson, and the membership tier wants a monthly minimum. The proxy can do the learning for you, from the dashboard, from a command on your machine, or from a scheduler through the API.
 
 A course mixes four kinds of lesson, and the proxy replays what the lesson page does for each: it watches a **video** by stamping the seconds watched, reads an **attachment** or an **article** by opening it and marking it read, and answers a **quiz** — the pre-test and the post-test — by asking an AI Pass model the questions and submitting the attempt. Videos and the two readings run by default. Quizzes do not: the LMS usually allows one attempt per test and does not give it back, so they wait for `--quiz`.
 
 A run walks the courses the account is enrolled in, and the ones already started come first: a course pays for finishing the course as well as for its lessons, so a half-done course is the cheapest EXP left and finishing it leaves less behind. `--course` narrows the run to the codes you name.
 
 The tier prices each type separately, and the proxy reports what it would earn from that price list: 100 EXP a video, 50 an attachment, 30 an article, 25 a pre-test and 50 a post-test on the account I read it from. What a completed lesson actually paid is the period's own figure before and after.
+
+### From the dashboard
+
+The dashboard's Learning page sets up a run and follows it: pick the courses from the catalogue, set the goal and the playback speed, and watch each lesson complete as it happens. Quizzes are off there too, and turning them on asks for a confirmation before the run starts.
 
 ### On your machine
 
@@ -347,6 +352,15 @@ The reply is one JSON object per line as the run goes: the period's EXP before, 
 | `budget_seconds` | none, 270 on Vercel | End the run before this much wall-clock has passed. The `done` line then has `paused: true`, and the next call resumes from the last stamp |
 
 `GET /v1/lms/exp` returns the session's EXP payload, the tier and the achievement summary as the LMS reports them, with the period's figure as `monthly`.
+
+`GET /v1/lms/courses` returns the catalogue a run can be held to, read in full:
+
+```bash
+curl -s localhost:3001/v1/lms/courses \
+  -H "authorization: Bearer $AIPASS_COOKIE"
+```
+
+Each course carries its `code`, the `title`, `progress`, `started` and `done`, `duration_seconds`, and what it pays: `exp` for the course itself and `bonus_exp` for closing it, both `null` where the LMS names no figure. Courses come back in the order a run works through them, the started first, then the untouched, then the finished.
 
 ### On a schedule
 
