@@ -68,7 +68,7 @@ export const AppSidebar = () => {
                   <Search />
                   <span>{t.navigation.search}</span>
                   {modifier === null ? null : (
-                    <kbd className="bg-muted text-muted-foreground ml-auto rounded-sm border px-1 font-mono text-[11px]">
+                    <kbd className="bg-muted text-muted-foreground ml-auto rounded-sm border px-1 font-mono text-xs">
                       {modifier}K
                     </kbd>
                   )}

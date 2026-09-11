@@ -30,12 +30,12 @@ const DashboardLayout = ({ children }: { readonly children: ReactNode }) => {
         <AppSidebar />
         <SidebarInset className="min-w-0">
           <MobileBar />
-          <div
+          <main
             className="flex min-w-0 flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-10"
             id={CONTENT_ID}
           >
             {children}
-          </div>
+          </main>
         </SidebarInset>
       </SidebarProvider>
     </GatewayProvider>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import Link from "next/link";
 
 import { StatusDot } from "@/components/layout/status-dot";
@@ -33,6 +34,7 @@ const toneOf = (loading: boolean, online: boolean): StatusTone => {
  * app header.
  */
 export const GatewayIdentity = () => {
+  const { locale } = useI18n();
   const { proxyUrl } = useConnection();
   const { data, error, loading, online } = useHealth();
   const tone = toneOf(loading && !data, online);
@@ -44,7 +46,7 @@ export const GatewayIdentity = () => {
         render={
           <Link
             className="hover:bg-sidebar-accent flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left transition-colors group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
-            href="/settings"
+            href={`/${locale}/settings`}
           />
         }
       >
@@ -55,7 +57,7 @@ export const GatewayIdentity = () => {
         <span className="shrink-0 text-xs font-medium group-data-[collapsible=icon]:hidden">
           {LABELS[tone]}
         </span>
-        <span className="text-muted-foreground truncate font-mono text-[11px] group-data-[collapsible=icon]:hidden">
+        <span className="text-muted-foreground truncate font-mono text-xs group-data-[collapsible=icon]:hidden">
           {host}
         </span>
       </TooltipTrigger>

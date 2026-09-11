@@ -36,7 +36,10 @@ export const VendorChip = ({ className, modelId }: VendorChipProps) => {
       )}
     >
       {entry?.mark ?? (
-        <span aria-hidden="true" className="text-[9px] font-medium">
+        <span
+          aria-hidden="true"
+          className="text-[10px] leading-none font-medium"
+        >
           {initialsOf(rule.label)}
         </span>
       )}

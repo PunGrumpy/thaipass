@@ -36,6 +36,7 @@ import { attempt } from "@/lib/attempt";
 import { formatResetAt } from "@/lib/format";
 import { fetchCredits, hasSessionToken, normalizeCookie } from "@/lib/proxy";
 import type { CreditBalance } from "@/lib/proxy";
+import { cn } from "@/lib/utils";
 
 export const SessionCard = () => {
   const { cookie, hasSession, proxyUrl, setCookie } = useConnection();
@@ -107,14 +108,14 @@ export const SessionCard = () => {
     }
     if (isTokenValid) {
       return (
-        <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-          <Check className="size-3 text-emerald-500" />
+        <span className="text-muted-foreground flex items-center gap-1 text-xs">
+          <Check className="text-success size-3" />
           Session token found
         </span>
       );
     }
     return (
-      <span className="text-destructive flex items-center gap-1 text-[11px]">
+      <span className="text-destructive flex items-center gap-1 text-xs">
         <AlertCircle className="size-3" />
         Missing session token
       </span>
@@ -188,9 +189,10 @@ export const SessionCard = () => {
           <HelpCircle className="size-3.5" />
           <span>How to copy cookie in 30 seconds</span>
           <ChevronDown
-            className={`size-3.5 transition-transform duration-200 ${
-              guideOpen ? "rotate-180" : ""
-            }`}
+            className={cn(
+              "size-3.5 transition-transform duration-200",
+              guideOpen && "rotate-180"
+            )}
           />
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-2">
@@ -212,7 +214,7 @@ export const SessionCard = () => {
               </li>
               <li>
                 Open DevTools (
-                <kbd className="bg-background rounded border px-1 py-0.5 font-mono text-[10px]">
+                <kbd className="bg-background rounded border px-1 py-0.5 font-mono text-xs">
                   F12
                 </kbd>{" "}
                 or right-click → Inspect) and switch to the{" "}

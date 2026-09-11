@@ -36,7 +36,7 @@ export const SessionGate = () => {
     <Card>
       <CardContent className="grid gap-6 py-4 md:grid-cols-[1.1fr_1fr] md:items-center">
         <div className="space-y-4">
-          <div className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs">
+          <div className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
             <KeyRound className="size-3.5" />
             No session connected
           </div>
@@ -59,7 +59,7 @@ export const SessionGate = () => {
           </Button>
         </div>
 
-        <div className="bg-muted/40 space-y-3 rounded-xl border p-4">
+        <div className="bg-muted/40 space-y-3 rounded-lg border p-4">
           <div className="flex items-baseline gap-2">
             <span className="text-muted-foreground text-xs font-medium tabular-nums">
               Step {step + 1} of {STEPS.length}
