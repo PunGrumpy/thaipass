@@ -8,6 +8,7 @@ export interface ProxyHealth {
   models: number;
   ok: boolean;
   origin: string;
+  prices?: boolean;
 }
 
 export interface CreditBalance {
@@ -29,11 +30,17 @@ export interface VideoOptions {
   stylePreprompt: boolean;
 }
 
+export interface ModelPricing {
+  completion: number;
+  prompt: number;
+}
+
 export interface CatalogModel {
   free: boolean;
   id: string;
   kind: ModelKind;
   options: VideoOptions | null;
+  pricing?: ModelPricing | null;
   ready: boolean;
   thinking: readonly string[] | null;
 }
@@ -252,12 +259,29 @@ export const fetchCatalog = async (
   return body.data;
 };
 
+export interface CompletionCredits {
+  available: number;
+  limit: number;
+  reset_at: string;
+  spent?: number;
+  used: number;
+}
+
+export interface CompletionUsage {
+  completion_tokens?: number;
+  cost?: number;
+  credits?: CompletionCredits;
+  prompt_tokens?: number;
+  total_tokens?: number;
+}
+
 export interface StreamChatParams {
   cookie: string;
   messages: readonly ChatMessage[];
   model: string;
   onDelta: (delta: string) => void;
   onFirstDelta: () => void;
+  onUsage?: (usage: CompletionUsage) => void;
   proxyUrl: string;
   signal: AbortSignal;
 }
@@ -267,14 +291,13 @@ const DONE = "[DONE]";
 
 interface ChunkBody {
   choices?: { delta?: { content?: string } }[];
+  usage?: CompletionUsage;
 }
 
-const deltaOf = (payload: string): string | undefined => {
+const parseChunk = (payload: string): ChunkBody | undefined => {
   try {
-    // SAFETY: an OpenAI-shaped SSE chunk; every field read below is optional,
-    // so a keep-alive or a tool-call chunk yields no delta.
-    const parsed = JSON.parse(payload) as ChunkBody;
-    return parsed.choices?.[0]?.delta?.content;
+    // SAFETY: an OpenAI-shaped SSE chunk; every field read in choices and usage is optional.
+    return JSON.parse(payload) as ChunkBody;
   } catch {
     return undefined;
   }
@@ -287,6 +310,7 @@ export const streamChatCompletion = async ({
   model,
   onDelta,
   onFirstDelta,
+  onUsage,
   proxyUrl,
   signal,
 }: StreamChatParams): Promise<void> => {
@@ -332,7 +356,11 @@ export const streamChatCompletion = async ({
       if (payload === DONE) {
         continue;
       }
-      const delta = deltaOf(payload);
+      const chunk = parseChunk(payload);
+      if (chunk?.usage && onUsage) {
+        onUsage(chunk.usage);
+      }
+      const delta = chunk?.choices?.[0]?.delta?.content;
       if (delta === undefined || delta === "") {
         continue;
       }

@@ -44,3 +44,31 @@ export const formatDuration = (seconds: number): string => {
   }
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 };
+
+const TOKENS_PER_MILLION = 1_000_000;
+
+/** Formats an estimated turn cost in USD: $0.00, <$0.0001, $0.0014, or $1.25. */
+export const formatUsd = (amount: number): string => {
+  if (amount === 0) {
+    return "$0.00";
+  }
+  if (amount < 0.0001) {
+    return "<$0.0001";
+  }
+  if (amount < 0.01) {
+    return `$${amount.toFixed(4)}`;
+  }
+  return `$${amount.toFixed(2)}`;
+};
+
+/** Formats a per-token dollar rate into a price per 1M tokens: $0.15, $3.00, etc. */
+export const formatRatePerMillion = (perTokenRate: number): string => {
+  const perMillion = perTokenRate * TOKENS_PER_MILLION;
+  if (perMillion === 0) {
+    return "$0.00";
+  }
+  if (perMillion < 0.01) {
+    return `$${perMillion.toFixed(4)}`;
+  }
+  return `$${perMillion.toFixed(2)}`;
+};
