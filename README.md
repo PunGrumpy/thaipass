@@ -407,6 +407,20 @@ On Vercel the function duration bounds a stream, not the proxy's 240s idle timeo
 
 Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, the credit balance, and the credits the reply spent. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
 
+### Cost per caller
+
+Every app pointed at one deployment sends the same account's cookie, so by default the credits they spend arrive under one identity. A caller that names itself in `x-thaipass-app` gets that name on each of its events instead:
+
+```ts
+const anthropic = createAnthropic({
+  authToken: process.env.AIPASS_COOKIE,
+  baseURL: "https://your_deployment_here/v1",
+  headers: { "x-thaipass-app": "baymi" },
+});
+```
+
+With PostHog on, `sum(creditsSpent)` broken down by `app` is what each caller costs, and `model` splits it further. The header is optional and the proxy keeps the first 64 characters of it.
+
 ## Troubleshooting
 
 Find the status the proxy returned:
