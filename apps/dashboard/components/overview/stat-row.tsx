@@ -13,6 +13,35 @@ export interface StatRowProps {
   credits: Resource<CreditBalance>;
 }
 
+interface CatalogBreakdown {
+  chat: number;
+  free: number;
+  priced: number;
+}
+
+const breakdownOf = (models: CatalogResource["models"]): CatalogBreakdown => {
+  let free = 0;
+  let chat = 0;
+  let priced = 0;
+  for (const model of models) {
+    if (model.free) {
+      free += 1;
+    }
+    if (model.kind === "chat") {
+      chat += 1;
+    }
+    if (model.pricing) {
+      priced += 1;
+    }
+  }
+  return { chat, free, priced };
+};
+
+const freeFooterOf = (priced: number, chat: number): string =>
+  priced > 0
+    ? `${priced} models priced via OpenRouter`
+    : `${chat} of them answer chat requests`;
+
 export const StatRow = ({ catalog, credits }: StatRowProps) => {
   const balance = credits.data;
   const percent = balance ? formatPercent(balance.used, balance.limit) : null;
@@ -23,16 +52,7 @@ export const StatRow = ({ catalog, credits }: StatRowProps) => {
     balance !== null &&
     (balance.available === 0 || (percent ?? 0) >= LOW_CREDIT_PERCENT);
 
-  let free = 0;
-  let chat = 0;
-  for (const model of catalog.models) {
-    if (model.free) {
-      free += 1;
-    }
-    if (model.kind === "chat") {
-      chat += 1;
-    }
-  }
+  const { chat, free, priced } = breakdownOf(catalog.models);
 
   return (
     <div className="bg-border ring-border grid gap-px overflow-hidden rounded-xl ring-1 sm:grid-cols-2 xl:grid-cols-4">
@@ -65,7 +85,7 @@ export const StatRow = ({ catalog, credits }: StatRowProps) => {
         value={catalog.models.length}
       />
       <StatCard
-        footer={`${chat} of them answer chat requests`}
+        footer={freeFooterOf(priced, chat)}
         label="Free models"
         loading={catalog.loading && catalog.builtin}
         value={free}

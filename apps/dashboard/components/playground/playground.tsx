@@ -21,8 +21,9 @@ import { useConnection } from "@/hooks/use-connection";
 import { useCatalog } from "@/hooks/use-gateway";
 import { attempt } from "@/lib/attempt";
 import { DEFAULT_MODEL } from "@/lib/catalog";
+import { formatUsd } from "@/lib/format";
 import { streamChatCompletion } from "@/lib/proxy";
-import type { ChatMessage } from "@/lib/proxy";
+import type { ChatMessage, CompletionUsage } from "@/lib/proxy";
 
 const MS_PER_SECOND = 1000;
 
@@ -33,6 +34,123 @@ interface Timings {
 }
 
 const NO_TIMINGS: Timings = { started: 0, total: null, ttft: null };
+
+interface PlaygroundStreamMetricsProps {
+  charsPerSecond: number | null;
+  timings: Timings;
+  usage: CompletionUsage | null;
+}
+
+interface UsageMetricsProps {
+  usage: CompletionUsage | null;
+}
+
+const UsageMetrics = ({ usage }: UsageMetricsProps) => {
+  if (!usage) {
+    return null;
+  }
+
+  const { completion_tokens, cost, credits, prompt_tokens, total_tokens } =
+    usage;
+
+  return (
+    <>
+      {Number.isFinite(total_tokens) ? (
+        <Metric
+          hint={`Prompt: ${prompt_tokens?.toLocaleString() ?? "0"} · Completion: ${completion_tokens?.toLocaleString() ?? "0"}`}
+          label="Tokens"
+          unit="tok"
+          value={total_tokens ?? null}
+        />
+      ) : null}
+      {Number.isFinite(credits?.spent) ? (
+        <Metric
+          hint={`Used: ${credits?.used.toLocaleString()} / ${credits?.limit.toLocaleString()}`}
+          label="Credits"
+          unit="credits"
+          value={credits?.spent ?? null}
+        />
+      ) : null}
+      {Number.isFinite(cost) ? (
+        <Metric
+          formatted={formatUsd(cost ?? 0)}
+          hint="Estimated market value based on OpenRouter pricing"
+          label="Cost (est.)"
+          value={cost ?? null}
+        />
+      ) : null}
+    </>
+  );
+};
+
+const PlaygroundStreamMetrics = ({
+  charsPerSecond,
+  timings,
+  usage,
+}: PlaygroundStreamMetricsProps) => (
+  <CardDescription className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
+    <Metric label="First token" unit="ms" value={timings.ttft} />
+    <Metric label="Total" unit="ms" value={timings.total} />
+    <Metric label="Throughput" unit="ch/s" value={charsPerSecond} />
+    <UsageMetrics usage={usage} />
+  </CardDescription>
+);
+
+const buildMessages = (system: string, prompt: string): ChatMessage[] => {
+  const messages: ChatMessage[] = [];
+  const trimmedSystem = system.trim();
+  const trimmedPrompt = prompt.trim();
+  if (trimmedSystem !== "") {
+    messages.push({ content: trimmedSystem, role: "system" });
+  }
+  messages.push({ content: trimmedPrompt, role: "user" });
+  return messages;
+};
+
+interface PlaygroundActionsProps {
+  hasSession: boolean;
+  onAbort: () => void;
+  onClear: () => void;
+  onRun: () => void;
+  outputEmpty: boolean;
+  streaming: boolean;
+}
+
+const PlaygroundActions = ({
+  hasSession,
+  onAbort,
+  onClear,
+  onRun,
+  outputEmpty,
+  streaming,
+}: PlaygroundActionsProps) => (
+  <div className="flex items-center gap-2">
+    {streaming ? (
+      <Button onClick={onAbort} variant="outline">
+        <Square />
+        Stop
+      </Button>
+    ) : (
+      <Button disabled={!hasSession} onClick={onRun}>
+        <Play />
+        Run
+      </Button>
+    )}
+    <Button
+      disabled={outputEmpty || streaming}
+      onClick={onClear}
+      variant="ghost"
+    >
+      <Eraser />
+      Clear
+    </Button>
+    {hasSession ? null : (
+      <span className="text-muted-foreground text-xs">
+        Needs a session cookie
+      </span>
+    )}
+  </div>
+);
 
 export const Playground = ({
   initialModel,
@@ -55,6 +173,7 @@ export const Playground = ({
   const [output, setOutput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [timings, setTimings] = useState<Timings>(NO_TIMINGS);
+  const [usage, setUsage] = useState<CompletionUsage | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
@@ -89,12 +208,9 @@ export const Playground = ({
     setStreaming(true);
     setOutput("");
     setTimings({ ...NO_TIMINGS, started });
+    setUsage(null);
 
-    const messages: ChatMessage[] = [];
-    if (system.trim() !== "") {
-      messages.push({ content: system.trim(), role: "system" });
-    }
-    messages.push({ content: prompt.trim(), role: "user" });
+    const messages = buildMessages(system, prompt);
 
     const outcome = await attempt(() =>
       streamChatCompletion({
@@ -107,6 +223,7 @@ export const Playground = ({
             ...previous,
             ttft: Math.round(performance.now() - started),
           })),
+        onUsage: setUsage,
         proxyUrl,
         signal: controller.signal,
       })
@@ -179,38 +296,18 @@ export const Playground = ({
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            {streaming ? (
-              <Button
-                onClick={() => abortRef.current?.abort()}
-                variant="outline"
-              >
-                <Square />
-                Stop
-              </Button>
-            ) : (
-              <Button disabled={!hasSession} onClick={handleRun}>
-                <Play />
-                Run
-              </Button>
-            )}
-            <Button
-              disabled={output === "" || streaming}
-              onClick={() => {
-                setOutput("");
-                setTimings(NO_TIMINGS);
-              }}
-              variant="ghost"
-            >
-              <Eraser />
-              Clear
-            </Button>
-            {hasSession ? null : (
-              <span className="text-muted-foreground text-xs">
-                Needs a session cookie
-              </span>
-            )}
-          </div>
+          <PlaygroundActions
+            hasSession={hasSession}
+            onAbort={() => abortRef.current?.abort()}
+            onClear={() => {
+              setOutput("");
+              setTimings(NO_TIMINGS);
+              setUsage(null);
+            }}
+            onRun={handleRun}
+            outputEmpty={output === ""}
+            streaming={streaming}
+          />
         </CardContent>
       </Card>
 
@@ -221,11 +318,11 @@ export const Playground = ({
             Stream
             {streaming ? <StatusDot label="Streaming" tone="online" /> : null}
           </CardTitle>
-          <CardDescription className="flex gap-6 pt-1">
-            <Metric label="First token" unit="ms" value={timings.ttft} />
-            <Metric label="Total" unit="ms" value={timings.total} />
-            <Metric label="Throughput" unit="ch/s" value={charsPerSecond} />
-          </CardDescription>
+          <PlaygroundStreamMetrics
+            charsPerSecond={charsPerSecond}
+            timings={timings}
+            usage={usage}
+          />
         </CardHeader>
 
         <CardContent className="flex-1">

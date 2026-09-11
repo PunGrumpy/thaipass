@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useMemo } from "react";
@@ -33,6 +34,7 @@ export const CatalogCard = ({
 }: {
   readonly models: readonly CatalogModel[];
 }) => {
+  const { locale } = useI18n();
   const slices = useMemo(() => {
     const counts = countByKind(models);
     const list: CatalogSlice[] = [];
@@ -49,6 +51,14 @@ export const CatalogCard = ({
     return list;
   }, [models]);
 
+  const pricedCount = useMemo(
+    () =>
+      models.filter(
+        (model) => model.pricing !== null && model.pricing !== undefined
+      ).length,
+    [models]
+  );
+
   return (
     <Card>
       <CardHeader className="border-b">
@@ -59,7 +69,7 @@ export const CatalogCard = ({
         <CardAction>
           <Button
             nativeButton={false}
-            render={<Link href="/models" />}
+            render={<Link href={`/${locale}/models`} />}
             size="sm"
             variant="ghost"
           >
@@ -71,20 +81,31 @@ export const CatalogCard = ({
       <CardContent className="grid items-center gap-4 sm:grid-cols-[160px_1fr]">
         <CatalogChart slices={slices} />
 
-        <ul className="space-y-2">
-          {slices.map((slice) => (
-            <li className="flex items-center gap-2 text-sm" key={slice.kind}>
-              <span
-                className="size-2.5 rounded-[3px]"
-                style={{ background: slice.fill }}
-              />
-              <span className="text-muted-foreground">{slice.label}</span>
-              <span className="ml-auto font-medium tabular-nums">
-                {slice.value}
+        <div className="space-y-3">
+          <ul className="space-y-2">
+            {slices.map((slice) => (
+              <li className="flex items-center gap-2 text-sm" key={slice.kind}>
+                <span
+                  className="size-2.5 rounded-[3px]"
+                  style={{ background: slice.fill }}
+                />
+                <span className="text-muted-foreground">{slice.label}</span>
+                <span className="ml-auto font-medium tabular-nums">
+                  {slice.value}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {pricedCount > 0 ? (
+            <div className="flex items-center justify-between border-t pt-2.5 text-xs">
+              <span className="text-muted-foreground">Market pricing</span>
+              <span className="text-foreground font-medium tabular-nums">
+                {pricedCount} of {models.length} priced
               </span>
-            </li>
-          ))}
-        </ul>
+            </div>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

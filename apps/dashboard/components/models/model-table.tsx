@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import { Check, Copy, Search, TerminalSquare } from "lucide-react";
 import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
@@ -26,6 +27,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { attempt } from "@/lib/attempt";
 import { KIND_LABELS, MODEL_KINDS, vendorOf } from "@/lib/catalog";
+import { formatRatePerMillion } from "@/lib/format";
 import type { CatalogModel, ModelKind } from "@/lib/proxy";
 import { cn } from "@/lib/utils";
 
@@ -80,11 +82,52 @@ const capabilitiesOf = (model: CatalogModel): string[] => {
   return [];
 };
 
+const ModelPriceCell = ({ model }: { readonly model: CatalogModel }) => {
+  if (model.free) {
+    return (
+      <Badge className="border-success/30 text-success" variant="outline">
+        Free ($0)
+      </Badge>
+    );
+  }
+
+  if (model.pricing) {
+    const promptFormatted = formatRatePerMillion(model.pricing.prompt);
+    const completionFormatted = formatRatePerMillion(model.pricing.completion);
+    return (
+      <div
+        className="flex flex-col font-mono text-xs tabular-nums"
+        title={`Prompt: ${promptFormatted} / 1M · Completion: ${completionFormatted} / 1M`}
+      >
+        <span className="sr-only">
+          Input: {promptFormatted} per million tokens, Output:{" "}
+          {completionFormatted} per million tokens
+        </span>
+        <span aria-hidden="true">
+          {promptFormatted}
+          <span className="text-muted-foreground ml-1 font-sans text-xs">
+            in
+          </span>
+        </span>
+        <span aria-hidden="true" className="text-muted-foreground">
+          {completionFormatted}
+          <span className="text-muted-foreground ml-1 font-sans text-xs">
+            out
+          </span>
+        </span>
+      </div>
+    );
+  }
+
+  return <span className="text-muted-foreground/60 text-xs">—</span>;
+};
+
 export const ModelTable = ({
   models,
 }: {
   readonly models: readonly CatalogModel[];
 }) => {
+  const { locale } = useI18n();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [freeOnly, setFreeOnly] = useState(false);
@@ -169,6 +212,9 @@ export const ModelTable = ({
             <TableRow className="bg-muted/40">
               <TableHead>Model</TableHead>
               <TableHead>Kind</TableHead>
+              <TableHead className="hidden sm:table-cell">
+                Pricing / 1M tokens
+              </TableHead>
               <TableHead className="hidden lg:table-cell">
                 Capabilities
               </TableHead>
@@ -179,7 +225,7 @@ export const ModelTable = ({
             {groups.map((group) => (
               <Fragment key={group.vendor}>
                 <TableRow className="hover:bg-muted/40 bg-muted/40">
-                  <TableCell className="py-2" colSpan={4}>
+                  <TableCell className="py-2" colSpan={5}>
                     <div className="flex items-center gap-2">
                       <VendorChip modelId={group.models[0]?.id ?? ""} />
                       <span className="text-xs font-medium">
@@ -206,9 +252,6 @@ export const ModelTable = ({
                           >
                             {model.id}
                           </span>
-                          {model.free ? (
-                            <Badge variant="secondary">free</Badge>
-                          ) : null}
                           {model.ready ? null : (
                             <Badge variant="destructive">unavailable</Badge>
                           )}
@@ -218,6 +261,9 @@ export const ModelTable = ({
                         <Badge variant="outline">
                           {KIND_LABELS[model.kind]}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <ModelPriceCell model={model} />
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
                         <div className="flex flex-wrap gap-1">
@@ -260,7 +306,7 @@ export const ModelTable = ({
                               nativeButton={false}
                               render={
                                 <Link
-                                  href={`/playground?model=${encodeURIComponent(model.id)}`}
+                                  href={`/${locale}/playground?model=${encodeURIComponent(model.id)}`}
                                 />
                               }
                               size="icon-sm"
@@ -281,7 +327,7 @@ export const ModelTable = ({
               <TableRow>
                 <TableCell
                   className="text-muted-foreground py-12 text-center text-sm"
-                  colSpan={4}
+                  colSpan={5}
                 >
                   {query.trim() === ""
                     ? "No model matches these filters."
