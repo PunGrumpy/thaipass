@@ -1,6 +1,7 @@
 import { fetchCatalog } from "@thaipass/core/aipass/catalog";
 import { kindOf, VIDEO_MODELS } from "@thaipass/core/aipass/models";
 import type { VideoModel } from "@thaipass/core/aipass/models";
+import { modelPrices, priceFor } from "@thaipass/core/aipass/pricing";
 import {
   clientIdFromCookie,
   cookieFromRequest,
@@ -26,6 +27,11 @@ const videoOptionsSchema = z.object({
   stylePreprompt: z.boolean(),
 });
 
+export const modelPricingSchema = z.object({
+  completion: z.number(),
+  prompt: z.number(),
+});
+
 export const modelListSchema = z.object({
   data: z.array(
     z.object({
@@ -35,6 +41,7 @@ export const modelListSchema = z.object({
       object: z.literal("model"),
       options: videoOptionsSchema.nullable(),
       owned_by: z.literal("aipass"),
+      pricing: modelPricingSchema.nullable().optional(),
       ready: z.boolean(),
       thinking: z.array(z.string()).readonly().nullable(),
     })
@@ -85,23 +92,32 @@ export const modelRoutes = new Elysia()
       const { cookie } = lookup;
       const clientId = clientIdFromCookie(cookie);
       log.set({ clientId });
-      const catalog = await fetchCatalog(clientId, cookie, request.signal);
+      const [catalog, prices] = await Promise.all([
+        fetchCatalog(clientId, cookie, request.signal),
+        modelPrices(),
+      ]);
       if (!catalog) {
         log.set({ status: 502 });
         return status(502, apiError(NO_CATALOG));
       }
       log.set({ modelCount: catalog.size });
       const listing: ModelList = {
-        data: [...catalog].map(([modelId, entry]) => ({
-          free: entry.free,
-          id: modelId,
-          kind: kindOf(modelId),
-          object: "model" as const,
-          options: optionsOf(modelId),
-          owned_by: "aipass" as const,
-          ready: entry.ready,
-          thinking: entry.thinking,
-        })),
+        data: [...catalog].map(([modelId, entry]) => {
+          const price = prices ? priceFor(modelId, prices) : undefined;
+          return {
+            free: entry.free,
+            id: modelId,
+            kind: kindOf(modelId),
+            object: "model" as const,
+            options: optionsOf(modelId),
+            owned_by: "aipass" as const,
+            pricing: price
+              ? { completion: price.completion, prompt: price.prompt }
+              : null,
+            ready: entry.ready,
+            thinking: entry.thinking,
+          };
+        }),
         object: "list" as const,
       };
       return listing;

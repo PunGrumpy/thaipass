@@ -86,6 +86,7 @@ test("lists what the account's catalog lists, in its order", async () => {
   expect(video?.kind).toBe("video");
   expect(video?.options?.resolutions).toEqual(["480p", "720p"]);
   expect(image).toMatchObject({ kind: "image", options: null });
+  expect("pricing" in (claude ?? {})).toBe(true);
 });
 
 test("leaves out a model the proxy knows but the catalog no longer lists", async () => {
