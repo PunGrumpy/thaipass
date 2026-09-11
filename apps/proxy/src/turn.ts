@@ -6,6 +6,8 @@ import { fetchIdentity } from "@thaipass/core/aipass/identity";
 import type { Identity } from "@thaipass/core/aipass/identity";
 import { InlineError } from "@thaipass/core/aipass/inline";
 import { renderAsset } from "@thaipass/core/aipass/media";
+import { costOf, modelPrices } from "@thaipass/core/aipass/pricing";
+import type { PriceTable } from "@thaipass/core/aipass/pricing";
 import { fetchCredits, settleCredits } from "@thaipass/core/aipass/quotas";
 import type { CreditUsage, Credits } from "@thaipass/core/aipass/quotas";
 import {
@@ -54,6 +56,8 @@ export interface Failure {
 
 export interface Reply {
   readonly calls: readonly ToolCall[];
+  /** List-price dollars for the tokens, when OpenRouter prices the model. */
+  readonly cost?: number;
   readonly credits?: CreditUsage;
   readonly finishReason: string;
   readonly inputTokens: number;
@@ -69,7 +73,8 @@ export interface StreamWire {
   readonly close: (
     finishReason: string,
     outputTokens: number,
-    credits?: CreditUsage
+    credits?: CreditUsage,
+    cost?: number
   ) => string;
 }
 
@@ -118,10 +123,25 @@ const failUpstream = (
   return wire.fail({ message, status: 502 });
 };
 
+/**
+ * The turn in dollars, for a client that reports money and cannot read
+ * credits. Nothing waits on it: a price table that is cold or a model
+ * OpenRouter does not list simply leaves the figure out.
+ */
+const costFor = async (
+  facts: UpstreamFacts,
+  model: string,
+  inputTokens: number,
+  outputTokens: number
+): Promise<number | undefined> =>
+  costOf(model, { inputTokens, outputTokens }, await facts.prices);
+
 interface UpstreamFacts {
   readonly credits: Promise<Credits | null>;
   readonly catalog: Promise<Catalog | null>;
   readonly identity: Promise<Identity | null>;
+  /** Started with the turn, so a cold price table costs the reply nothing. */
+  readonly prices: Promise<PriceTable | null>;
 }
 
 const recordUpstream = async (
@@ -258,10 +278,18 @@ const streamCompletion = (
           settleCredits(cookie, facts.credits),
           deleteConversation(cookie, conversationId),
         ]);
-        send(frames.close(finishReasonOf(tally), replyTokens(tally), usage));
+        const outputTokens = replyTokens(tally);
+        const cost = await costFor(
+          facts,
+          model,
+          completion.inputTokens,
+          outputTokens
+        );
+        send(frames.close(finishReasonOf(tally), outputTokens, usage, cost));
         log.set({
           ...tallyFields(tally),
           clientAborted: !out.isOpen(),
+          costUsd: cost,
           creditsSpent: usage?.spent,
           status: out.isOpen() ? 200 : CLIENT_CLOSED_STATUS,
         });
@@ -322,7 +350,14 @@ const bufferedCompletion = async (completion: Completion): Promise<Attempt> => {
     log.set(tallyFields(tally));
   }
   const { after, usage } = await settleCredits(cookie, facts.credits);
-  log.set({ creditsSpent: usage?.spent });
+  const outputTokens = replyTokens(tally);
+  const cost = await costFor(
+    facts,
+    model,
+    completion.inputTokens,
+    outputTokens
+  );
+  log.set({ costUsd: cost, creditsSpent: usage?.spent });
   await recordUpstream(facts, model, log, after);
   if (isAbandonedToolCall(tally)) {
     return {
@@ -333,10 +368,11 @@ const bufferedCompletion = async (completion: Completion): Promise<Attempt> => {
   return {
     response: wire.reply({
       calls,
+      cost,
       credits: usage,
       finishReason: finishReasonOf(tally),
       inputTokens: completion.inputTokens,
-      outputTokens: replyTokens(tally),
+      outputTokens,
       text,
     }),
     retry: false,
@@ -451,6 +487,7 @@ const runTurn = async (
     catalog: fetchCatalog(clientId, cookie, signal),
     credits: fetchCredits(cookie, signal),
     identity: fetchIdentity(clientId, cookie, signal),
+    prices: modelPrices(),
   };
   log.set({
     completionId: wire.id,

@@ -34,6 +34,7 @@ const functionCallItemSchema = z.object({
 const outputItemSchema = z.union([messageItemSchema, functionCallItemSchema]);
 
 const usageSchema = z.object({
+  cost: z.number().optional(),
   credits: creditUsageSchema.optional(),
   input_tokens: z.number().int(),
   output_tokens: z.number().int(),
@@ -153,8 +154,10 @@ const finishOf = (finishReason: string): Finish => {
 const usage = (
   inputTokens: number,
   outputTokens: number,
-  credits: CreditUsage | undefined
+  credits: CreditUsage | undefined,
+  cost: number | undefined
 ): Usage => ({
+  cost,
   credits,
   input_tokens: inputTokens,
   output_tokens: outputTokens,
@@ -356,7 +359,7 @@ const streamWire = (
         })
       );
     },
-    close: (finishReason, outputTokens, credits) => {
+    close: (finishReason, outputTokens, credits, cost) => {
       const closed = closeText();
       const { reason, status } = finishOf(finishReason);
       return (
@@ -365,7 +368,7 @@ const streamWire = (
           "response.completed",
           status,
           reason,
-          usage(inputTokens, outputTokens, credits)
+          usage(inputTokens, outputTokens, credits, cost)
         )
       );
     },
@@ -411,7 +414,12 @@ const buffered = (
     output,
     reason,
     status,
-    usage: usage(reply.inputTokens, reply.outputTokens, reply.credits),
+    usage: usage(
+      reply.inputTokens,
+      reply.outputTokens,
+      reply.credits,
+      reply.cost
+    ),
   });
 };
 

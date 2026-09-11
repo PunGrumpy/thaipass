@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 
+import { configure, DEFAULT_PRICES_URL } from "@thaipass/core/lib/config";
 import {
   CONFIRM_PATH,
   CREATE_PATH,
@@ -82,10 +83,26 @@ const creditsSchema = z.object({
 
 const usageSchema = z.object({
   usage: z.object({
+    cost: z.number().optional(),
     credits: creditsSchema.optional(),
     total_tokens: z.number(),
   }),
 });
+
+const PRICES_URL = "https://prices.test/models";
+
+/** Dollars per token, high enough that one short turn rounds to a figure. */
+const pricesResponse = (path: string): Response | undefined =>
+  path === PRICES_URL
+    ? Response.json({
+        data: [
+          {
+            id: "google/gemini-3.1-flash-lite",
+            pricing: { completion: "0.002", prompt: "0.001" },
+          },
+        ],
+      })
+    : undefined;
 
 const CREDIT_LIMIT = 10_000;
 const USED_BEFORE = 100;
@@ -728,4 +745,30 @@ test("leaves credits out of usage when AI Pass reports none", async () => {
   const response = await app.fetch(chatRequest(false));
   const { usage } = usageSchema.parse(await response.json());
   expect(usage.credits).toBeUndefined();
+});
+
+test("reports what the tokens would cost at list price", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)), pricesResponse);
+  configure({ pricesUrl: PRICES_URL });
+  try {
+    const response = await app.fetch(chatRequest(false));
+    const { usage } = usageSchema.parse(await response.json());
+    expect(usage.cost).toBeGreaterThan(0);
+  } finally {
+    configure({ pricesUrl: DEFAULT_PRICES_URL });
+  }
+});
+
+test("leaves the cost out for a model the price list does not carry", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)), pricesResponse);
+  configure({ pricesUrl: PRICES_URL });
+  try {
+    const response = await app.fetch(
+      chatRequest(false, { model: "sonar" }, freshCookie())
+    );
+    const { usage } = usageSchema.parse(await response.json());
+    expect(usage.cost).toBeUndefined();
+  } finally {
+    configure({ pricesUrl: DEFAULT_PRICES_URL });
+  }
 });
