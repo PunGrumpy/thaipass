@@ -1,5 +1,6 @@
 import { createEnv } from "@t3-oss/env-core";
 import { keys as core } from "@thaipass/core/keys";
+import { DEFAULT_PRICES_URL } from "@thaipass/core/lib/config";
 import { log } from "evlog";
 import { z } from "zod";
 
@@ -25,6 +26,9 @@ export const env = createEnv({
     AIPASS_HOST: z.string().default("127.0.0.1"),
     AIPASS_ORIGIN: z.url().default("https://de.aipass.net"),
     AIPASS_PORT: z.coerce.number().int().positive().default(3001),
+    AIPASS_PRICES: z
+      .union([z.url(), z.literal("off")])
+      .default(DEFAULT_PRICES_URL),
     POSTHOG_API_KEY: z.string().startsWith("phc_").optional(),
     POSTHOG_HOST: z.url().optional().default("https://us.i.posthog.com"),
     VERCEL: z.string().optional(),

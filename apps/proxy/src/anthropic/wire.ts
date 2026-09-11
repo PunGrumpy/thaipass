@@ -16,12 +16,14 @@ const toolUseBlockSchema = z.object({
 });
 
 const usageSchema = z.object({
+  cost: z.number().optional(),
   credits: creditUsageSchema.optional(),
   input_tokens: z.number().int(),
   output_tokens: z.number().int(),
 });
 
 const deltaUsageSchema = z.object({
+  cost: z.number().optional(),
   credits: creditUsageSchema.optional(),
   output_tokens: z.number().int(),
 });
@@ -154,12 +156,12 @@ const streamWire = (
         frame({ index, type: "content_block_stop" })
       );
     },
-    close: (finishReason, outputTokens, credits) =>
+    close: (finishReason, outputTokens, credits, cost) =>
       closeText() +
       frame({
         delta: { stop_reason: toStopReason(finishReason), stop_sequence: null },
         type: "message_delta",
-        usage: { credits, output_tokens: outputTokens },
+        usage: { cost, credits, output_tokens: outputTokens },
       }) +
       frame({ type: "message_stop" }),
     open: () =>
@@ -200,6 +202,7 @@ const reply = (id: string, model: string, value: Reply): Message => {
   }
   content.push(...value.calls.map(toolUse));
   return message(id, model, content, toStopReason(value.finishReason), {
+    cost: value.cost,
     credits: value.credits,
     input_tokens: value.inputTokens,
     output_tokens: value.outputTokens,

@@ -16,6 +16,7 @@ const toolCallSchema = z.object({
 
 const usageSchema = z.object({
   completion_tokens: z.number().int(),
+  cost: z.number().optional(),
   credits: creditUsageSchema.optional(),
   prompt_tokens: z.number().int(),
   total_tokens: z.number().int(),
@@ -86,9 +87,11 @@ const toFinishReason = (reason: string): string =>
 const usage = (
   inputTokens: number,
   outputTokens: number,
-  credits: CreditUsage | undefined
+  credits: CreditUsage | undefined,
+  cost: number | undefined
 ): Usage => ({
   completion_tokens: outputTokens,
+  cost,
   credits,
   prompt_tokens: inputTokens,
   total_tokens: inputTokens + outputTokens,
@@ -147,7 +150,12 @@ const chatCompletion = (
   id,
   model,
   object: "chat.completion",
-  usage: usage(reply.inputTokens, reply.outputTokens, reply.credits),
+  usage: usage(
+    reply.inputTokens,
+    reply.outputTokens,
+    reply.credits,
+    reply.cost
+  ),
 });
 
 /** Every chunk of one stream carries the same id and `created` second. */
@@ -172,8 +180,8 @@ export const openaiWire = (model: string): Wire => {
         index += 1;
         return frame;
       },
-      close: (finishReason, outputTokens, credits) =>
-        `${chunk({}, toFinishReason(finishReason), usage(inputTokens, outputTokens, credits))}${DONE_FRAME}`,
+      close: (finishReason, outputTokens, credits, cost) =>
+        `${chunk({}, toFinishReason(finishReason), usage(inputTokens, outputTokens, credits, cost))}${DONE_FRAME}`,
       open: () => chunk({ role: "assistant" }, null),
       text: (delta) => chunk({ content: delta }, null),
     };

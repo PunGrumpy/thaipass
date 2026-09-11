@@ -155,6 +155,7 @@ Every setting has a default, so the proxy runs with no `.env`:
 | `AIPASS_ORIGIN` | `https://de.aipass.net` | Upstream origin |
 | `AIPASS_HOST` | `127.0.0.1` | Bind address, local only |
 | `AIPASS_PORT` | `3001` | Port, local only |
+| `AIPASS_PRICES` | OpenRouter's model list | Where per-token prices come from, `off` for none |
 | `POSTHOG_API_KEY` | none | Project token (`phc_…`), enables PostHog |
 | `POSTHOG_HOST` | `https://us.i.posthog.com` | PostHog ingestion host |
 
@@ -267,6 +268,7 @@ AI Pass meters in credits per period, not tokens, and reports no token counts. E
     "prompt_tokens": 25001,
     "completion_tokens": 12,
     "total_tokens": 25013,
+    "cost": 0.014354,
     "credits": {
       "spent": 30.25,
       "used": 130.25,
@@ -283,6 +285,12 @@ AI Pass meters in credits per period, not tokens, and reports no token counts. E
 - **OpenAI stream**: the final chunk, the one with `finish_reason`
 - **Anthropic stream**: the `message_delta` event
 - **AI SDK provider**: `providerMetadata.aipass.credits`
+
+### Cost in dollars
+
+Credits are the exact figure and they are the one to watch, but a client that reports money has nothing upstream to read: AI Pass publishes no per-token price. `usage.cost` fills that gap. The proxy reads [OpenRouter's model list](https://openrouter.ai/api/v1/models), matches the model to the same weights priced elsewhere, and multiplies by the tokens it estimated. It is an estimate twice over and no invoice, but it is a number a dashboard built for dollars can chart.
+
+The list is read once per turn from a table cached for twelve hours, and the read starts with the turn, so a cold table costs the reply nothing. A model OpenRouter does not list, a list that is down, or `AIPASS_PRICES=off` all mean the same thing: no `cost` in `usage`, everything else unchanged. Each request also logs the figure as `costUsd` next to `creditsSpent`.
 
 Token counts are an estimate, not a tokeniser's output. The proxy counts about four characters per token for ASCII and one and a half for Thai and other non-Latin scripts. It counts the flattened prompt it sends, which includes the tool guide and the role labels. `POST /v1/messages/count_tokens` returns the same estimate without sending the prompt, so a client that manages its own context window has something to read.
 
@@ -405,7 +413,7 @@ On Vercel the function duration bounds a stream, not the proxy's 240s idle timeo
 
 ## Logging
 
-Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, the credit balance, and the credits the reply spent. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
+Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, the credit balance, the credits the reply spent, and its cost in dollars. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
 
 ### Cost per caller
 
