@@ -178,6 +178,11 @@ const round = (value: number): number => {
   return Math.round(value * scale) / scale;
 };
 
+export const priceFor = (
+  model: string,
+  table: PriceTable | null
+): ModelPrice | undefined => table?.get(keyOf(model));
+
 /**
  * What the turn's tokens would cost at OpenRouter's list price, or nothing
  * for a model OpenRouter does not list. The token counts are the proxy's own
@@ -188,7 +193,7 @@ export const costOf = (
   spend: TokenSpend,
   table: PriceTable | null
 ): number | undefined => {
-  const price = table?.get(keyOf(model));
+  const price = priceFor(model, table);
   if (!price) {
     return;
   }

@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 
 import { configure, DEFAULT_PRICES_URL } from "../lib/config";
-import { costOf, modelPrices, priceTable } from "./pricing";
+import { costOf, modelPrices, priceFor, priceTable } from "./pricing";
 
 const LIST = {
   data: [
@@ -60,6 +60,16 @@ test("matches a model whatever suffix AI Pass gives it", () => {
       table
     )
   ).toBe(0.4);
+});
+
+test("looks up prompt and completion prices for a model", () => {
+  expect(priceFor("claude-sonnet-5@default", table)).toEqual({
+    completion: 0.000015,
+    prompt: 0.000003,
+    source: "anthropic/claude-sonnet-5",
+  });
+  expect(priceFor("unlisted-model", table)).toBeUndefined();
+  expect(priceFor("claude-sonnet-5", null)).toBeUndefined();
 });
 
 test("prefers the plain id over a priced variant", () => {
