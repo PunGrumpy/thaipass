@@ -14,6 +14,10 @@ import {
   EDGE_REFUSAL_CLIENT_STATUS,
   EDGE_REFUSAL_HINT,
   isEdgeRefusal,
+  refusalDetail,
+  refusedPatternsIn,
+  wantsWithholding,
+  withholdRefused,
 } from "@thaipass/core/aipass/refusal";
 import {
   clientIdFromCookie,
@@ -168,11 +172,15 @@ const recordUpstream = async (
   }
 };
 
-const hintFor = (staleCookie: boolean, edgeRefused: boolean): string => {
+const hintFor = (
+  staleCookie: boolean,
+  edgeRefused: boolean,
+  refused: readonly string[]
+): string => {
   if (staleCookie) {
     return "; cookie is stale, re-auth needed";
   }
-  return edgeRefused ? EDGE_REFUSAL_HINT : "";
+  return edgeRefused ? EDGE_REFUSAL_HINT + refusalDetail(refused) : "";
 };
 
 const upstreamError = async (
@@ -180,7 +188,8 @@ const upstreamError = async (
   cookie: string,
   response: Response,
   conversation: { readonly id: string; readonly created: boolean },
-  log: RequestLogger
+  log: RequestLogger,
+  refused: readonly string[]
 ): Promise<Response> => {
   const contentType = response.headers.get("content-type") ?? "";
   const location = response.headers.get("location");
@@ -194,7 +203,7 @@ const upstreamError = async (
     (location ?? "").includes("sign-in");
   const edgeRefused = isEdgeRefusal(response.status);
   const status = edgeRefused ? EDGE_REFUSAL_CLIENT_STATUS : 502;
-  const hint = hintFor(staleCookie, edgeRefused);
+  const hint = hintFor(staleCookie, edgeRefused, refused);
   log.set({
     edgeRefused,
     staleCookie,
@@ -430,7 +439,8 @@ const openAttempt = async (send: Send): Promise<Completion | Response> => {
       cookie,
       upstream,
       { created, id: conversationId },
-      log
+      log,
+      refusedPatternsIn(prepared.prompt)
     );
   }
 
@@ -520,6 +530,13 @@ const runTurn = async (
       error instanceof InlineError ? error.message : String(error);
     log.set({ status: 400 });
     return wire.fail({ message, status: 400 });
+  }
+  if (wantsWithholding(request.headers)) {
+    const held = withholdRefused(prepared.prompt);
+    if (held.withheld > 0) {
+      prepared = { ...prepared, prompt: held.text };
+      log.set({ withheld: held.withheld });
+    }
   }
   const { inputTokens, prompt, sendOptions } = prepared;
   log.set({
