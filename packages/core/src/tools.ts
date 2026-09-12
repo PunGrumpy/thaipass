@@ -96,9 +96,57 @@ const heldLength = (tail: string): number => {
   return 0;
 };
 
+const UNFENCED_LIMIT = 4096;
+
+const objectEnd = (value: string, from: number): number => {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = from; index < value.length; index += 1) {
+    const char = value[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+    } else if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return index + 1;
+      }
+    }
+  }
+  return -1;
+};
+
 /**
  * Text is released as soon as it can no longer open a fence. A fence that
  * never closes, or holds no call to an offered tool, is released as text.
+ *
+ * A reply that opens with the call object and no fence is read as a call
+ * anyway. Some models write the body the guide asks for and drop the fence
+ * around it, and the reply then arrives as prose with `stop`: observed as
+ * `{"name":"load_skill","input":{…}}I can begin once the load_skill tool
+ * result is available.` The caller sees a finished answer that narrates a
+ * call nobody ran, which is worse than an error, and the retry in
+ * `reply.ts` cannot see it either, since that waits for a `tool-calls`
+ * finish reason. Recovering it here serves a streaming caller too, which
+ * cannot be retried at all.
+ *
+ * The rule is deliberately the narrowest one that covers what was observed:
+ * the object must be the first thing in the reply, it must parse, and it
+ * must name a tool the caller offered — the same bar a fenced block passes.
+ * Prose that quotes a call later on is left alone, which matters when the
+ * caller is reviewing code and may quote one on purpose.
  */
 export const splitReply = (tools: readonly ToolDefinition[]): ReplySplitter => {
   if (tools.length === 0) {
@@ -107,6 +155,7 @@ export const splitReply = (tools: readonly ToolDefinition[]): ReplySplitter => {
   const names = new Set(tools.map((tool) => tool.name));
   let buffer = "";
   let inBlock = false;
+  let opening = true;
 
   /** Ends the open block; `fence` is what closed it, nothing when the reply ran out first. */
   const closeBlock = (json: string, fence: string): ReplyPart[] => {
@@ -117,9 +166,40 @@ export const splitReply = (tools: readonly ToolDefinition[]): ReplySplitter => {
       : text(`${FENCE_OPEN}${json}${fence}`);
   };
 
+  const openingCall = (final: boolean): ToolCall | "hold" | undefined => {
+    const start = buffer.length - buffer.trimStart().length;
+    if (buffer[start] !== "{") {
+      // Leading whitespace alone decides nothing; anything else does.
+      return buffer.trim().length === 0 && !final ? "hold" : undefined;
+    }
+    const end = objectEnd(buffer, start);
+    if (end === -1) {
+      return !final && buffer.length - start < UNFENCED_LIMIT
+        ? "hold"
+        : undefined;
+    }
+    const call = parseCall(buffer.slice(start, end), names);
+    if (call === undefined) {
+      return undefined;
+    }
+    buffer = buffer.slice(end);
+    return call;
+  };
+
   const drain = (final: boolean): ReplyPart[] => {
     const parts: ReplyPart[] = [];
     for (;;) {
+      if (opening && !inBlock) {
+        const found = openingCall(final);
+        if (found === "hold") {
+          return parts;
+        }
+        opening = false;
+        if (found !== undefined) {
+          parts.push({ call: found, type: "call" });
+          continue;
+        }
+      }
       if (inBlock) {
         const end = buffer.indexOf(FENCE_CLOSE);
         if (end === -1) {

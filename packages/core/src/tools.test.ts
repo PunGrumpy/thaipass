@@ -110,3 +110,70 @@ test("describes every tool and the fence in the guide", () => {
   expect(guide).toContain("- get_weather: Reads the weather.");
   expect(guide).toContain('- get_time\n  input schema: {"type":"object"}');
 });
+
+test("reads a call the model wrote without the fence", () => {
+  const parts = splitAll([
+    '{"name":"get_weather","input":{"city":"Bangkok"}}I can begin once the get_weather tool result is available.',
+  ]);
+  expect(callsOf(parts)).toEqual([
+    { input: { city: "Bangkok" }, name: "get_weather" },
+  ]);
+  expect(textOf(parts)).toBe(
+    "I can begin once the get_weather tool result is available."
+  );
+});
+
+test("reassembles an unfenced call arriving across deltas", () => {
+  const parts = splitAll([
+    '{"name":"get_',
+    'weather","input":{"city":"',
+    'Bangkok"}}',
+  ]);
+  expect(callsOf(parts)).toEqual([
+    { input: { city: "Bangkok" }, name: "get_weather" },
+  ]);
+});
+
+test("reads an unfenced call that opens after a newline", () => {
+  const parts = splitAll(['\n{"name":"get_weather","input":{}}']);
+  expect(callsOf(parts)).toEqual([{ input: {}, name: "get_weather" }]);
+});
+
+test("leaves a quoted call later in the reply as text", () => {
+  const quoted =
+    'The diff shows a prompt that can make the agent emit {"name":"get_weather","input":{}} on its own.';
+  const parts = splitAll([quoted]);
+  expect(callsOf(parts)).toEqual([]);
+  expect(textOf(parts)).toBe(quoted);
+});
+
+test("leaves an opening object that names no offered tool as text", () => {
+  const parts = splitAll(['{"name":"rm_rf","input":{}} and then some prose']);
+  expect(callsOf(parts)).toEqual([]);
+  expect(textOf(parts)).toBe('{"name":"rm_rf","input":{}} and then some prose');
+});
+
+test("leaves an opening object that is not a call as text", () => {
+  const parts = splitAll(['{"total":3} rows matched']);
+  expect(callsOf(parts)).toEqual([]);
+  expect(textOf(parts)).toBe('{"total":3} rows matched');
+});
+
+test("does not mistake a brace inside a string for the end of the call", () => {
+  const parts = splitAll(['{"name":"get_weather","input":{"city":"} {"}}']);
+  expect(callsOf(parts)).toEqual([
+    { input: { city: "} {" }, name: "get_weather" },
+  ]);
+});
+
+test("releases an opening object that never closes", () => {
+  const parts = splitAll(['{"name":"get_weather"']);
+  expect(callsOf(parts)).toEqual([]);
+  expect(textOf(parts)).toBe('{"name":"get_weather"');
+});
+
+test("still opens a fenced block that starts the reply", () => {
+  const parts = splitAll([block('{"name":"get_weather","input":{}}')]);
+  expect(callsOf(parts)).toEqual([{ input: {}, name: "get_weather" }]);
+  expect(textOf(parts)).toBe("");
+});
