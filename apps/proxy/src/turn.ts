@@ -230,6 +230,7 @@ const tallyFields = (tally: ReplyTally) => ({
   reasoningChars: tally.reasoningChars,
   replyChars: tally.chars,
   replyTokens: replyTokens(tally),
+  switchedModel: tally.switchedModel,
   toolCalls: tally.calls,
   undecodedEvents: tally.skips.count,
   undecodedTypes: [...tally.skips.types].join(","),

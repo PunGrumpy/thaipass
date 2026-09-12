@@ -78,6 +78,7 @@ export interface ReplyTally {
   reasoningChars: number;
   readonly reply: CharCount;
   readonly skips: SSESkips;
+  switchedModel: string | undefined;
 }
 
 export interface ReplyReader {
@@ -127,6 +128,7 @@ export const readReply = (options: ReadReplyOptions): ReplyReader => {
     reasoningChars: 0,
     reply: newCharCount(),
     skips: { count: 0, types: new Set() },
+    switchedModel: undefined,
   };
   const splitter = splitReply(tools);
 
@@ -155,6 +157,8 @@ export const readReply = (options: ReadReplyOptions): ReplyReader => {
       } else if (event.kind === "reasoning") {
         tally.reasoningChars += event.text.length;
         yield { kind: "reasoning", text: event.text };
+      } else if (event.kind === "switch") {
+        tally.switchedModel = event.detail;
       } else if (event.kind === "file") {
         const asset = await resolveAsset(cookie, event.file, signal);
         if (asset) {

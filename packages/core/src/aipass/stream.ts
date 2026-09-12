@@ -25,6 +25,7 @@ export interface AipassMessage {
 export type StreamEvent =
   | { readonly kind: "delta"; readonly text: string }
   | { readonly kind: "reasoning"; readonly text: string }
+  | { readonly kind: "switch"; readonly detail: string }
   | { readonly kind: "file"; readonly file: FileEvent }
   | { readonly kind: "finish"; readonly reason: string }
   | {
@@ -54,9 +55,33 @@ const toolErrorSchema = <Type extends string>(type: Type) =>
     type: z.literal(type),
   });
 
+const SWITCH_DETAIL_LIMIT = 120;
+
+const namedModelSchema = z.object({
+  model: optionalText,
+  modelId: optionalText,
+  to: optionalText,
+});
+
+/** The payload is undocumented, so an unnamed one is kept verbatim for the first production sample to show. */
+const switchDetailSchema = z.unknown().transform((data): string => {
+  const named = namedModelSchema.safeParse(data);
+  if (named.success) {
+    const found = named.data.modelId ?? named.data.model ?? named.data.to;
+    if (found !== undefined && found.length > 0) {
+      return found;
+    }
+  }
+  return JSON.stringify(data ?? null).slice(0, SWITCH_DETAIL_LIMIT);
+});
+
 const upstreamEventSchema = z.discriminatedUnion("type", [
   z.object({ delta: z.string(), type: z.literal("text-delta") }),
   z.object({ delta: z.string(), type: z.literal("reasoning-delta") }),
+  z.object({
+    data: switchDetailSchema,
+    type: z.literal("data-model_switched"),
+  }),
   fileFrameSchema,
   z.object({ finishReason: optionalText, type: z.literal("finish") }),
   toolErrorSchema("tool-input-error"),
@@ -112,6 +137,10 @@ export const parseAipassSSE = async function* parseAipassSSE(
       }
       case "reasoning-delta": {
         yield { kind: "reasoning", text: event.delta };
+        break;
+      }
+      case "data-model_switched": {
+        yield { detail: event.data, kind: "switch" };
         break;
       }
       case "file": {
