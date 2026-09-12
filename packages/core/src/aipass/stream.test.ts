@@ -153,3 +153,47 @@ test("parses without a skip collector", async () => {
   ]);
   expect(events).toEqual([{ kind: "delta", text: "hi" }]);
 });
+
+test("reads the switched model from a named field", async () => {
+  const events = await collect([
+    '{"type":"data-model_switched","data":{"modelId":"claude-sonnet-5"}}',
+  ]);
+  expect(events).toEqual([{ detail: "claude-sonnet-5", kind: "switch" }]);
+});
+
+test("prefers modelId, then model, then to", async () => {
+  const events = await collect([
+    '{"type":"data-model_switched","data":{"to":"c","model":"b","modelId":"a"}}',
+    '{"type":"data-model_switched","data":{"to":"c","model":"b"}}',
+    '{"type":"data-model_switched","data":{"to":"c"}}',
+  ]);
+  expect(
+    events.map((event) => event.kind === "switch" && event.detail)
+  ).toEqual(["a", "b", "c"]);
+});
+
+test("keeps an unrecognized switch payload verbatim", async () => {
+  const events = await collect([
+    '{"type":"data-model_switched","data":{"reason":"capacity","next":"x"}}',
+  ]);
+  expect(events).toEqual([
+    { detail: '{"reason":"capacity","next":"x"}', kind: "switch" },
+  ]);
+});
+
+test("keeps a switch payload that is not an object", async () => {
+  const events = await collect([
+    '{"type":"data-model_switched","data":"gemini-3.1"}',
+  ]);
+  expect(events).toEqual([{ detail: '"gemini-3.1"', kind: "switch" }]);
+});
+
+test("a switch frame is decoded, so it is no longer counted as skipped", async () => {
+  const skips = newSkips();
+  await collect(
+    ['{"type":"data-model_switched","data":{"modelId":"x"}}'],
+    skips
+  );
+  expect(skips.count).toBe(0);
+  expect([...skips.types]).toEqual([]);
+});

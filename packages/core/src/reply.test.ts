@@ -106,3 +106,17 @@ test("resolves a generated file into an asset without counting it as text", asyn
   expect(tally.files).toBe(1);
   expect(tally.chars).toBe(0);
 });
+
+test("records the switched model on the tally without yielding an event", async () => {
+  const { events, tally } = await readAll([
+    '{"type":"data-model_switched","data":{"modelId":"claude-sonnet-5"}}',
+    delta("hello"),
+  ]);
+  expect(events.map((event) => event.kind)).toEqual(["text"]);
+  expect(tally.switchedModel).toBe("claude-sonnet-5");
+});
+
+test("leaves the switched model unset when upstream sends no switch", async () => {
+  const { tally } = await readAll([delta("hello")]);
+  expect(tally.switchedModel).toBeUndefined();
+});
