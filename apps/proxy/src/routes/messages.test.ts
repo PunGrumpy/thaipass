@@ -169,6 +169,55 @@ test("returns a tool call as a tool_use block", async () => {
   });
 });
 
+test("recovers a tool call the model wrote without the fence", async () => {
+  const unfenced =
+    '{"name":"get_weather","input":{"city":"Bangkok"}}I can begin once the get_weather tool result is available.';
+  upstream = stubUpstream(
+    sseResponse([`{"type":"text-delta","delta":${JSON.stringify(unfenced)}}`])
+  );
+  const response = await app.fetch(messagesRequest({ tools: [WEATHER] }));
+  const body = messageSchema.parse(await response.json());
+  expect(body.stop_reason).toBe("tool_use");
+  expect(body.content[0]).toEqual({
+    text: "I can begin once the get_weather tool result is available.",
+    type: "text",
+  });
+  expect(body.content[1]).toMatchObject({
+    input: { city: "Bangkok" },
+    name: "get_weather",
+    type: "tool_use",
+  });
+});
+
+test("streams a recovered unfenced tool call as a tool_use block", async () => {
+  const call = '{"name":"get_weather","input":{"city":"Bangkok"}}';
+  const half = Math.floor(call.length / 2);
+  upstream = stubUpstream(
+    sseResponse([
+      `{"type":"text-delta","delta":${JSON.stringify(call.slice(0, half))}}`,
+      `{"type":"text-delta","delta":${JSON.stringify(call.slice(half))}}`,
+    ])
+  );
+  const response = await app.fetch(
+    messagesRequest({ stream: true, tools: [WEATHER] })
+  );
+  const text = await response.text();
+  expect(text).toContain('"type":"tool_use"');
+  expect(text).toContain('"stop_reason":"tool_use"');
+});
+
+test("leaves an object quoted later in a reply as text", async () => {
+  const quoted =
+    'The diff can make the agent emit {"name":"get_weather","input":{}} by itself.';
+  upstream = stubUpstream(
+    sseResponse([`{"type":"text-delta","delta":${JSON.stringify(quoted)}}`])
+  );
+  const response = await app.fetch(messagesRequest({ tools: [WEATHER] }));
+  const body = messageSchema.parse(await response.json());
+  expect(body.stop_reason).toBe("end_turn");
+  expect(body.content[0]).toEqual({ text: quoted, type: "text" });
+});
+
 test("streams a tool call as its own content block", async () => {
   upstream = stubUpstream(
     sseResponse([
