@@ -26,6 +26,7 @@
         "@sugar-high/react": "^2.3.0",
         "@t3-oss/env-nextjs": "0.13.11",
         "@thaipass/core": "workspace:*",
+        "@thaipass/internationalization": "workspace:*",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "cmdk": "^1.1.1",
@@ -99,6 +100,7 @@
         "react-dom": "19.2.8",
       },
       "devDependencies": {
+        "@types/bun": "1.4.1",
         "@types/node": "^26.5.0",
         "@types/react": "^19",
         "@types/react-dom": "^19",
@@ -107,7 +109,7 @@
     },
     "packages/thaipass": {
       "name": "thaipass",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@ai-sdk/provider": "2.0.3",
         "@ai-sdk/provider-utils": "3.0.36",
