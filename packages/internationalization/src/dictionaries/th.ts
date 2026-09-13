@@ -100,6 +100,7 @@ export const th: Dictionary = {
   },
   overview: {
     balanceError: "ไม่สามารถอ่านยอดยอดคงเหลือได้",
+    balanceErrorHint: "ตรวจสอบว่าเกตเวย์เข้าถึงได้และเซสชันคุกกี้ยังไม่หมดอายุ แล้วกดรีเฟรช",
     catalog: {
       action: "ดูโมเดลทั้งหมด",
       description: "%s โมเดล ครอบคลุมปลายทางแบบแชทและสื่อ",

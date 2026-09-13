@@ -99,6 +99,8 @@ export const en = {
   },
   overview: {
     balanceError: "Could not read the balance",
+    balanceErrorHint:
+      "Check that the gateway is reachable and the session cookie is current, then refresh.",
     catalog: {
       action: "Browse models",
       description: "%s models across chat and media endpoints.",

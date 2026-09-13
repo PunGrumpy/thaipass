@@ -42,7 +42,9 @@ const OverviewPage = () => {
         <Alert variant="destructive">
           <AlertTriangle />
           <AlertTitle>{t.overview.balanceError}</AlertTitle>
-          <AlertDescription>{credits.error}</AlertDescription>
+          <AlertDescription>
+            {credits.error} {t.overview.balanceErrorHint}
+          </AlertDescription>
         </Alert>
       ) : null}
 
