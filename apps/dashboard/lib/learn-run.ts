@@ -1,3 +1,4 @@
+import { formatPlural } from "./format";
 import { MONTHLY_TARGET } from "./lms";
 import type {
   LearnCourseEvent,
@@ -53,6 +54,39 @@ export const DEFAULT_RUN_OPTIONS: RunOptions = {
   pace: 1,
   quiz: false,
   quizModel: DEFAULT_QUIZ_MODEL,
+};
+
+/**
+ * One line of what pressing Start would do, so the settings can stay folded
+ * away and the reader still knows what they are about to run. Only the options
+ * that change the outcome are named; the defaults are left unsaid.
+ */
+export const describeRun = (options: RunOptions): string => {
+  const goal =
+    options.goal === "earn"
+      ? `Earn ${options.amount.toLocaleString()} EXP in this run`
+      : `Learn until the period holds ${options.amount.toLocaleString()} EXP`;
+
+  const parts = [
+    goal,
+    `up to ${options.maxLessons} lessons`,
+    options.courses.length === 0
+      ? "every course"
+      : formatPlural(options.courses.length, "chosen course"),
+  ];
+  if (options.pace !== 1) {
+    parts.push(`${options.pace}× playback`);
+  }
+  if (!options.attachments) {
+    parts.push("no attachments");
+  }
+  if (!options.articles) {
+    parts.push("no articles");
+  }
+  if (options.quiz) {
+    parts.push("answering quizzes");
+  }
+  return parts.join(" · ");
 };
 
 export type RunField = "amount" | "courses" | "maxLessons";

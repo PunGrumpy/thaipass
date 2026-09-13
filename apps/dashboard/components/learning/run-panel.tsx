@@ -25,6 +25,7 @@ import { useCatalog } from "@/hooks/use-gateway";
 import {
   checkRun,
   DEFAULT_RUN_OPTIONS,
+  describeRun,
   MAX_LESSONS,
   PACE_STEPS,
 } from "@/lib/learn-run";
@@ -74,10 +75,29 @@ interface Invalid {
 }
 
 /**
- * The run is the one thing on this page that changes the account, so the two
- * fields that decide how much it does sit in the open and the rest fold away.
- * Quizzes are the only irreversible part and are the only option that asks
- * twice.
+ * The message belongs under the control that failed, not in one place at the
+ * bottom of a form whose fields are folded away.
+ */
+const FieldError = ({
+  field,
+  invalid,
+}: {
+  readonly field: RunField;
+  readonly invalid: Invalid | null;
+}) =>
+  invalid?.field === field ? (
+    <p className="text-destructive text-xs" id={`run-${field}-error`}>
+      {invalid.message}
+    </p>
+  ) : null;
+
+/**
+ * The run is the one thing on this page that changes the account. Its defaults
+ * are a working run on their own, so what the settings add up to is stated in a
+ * line and the fields themselves fold away — Start is one press from the
+ * heading, and reading six controls is a choice rather than a toll. A failed
+ * check opens the panel, since a message under a folded field helps nobody.
+ * Quizzes are the only irreversible part and the only option that asks twice.
  */
 export const RunPanel = ({
   canClear,
@@ -92,6 +112,7 @@ export const RunPanel = ({
   const [options, setOptions] = useState<RunOptions>(DEFAULT_RUN_OPTIONS);
   const [invalid, setInvalid] = useState<Invalid | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const chatModels = models.filter((model) => model.kind === CHAT_KIND);
 
@@ -119,7 +140,7 @@ export const RunPanel = ({
   };
 
   const errorFor = (field: RunField): string | undefined =>
-    invalid?.field === field ? "run-invalid" : undefined;
+    invalid?.field === field ? `run-${field}-error` : undefined;
 
   const startLabel = (): string => {
     if (confirming) {
@@ -147,154 +168,182 @@ export const RunPanel = ({
           submit(false);
         }}
       >
-        <div className="space-y-1.5">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="run-goal">Goal</Label>
-              <Select
-                items={GOAL_ITEMS}
-                onValueChange={(next) => patch({ goal: asGoal(next) })}
-                value={options.goal}
-              >
-                <SelectTrigger className="w-full" id="run-goal">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="target">{GOAL_ITEMS.target}</SelectItem>
-                  <SelectItem value="earn">{GOAL_ITEMS.earn}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        {/* What the current settings add up to, so the form can stay folded and
+            Start is still an informed press rather than a blind one. */}
+        <p className="text-sm">{describeRun(options)}</p>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="run-amount">{AMOUNT_LABELS[options.goal]}</Label>
-              <Input
-                aria-describedby={cn("run-amount-hint", errorFor("amount"))}
-                aria-invalid={invalid?.field === "amount"}
-                className="tabular-nums"
-                id="run-amount"
-                inputMode="numeric"
-                min={1}
-                onChange={(event) =>
-                  patch({ amount: Number(event.target.value) })
-                }
-                step={1}
-                type="number"
-                value={options.amount}
-              />
-            </div>
-          </div>
-
-          {/* The goal and its figure are one decision, so they share one line
-              of explanation instead of leaving a gap beside the select. */}
-          <p className="text-muted-foreground text-xs" id="run-amount-hint">
-            {AMOUNT_HINTS[options.goal]}
-          </p>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="run-pace">Playback speed</Label>
-            <Select
-              items={PACE_ITEMS}
-              onValueChange={(next) => patch({ pace: Number(next) })}
-              value={String(options.pace)}
-            >
-              <SelectTrigger className="w-full" id="run-pace">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PACE_STEPS.map((step) => (
-                  <SelectItem key={step} value={String(step)}>
-                    {PACE_ITEMS[String(step)]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-muted-foreground text-xs">
-              At 1× a ten-minute video takes ten minutes.
-            </p>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="run-lessons">Lessons per run</Label>
-            <Input
-              aria-describedby={cn("run-lessons-hint", errorFor("maxLessons"))}
-              aria-invalid={invalid?.field === "maxLessons"}
-              className="tabular-nums"
-              id="run-lessons"
-              inputMode="numeric"
-              max={MAX_LESSONS}
-              min={1}
-              onChange={(event) =>
-                patch({ maxLessons: Number(event.target.value) })
-              }
-              step={1}
-              type="number"
-              value={options.maxLessons}
-            />
-            <p className="text-muted-foreground text-xs" id="run-lessons-hint">
-              The run stops here even if the goal is not met.
-            </p>
-          </div>
-        </div>
-
-        <Collapsible className="border-t pt-2">
-          <CollapsibleTrigger className="group text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex items-center gap-1.5 rounded-md py-1 text-sm outline-none focus-visible:ring-3">
+        <Collapsible
+          className="border-t"
+          onOpenChange={setSettingsOpen}
+          open={settingsOpen || invalid !== null}
+        >
+          <CollapsibleTrigger className="group text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex items-center gap-1.5 rounded-md py-2 text-sm outline-none focus-visible:ring-3">
             <ChevronDown className="size-4 transition-transform group-aria-expanded:rotate-180" />
-            More options
+            Run settings
           </CollapsibleTrigger>
 
-          <CollapsibleContent className="space-y-1 pt-2">
-            <div className="space-y-1.5 pb-3">
-              <span className="text-sm leading-none font-medium">Courses</span>
-              <CoursePicker
-                disabled={!hasSession}
-                onChange={(courses) => patch({ courses })}
-                value={options.courses}
-              />
-            </div>
+          {/* A run carries the body it was started with, so a field changed
+              half way through would look live and do nothing. */}
+          <CollapsibleContent>
+            <fieldset className="space-y-4 pb-2" disabled={running}>
+              <div className="space-y-1.5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="run-goal">Goal</Label>
+                    <Select
+                      items={GOAL_ITEMS}
+                      onValueChange={(next) => patch({ goal: asGoal(next) })}
+                      value={options.goal}
+                    >
+                      <SelectTrigger className="w-full" id="run-goal">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="target">
+                          {GOAL_ITEMS.target}
+                        </SelectItem>
+                        <SelectItem value="earn">{GOAL_ITEMS.earn}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-            <div className="divide-y border-t">
-              <OptionSwitch
-                checked={options.attachments}
-                description="Marking an attachment read is what earns its EXP."
-                label="Read attachments"
-                onChange={(next) => patch({ attachments: next })}
-              />
-              <OptionSwitch
-                checked={options.articles}
-                description="The same for article lessons."
-                label="Read articles"
-                onChange={(next) => patch({ articles: next })}
-              />
-              <OptionSwitch
-                checked={options.quiz}
-                description="An attempt is spent for good, and the LMS rarely gives another. A model on your own session picks the answers."
-                label="Answer quizzes"
-                onChange={(next) => patch({ quiz: next })}
-              />
-            </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="run-amount">
+                      {AMOUNT_LABELS[options.goal]}
+                    </Label>
+                    <Input
+                      aria-describedby={cn(
+                        "run-amount-hint",
+                        errorFor("amount")
+                      )}
+                      aria-invalid={invalid?.field === "amount"}
+                      className="tabular-nums"
+                      id="run-amount"
+                      inputMode="numeric"
+                      min={1}
+                      onChange={(event) =>
+                        patch({ amount: Number(event.target.value) })
+                      }
+                      step={1}
+                      type="number"
+                      value={options.amount}
+                    />
+                    <FieldError field="amount" invalid={invalid} />
+                  </div>
+                </div>
 
-            {options.quiz ? (
-              <div className="space-y-1.5 pt-3">
-                <Label htmlFor="run-quiz-model">Model that answers</Label>
-                <ModelSelect
-                  id="run-quiz-model"
-                  models={chatModels}
-                  onChange={(next) => patch({ quizModel: next })}
-                  value={options.quizModel}
+                {/* The goal and its figure are one decision, so they share one
+                    line of explanation instead of leaving a gap beside the
+                    select. */}
+                <p
+                  className="text-muted-foreground text-xs"
+                  id="run-amount-hint"
+                >
+                  {AMOUNT_HINTS[options.goal]}
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="run-pace">Playback speed</Label>
+                  <Select
+                    items={PACE_ITEMS}
+                    onValueChange={(next) => patch({ pace: Number(next) })}
+                    value={String(options.pace)}
+                  >
+                    <SelectTrigger className="w-full" id="run-pace">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PACE_STEPS.map((step) => (
+                        <SelectItem key={step} value={String(step)}>
+                          {PACE_ITEMS[String(step)]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-muted-foreground text-xs">
+                    At 1× a ten-minute video takes ten minutes.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="run-lessons">Lessons per run</Label>
+                  <Input
+                    aria-describedby={cn(
+                      "run-lessons-hint",
+                      errorFor("maxLessons")
+                    )}
+                    aria-invalid={invalid?.field === "maxLessons"}
+                    className="tabular-nums"
+                    id="run-lessons"
+                    inputMode="numeric"
+                    max={MAX_LESSONS}
+                    min={1}
+                    onChange={(event) =>
+                      patch({ maxLessons: Number(event.target.value) })
+                    }
+                    step={1}
+                    type="number"
+                    value={options.maxLessons}
+                  />
+                  <p
+                    className="text-muted-foreground text-xs"
+                    id="run-lessons-hint"
+                  >
+                    The run stops here even if the goal is not met.
+                  </p>
+                  <FieldError field="maxLessons" invalid={invalid} />
+                </div>
+              </div>
+
+              <div className="space-y-1.5 border-t pt-3">
+                <span className="text-sm leading-none font-medium">
+                  Courses
+                </span>
+                <CoursePicker
+                  disabled={!hasSession}
+                  onChange={(courses) => patch({ courses })}
+                  value={options.courses}
+                />
+                <FieldError field="courses" invalid={invalid} />
+              </div>
+
+              <div className="divide-y border-t">
+                <OptionSwitch
+                  checked={options.attachments}
+                  description="Marking an attachment read is what earns its EXP."
+                  label="Read attachments"
+                  onChange={(next) => patch({ attachments: next })}
+                />
+                <OptionSwitch
+                  checked={options.articles}
+                  description="The same for article lessons."
+                  label="Read articles"
+                  onChange={(next) => patch({ articles: next })}
+                />
+                <OptionSwitch
+                  checked={options.quiz}
+                  description="An attempt is spent for good, and the LMS rarely gives another. A model on your own session picks the answers."
+                  label="Answer quizzes"
+                  onChange={(next) => patch({ quiz: next })}
                 />
               </div>
-            ) : null}
+
+              {options.quiz ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="run-quiz-model">Model that answers</Label>
+                  <ModelSelect
+                    id="run-quiz-model"
+                    models={chatModels}
+                    onChange={(next) => patch({ quizModel: next })}
+                    value={options.quizModel}
+                  />
+                </div>
+              ) : null}
+            </fieldset>
           </CollapsibleContent>
         </Collapsible>
-
-        {invalid ? (
-          <p className="text-destructive text-xs" id="run-invalid">
-            {invalid.message}
-          </p>
-        ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
           {running ? (
@@ -359,7 +408,7 @@ export const RunPanel = ({
         {confirming ? (
           <p className="text-xs">
             This run submits quiz attempts, which cannot be taken back. Confirm
-            to go ahead, or turn quizzes off under More options.
+            to go ahead, or turn quizzes off under Run settings.
           </p>
         ) : (
           <p className="text-muted-foreground text-xs">
