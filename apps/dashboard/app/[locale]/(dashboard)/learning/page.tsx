@@ -10,6 +10,7 @@ import { RunPanel } from "@/components/learning/run-panel";
 import { StatCard } from "@/components/overview/stat-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Progress, ProgressLabel } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConnection } from "@/hooks/use-connection";
 import { useLearnRun } from "@/hooks/use-learn-run";
@@ -74,9 +75,21 @@ const LearningPage = () => {
       <div className="bg-border ring-border grid gap-px overflow-hidden rounded-xl ring-1 sm:grid-cols-2">
         <StatCard
           footer={
-            monthly === null
-              ? "The payload named no monthly figure"
-              : `${share}% of the ${MONTHLY_TARGET} EXP default target`
+            share === null ? (
+              "The payload named no monthly figure"
+            ) : (
+              /* The page is about closing a gap, so the gap is drawn rather
+                 than left as a percentage to work out. */
+              <Progress
+                aria-label="EXP this period against the target"
+                className="gap-1"
+                value={share}
+              >
+                <ProgressLabel className="text-muted-foreground text-xs font-normal">
+                  {`${share}% of the ${MONTHLY_TARGET.toLocaleString()} EXP default target`}
+                </ProgressLabel>
+              </Progress>
+            )
           }
           label="EXP this period"
           loading={loading && !data}
