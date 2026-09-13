@@ -25,6 +25,8 @@ The server listens on `http://127.0.0.1:3001`. No `.env` is needed. See [Setting
 
 Log in to AI Pass and copy the full `Cookie` header from any request to `de.aipass.net`. It must contain `__Secure-ai_passport_auth.session_token`. Keep the percent-encoding as the browser sends it.
 
+The cookie is `HttpOnly`, so no page can read it for you and there is no shortcut around this step. The [dashboard](apps/dashboard) is the gentler route: it walks through the four clicks with a picture of each one, and its field takes whatever you ended up copying — the token's value on its own, the whole `Cookie` header, or a **Copy as cURL**. Pasting works anywhere on the page.
+
 That string is your API key. Send it as a bearer token, or as `x-api-key` from an Anthropic client. A client that insists keys start with `sk-` will not work.
 
 ### 3. Send a request
