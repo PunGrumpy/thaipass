@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import { Moon, Sun } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useTheme } from "next-themes";
@@ -26,6 +27,7 @@ export const ThemeToggle = () => {
   // The icon swap is the only motion here that a stylesheet cannot reach,
   // so it asks the preference directly, as step-player does.
   const still = useReducedMotion();
+  const { t } = useI18n();
   const dark = hydrated && resolvedTheme === "dark";
   const Icon = dark ? Moon : Sun;
 
@@ -34,7 +36,7 @@ export const ThemeToggle = () => {
       <DropdownMenuTrigger
         render={
           <Button
-            aria-label="Change theme"
+            aria-label={t.common.theme.label}
             className="relative size-8"
             size="icon"
             variant="ghost"

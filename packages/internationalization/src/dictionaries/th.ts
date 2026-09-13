@@ -27,6 +27,7 @@ export const th: Dictionary = {
       save: "บันทึก",
       submit: "ส่งข้อมูล",
     },
+    gatewayStatus: "สถานะเกตเวย์: %s",
     languages: {
       en: "English",
       label: "ภาษา",
@@ -34,6 +35,7 @@ export const th: Dictionary = {
     },
     loading: "กำลังโหลด…",
     status: {
+      checking: "กำลังตรวจสอบ…",
       connected: "เชื่อมต่อแล้ว",
       disconnected: "ไม่ได้เชื่อมต่อ",
       error: "ข้อผิดพลาด",
@@ -41,6 +43,7 @@ export const th: Dictionary = {
       offline: "ออฟไลน์",
       online: "ออนไลน์",
       unknown: "ไม่ทราบสถานะ",
+      unreachable: "เชื่อมต่อไม่ได้",
     },
     theme: {
       dark: "มืด",
@@ -96,7 +99,10 @@ export const th: Dictionary = {
       configure: "การกำหนดค่า",
       gateway: "เกตเวย์",
     },
+    sidebar: "แถบนำทาง",
+    sidebarDescription: "แถบนำทางของแดชบอร์ด",
     skipToContent: "ข้ามไปยังเนื้อหา",
+    toggleSidebar: "เปิดหรือปิดแถบนำทาง",
   },
   overview: {
     balanceError: "ไม่สามารถอ่านยอดยอดคงเหลือได้",

@@ -25,6 +25,7 @@ export const en = {
       save: "Save",
       submit: "Submit",
     },
+    gatewayStatus: "Gateway status: %s",
     languages: {
       en: "English",
       label: "Language",
@@ -32,6 +33,7 @@ export const en = {
     },
     loading: "Loading…",
     status: {
+      checking: "Checking…",
       connected: "Connected",
       disconnected: "Disconnected",
       error: "Error",
@@ -39,6 +41,7 @@ export const en = {
       offline: "Offline",
       online: "Online",
       unknown: "Unknown",
+      unreachable: "Unreachable",
     },
     theme: {
       dark: "Dark",
@@ -95,7 +98,10 @@ export const en = {
       configure: "Configure",
       gateway: "Gateway",
     },
+    sidebar: "Sidebar",
+    sidebarDescription: "Navigation for the dashboard.",
     skipToContent: "Skip to content",
+    toggleSidebar: "Toggle sidebar",
   },
   overview: {
     balanceError: "Could not read the balance",

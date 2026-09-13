@@ -12,14 +12,9 @@ import {
 } from "@/components/ui/tooltip";
 import { useConnection } from "@/hooks/use-connection";
 import { useHealth } from "@/hooks/use-gateway";
+import { fill } from "@/lib/format";
 
 const PROTOCOL = /^https?:\/\//u;
-
-const LABELS: Record<StatusTone, string> = {
-  checking: "Checking",
-  offline: "Unreachable",
-  online: "Connected",
-};
 
 const toneOf = (loading: boolean, online: boolean): StatusTone => {
   if (loading) {
@@ -34,7 +29,12 @@ const toneOf = (loading: boolean, online: boolean): StatusTone => {
  * app header.
  */
 export const GatewayIdentity = () => {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
+  const labels: Record<StatusTone, string> = {
+    checking: t.common.status.checking,
+    offline: t.common.status.unreachable,
+    online: t.common.status.connected,
+  };
   const { proxyUrl } = useConnection();
   const { data, error, loading, online } = useHealth();
   const tone = toneOf(loading && !data, online);
@@ -51,11 +51,11 @@ export const GatewayIdentity = () => {
         }
       >
         <StatusDot
-          label={`Gateway ${LABELS[tone].toLowerCase()}`}
+          label={fill(t.common.gatewayStatus, labels[tone])}
           tone={tone}
         />
         <span className="shrink-0 text-xs font-medium group-data-[collapsible=icon]:hidden">
-          {LABELS[tone]}
+          {labels[tone]}
         </span>
         <span className="text-muted-foreground truncate font-mono text-xs group-data-[collapsible=icon]:hidden">
           {host}
