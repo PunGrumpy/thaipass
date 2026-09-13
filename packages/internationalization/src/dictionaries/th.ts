@@ -13,7 +13,7 @@ export const th: Dictionary = {
       navigation: "การนำทาง",
       theme: "ธีม",
     },
-    placeholder: "พิมพ์คำสั่งหรือค้นหา...",
+    placeholder: "พิมพ์คำสั่งหรือค้นหา…",
   },
   common: {
     actions: {
@@ -23,7 +23,7 @@ export const th: Dictionary = {
       copied: "คัดลอกแล้ว",
       copy: "คัดลอก",
       refresh: "รีเฟรช",
-      refreshing: "กำลังรีเฟรช...",
+      refreshing: "กำลังรีเฟรช…",
       save: "บันทึก",
       submit: "ส่งข้อมูล",
     },
@@ -32,7 +32,7 @@ export const th: Dictionary = {
       label: "ภาษา",
       th: "ภาษาไทย",
     },
-    loading: "กำลังโหลด...",
+    loading: "กำลังโหลด…",
     status: {
       connected: "เชื่อมต่อแล้ว",
       disconnected: "ไม่ได้เชื่อมต่อ",

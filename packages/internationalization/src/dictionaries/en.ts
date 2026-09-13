@@ -11,7 +11,7 @@ export const en = {
       navigation: "Navigation",
       theme: "Theme",
     },
-    placeholder: "Type a command or search...",
+    placeholder: "Type a command or search…",
   },
   common: {
     actions: {
@@ -21,7 +21,7 @@ export const en = {
       copied: "Copied",
       copy: "Copy",
       refresh: "Refresh",
-      refreshing: "Refreshing...",
+      refreshing: "Refreshing…",
       save: "Save",
       submit: "Submit",
     },
@@ -30,7 +30,7 @@ export const en = {
       label: "Language",
       th: "ภาษาไทย",
     },
-    loading: "Loading...",
+    loading: "Loading…",
     status: {
       connected: "Connected",
       disconnected: "Disconnected",
