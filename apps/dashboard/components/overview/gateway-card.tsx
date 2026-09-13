@@ -20,7 +20,8 @@ import { cn } from "@/lib/utils";
 interface Row {
   label: string;
   mono?: boolean;
-  value: string;
+  /** `null` where health has not answered yet, rendered as the null dash. */
+  value: string | null;
 }
 
 export const GatewayCard = ({
@@ -32,22 +33,27 @@ export const GatewayCard = ({
   const { t } = useI18n();
   const { gateway } = t.overview;
   const reference = `${normalizeProxyUrl(proxyUrl)}/`;
+  const { data } = health;
 
+  const costOf = (): string | null => {
+    if (!data) {
+      return null;
+    }
+    return data.prices ? gateway.costLive : gateway.costOff;
+  };
+  const cost = costOf();
+
+  // Every row below the origin reads from one health response, so when that
+  // response is missing they all say so the same way rather than mixing a
+  // dash, the word "unknown", and a setting the gateway has not reported.
   const rows: Row[] = [
     { label: gateway.rows.origin, mono: true, value: proxyUrl },
-    {
-      label: gateway.rows.upstream,
-      mono: true,
-      value: health.data?.origin ?? "unknown",
-    },
+    { label: gateway.rows.upstream, mono: true, value: data?.origin ?? null },
     {
       label: gateway.rows.models,
-      value: health.data ? String(health.data.models) : "—",
+      value: data ? String(data.models) : null,
     },
-    {
-      label: gateway.rows.cost,
-      value: health.data?.prices ? gateway.costLive : gateway.costOff,
-    },
+    { label: gateway.rows.cost, value: cost },
   ];
 
   return (
@@ -91,7 +97,11 @@ export const GatewayCard = ({
                   row.mono ? "font-mono" : "font-medium tabular-nums"
                 )}
               >
-                {row.value}
+                {row.value === null ? (
+                  <span className="text-muted-foreground/50">—</span>
+                ) : (
+                  row.value
+                )}
               </dd>
             </div>
           ))}
