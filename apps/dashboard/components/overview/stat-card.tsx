@@ -34,7 +34,7 @@ export const StatCard = ({
   <div
     className={cn(
       "space-y-1.5 px-4 py-3 sm:px-5",
-      tone === "warning" ? "bg-warning/10" : "bg-card"
+      tone === "warning" ? "bg-warning/5" : "bg-card"
     )}
   >
     <span className="text-muted-foreground block text-xs font-medium">
