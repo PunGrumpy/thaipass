@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
+import type { Dictionary } from "@thaipass/internationalization";
 import { ChevronDown, Eraser, Play, Square } from "lucide-react";
 import { useState } from "react";
 
@@ -13,9 +15,14 @@ import {
 } from "@/components/ui/collapsible";
 import { Progress, ProgressLabel } from "@/components/ui/progress";
 import { useCatalog } from "@/hooks/use-gateway";
-import { formatDuration, formatPercent, formatPlural } from "@/lib/format";
-import { checkRun, DEFAULT_RUN_OPTIONS, describeLimits } from "@/lib/learn-run";
-import type { RunOptions } from "@/lib/learn-run";
+import { fill, formatDuration, formatPercent, pluralize } from "@/lib/format";
+import {
+  checkRun,
+  DEFAULT_RUN_OPTIONS,
+  MAX_COURSES,
+  MAX_LESSONS,
+} from "@/lib/learn-run";
+import type { RunField, RunOptions } from "@/lib/learn-run";
 import type { LearnRunBody } from "@/lib/lms";
 
 const CHAT_KIND = "chat";
@@ -40,16 +47,73 @@ export interface RunPanelProps {
   running: boolean;
 }
 
+/** The one line under the button that answers "how long will this take". */
+const estimateLine = (
+  estimate: RunEstimate,
+  pace: number,
+  copy: Dictionary["learning"]
+): string => {
+  const lessons = pluralize(estimate.lessons, copy.feed.lessons);
+  return estimate.seconds > 0
+    ? fill(
+        copy.run.estimateVideo,
+        lessons,
+        formatDuration(estimate.seconds / pace)
+      )
+    : fill(copy.run.estimate, lessons);
+};
+
+const invalidMessage = (
+  field: RunField,
+  copy: Dictionary["learning"]["run"]["invalid"]
+): string => {
+  if (field === "amount") {
+    return copy.amount;
+  }
+  if (field === "courses") {
+    return fill(copy.courses, MAX_COURSES);
+  }
+  return fill(copy.maxLessons, MAX_LESSONS);
+};
+
 interface Offer {
   label: string;
   /** A settings change the press writes as well as runs. */
   over?: Partial<RunOptions>;
 }
 
-const headlineOf = (monthly: number | null, amount: number): string =>
+const headlineOf = (
+  monthly: number | null,
+  amount: number,
+  copy: Dictionary["learning"]["run"]
+): string =>
   monthly === null
-    ? "Earn EXP"
-    : `${monthly.toLocaleString()} of ${amount.toLocaleString()} EXP this month`;
+    ? copy.title
+    : fill(copy.headline, monthly.toLocaleString(), amount.toLocaleString());
+
+/** The fine print under the button, which says the goal itself. */
+const limitsOf = (
+  options: RunOptions,
+  copy: Dictionary["learning"]["run"]["limits"]
+): string => {
+  const parts = [
+    pluralize(options.maxLessons, copy.lessons),
+    options.courses.length === 0
+      ? copy.every
+      : pluralize(options.courses.length, copy.chosen),
+    options.pace === 1 ? copy.paceNormal : fill(copy.pace, options.pace),
+  ];
+  if (!options.attachments) {
+    parts.push(copy.attachments);
+  }
+  if (!options.articles) {
+    parts.push(copy.articles);
+  }
+  if (options.quiz) {
+    parts.push(copy.quiz);
+  }
+  return parts.join(" · ");
+};
 
 /**
  * What the one button offers, in the words of the outcome rather than the
@@ -58,35 +122,37 @@ const headlineOf = (monthly: number | null, amount: number): string =>
  */
 const offerOf = ({
   confirming,
+  copy,
   monthly,
   options,
   paused,
 }: {
   confirming: boolean;
+  copy: Dictionary["learning"]["run"]["goal"];
   monthly: number | null;
   options: RunOptions;
   paused: boolean;
 }): Offer => {
   if (confirming) {
-    return { label: "Yes, answer the quizzes" };
+    return { label: copy.confirm };
   }
   if (paused) {
-    return { label: "Carry on where it stopped" };
+    return { label: copy.resume };
   }
   if (options.goal === "earn") {
-    return { label: `Earn ${options.amount.toLocaleString()} more EXP` };
+    return { label: fill(copy.earn, options.amount.toLocaleString()) };
   }
   if (monthly === null) {
-    return { label: "Start learning" };
+    return { label: copy.start };
   }
   const gap = options.amount - monthly;
   if (gap <= 0) {
     return {
-      label: `Earn another ${options.amount.toLocaleString()} EXP`,
+      label: fill(copy.another, options.amount.toLocaleString()),
       over: { goal: "earn" },
     };
   }
-  return { label: `Earn the remaining ${gap.toLocaleString()} EXP` };
+  return { label: fill(copy.remaining, gap.toLocaleString()) };
 };
 
 /**
@@ -109,6 +175,8 @@ export const RunPanel = ({
   running,
 }: RunPanelProps) => {
   const { models } = useCatalog();
+  const { t } = useI18n();
+  const copy = t.learning.run;
   const [options, setOptions] = useState<RunOptions>(DEFAULT_RUN_OPTIONS);
   const [invalid, setInvalid] = useState<Invalid | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -134,7 +202,10 @@ export const RunPanel = ({
     }
     const check = checkRun(wanted, dryRun);
     if (!check.ok) {
-      setInvalid({ field: check.field, message: check.message });
+      setInvalid({
+        field: check.field,
+        message: invalidMessage(check.field, copy.invalid),
+      });
       return;
     }
     setInvalid(null);
@@ -156,7 +227,13 @@ export const RunPanel = ({
       : formatPercent(monthly, Math.max(1, options.amount));
   const met = options.goal === "target" && gap !== null && gap <= 0;
 
-  const offer = offerOf({ confirming, monthly, options, paused });
+  const offer = offerOf({
+    confirming,
+    copy: copy.goal,
+    monthly,
+    options,
+    paused,
+  });
 
   return (
     <section aria-labelledby="run-heading" className="max-w-2xl space-y-4">
@@ -165,15 +242,13 @@ export const RunPanel = ({
           className="text-2xl font-semibold tracking-tight tabular-nums"
           id="run-heading"
         >
-          {headlineOf(monthly, options.amount)}
+          {headlineOf(monthly, options.amount, copy)}
         </h2>
 
         {share === null ? null : (
           <Progress className="gap-1" value={share}>
             <ProgressLabel className="text-muted-foreground text-sm font-normal">
-              {met
-                ? "You have reached this month's target."
-                : `${(gap ?? 0).toLocaleString()} to go`}
+              {met ? copy.met : fill(copy.toGo, (gap ?? 0).toLocaleString())}
             </ProgressLabel>
           </Progress>
         )}
@@ -193,7 +268,7 @@ export const RunPanel = ({
         >
           <CollapsibleTrigger className="group text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex items-center gap-1.5 rounded-md py-2 text-sm outline-none focus-visible:ring-3">
             <ChevronDown className="size-4 transition-transform group-aria-expanded:rotate-180" />
-            Run settings
+            {copy.settings}
           </CollapsibleTrigger>
 
           {/* A run carries the body it was started with, so a field changed
@@ -229,7 +304,7 @@ export const RunPanel = ({
                 variant="outline"
               >
                 <Square />
-                Stop
+                {copy.stop}
               </Button>
             ) : (
               <Button
@@ -249,20 +324,20 @@ export const RunPanel = ({
                 type="button"
                 variant="ghost"
               >
-                Cancel
+                {t.common.actions.cancel}
               </Button>
             ) : null}
 
             {canClear && !running ? (
               <Button onClick={onClear} type="button" variant="ghost">
                 <Eraser />
-                Clear
+                {t.common.actions.clear}
               </Button>
             ) : null}
 
             {hasSession ? null : (
               <span className="text-muted-foreground text-xs">
-                Needs a session cookie
+                {copy.needsSession}
               </span>
             )}
           </div>
@@ -277,15 +352,11 @@ export const RunPanel = ({
               type="button"
               variant="link"
             >
-              See what it would take first
+              {copy.check}
             </Button>
           ) : (
             <p className="text-sm">
-              {`Last check: ${formatPlural(estimate.lessons, "lesson")}`}
-              {estimate.seconds > 0
-                ? `, about ${formatDuration(estimate.seconds / options.pace)} of video`
-                : ""}
-              {". "}
+              {estimateLine(estimate, options.pace, t.learning)}{" "}
               <Button
                 className="h-auto p-0"
                 disabled={!hasSession || running}
@@ -293,23 +364,17 @@ export const RunPanel = ({
                 type="button"
                 variant="link"
               >
-                Check again
+                {copy.checkAgain}
               </Button>
             </p>
           )}
 
           <p className="text-muted-foreground text-xs">
-            Each lesson is opened and marked done on your account ·{" "}
-            {describeLimits(options)}
+            {`${copy.account} · ${limitsOf(options, copy.limits)}`}
           </p>
         </div>
 
-        {confirming ? (
-          <p className="text-xs">
-            This also submits quiz answers, and a quiz attempt cannot be taken
-            back. Turn quizzes off under Run settings to leave them alone.
-          </p>
-        ) : null}
+        {confirming ? <p className="text-xs">{copy.confirm}</p> : null}
       </form>
     </section>
   );

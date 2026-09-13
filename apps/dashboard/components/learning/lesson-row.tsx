@@ -1,3 +1,7 @@
+"use client";
+
+import { useI18n } from "@thaipass/internationalization";
+import type { Dictionary } from "@thaipass/internationalization";
 import {
   BookOpen,
   Check,
@@ -15,7 +19,7 @@ import {
   ProgressLabel,
   ProgressValue,
 } from "@/components/ui/progress";
-import { formatClock } from "@/lib/format";
+import { fill, formatClock } from "@/lib/format";
 import type { RunLesson } from "@/lib/learn-run";
 import type { LessonKind, LessonStatus } from "@/lib/lms";
 
@@ -24,13 +28,6 @@ const KIND_ICONS: Record<LessonKind, LucideIcon> = {
   attachment: Paperclip,
   quiz: ListChecks,
   video: Video,
-};
-
-const KIND_LABELS: Record<LessonKind, string> = {
-  article: "Article",
-  attachment: "Attachment",
-  quiz: "Quiz",
-  video: "Video",
 };
 
 /*
@@ -45,39 +42,39 @@ const STATUS_ICONS: Record<LessonStatus, LucideIcon> = {
   started: Play,
 };
 
-const STATUS_LABELS: Record<LessonStatus, string> = {
-  completed: "Done",
-  paused: "Paused",
-  planned: "Planned",
-  skipped: "Skipped",
-  started: "Learning",
-};
-
 const PERCENT = 100;
 
-const quizLine = (lesson: RunLesson): string | null => {
+type LessonCopy = Dictionary["learning"]["lesson"];
+
+/* Independent facts joined by a separator rather than a sentence built from
+   fragments, so each one translates on its own. */
+const quizLine = (lesson: RunLesson, copy: LessonCopy): string | null => {
   const { quiz } = lesson;
   if (!quiz) {
     return null;
   }
-  const score =
-    quiz.score === null || quiz.total === null
-      ? "no score"
-      : `${quiz.score} of ${quiz.total}`;
-  const verdict =
-    quiz.passed === null ? "" : `, ${quiz.passed ? "passed" : "failed"}`;
-  return `answered ${quiz.answered} of ${quiz.questions}, ${score}${verdict}`;
+  const parts = [fill(copy.quiz.answered, quiz.answered, quiz.questions)];
+  if (quiz.score !== null && quiz.total !== null) {
+    parts.push(fill(copy.quiz.score, quiz.score, quiz.total));
+  }
+  if (quiz.passed !== null) {
+    parts.push(quiz.passed ? copy.quiz.passed : copy.quiz.failed);
+  }
+  return parts.join(" · ");
 };
 
-const detailOf = (lesson: RunLesson): string | null => {
+const detailOf = (lesson: RunLesson, copy: LessonCopy): string | null => {
   if (lesson.reason) {
     return lesson.reason;
   }
-  if (lesson.status === "completed" && lesson.exp !== null) {
-    return `+${lesson.exp.toLocaleString()} EXP`;
+  if (lesson.exp === null) {
+    return null;
   }
-  if (lesson.status === "planned" && lesson.exp !== null) {
-    return `about ${lesson.exp.toLocaleString()} EXP`;
+  if (lesson.status === "completed") {
+    return fill(copy.earnedExp, lesson.exp.toLocaleString());
+  }
+  if (lesson.status === "planned") {
+    return fill(copy.aboutExp, lesson.exp.toLocaleString());
   }
   return null;
 };
@@ -89,10 +86,12 @@ export const LessonRow = ({
   readonly active: boolean;
   readonly lesson: RunLesson;
 }) => {
+  const { t } = useI18n();
+  const copy = t.learning.lesson;
   const KindIcon = KIND_ICONS[lesson.kind];
   const StatusIcon = STATUS_ICONS[lesson.status];
-  const detail = detailOf(lesson);
-  const quiz = quizLine(lesson);
+  const detail = detailOf(lesson, copy);
+  const quiz = quizLine(lesson, copy);
   const watching = active && lesson.duration !== null && lesson.duration > 0;
 
   return (
@@ -106,7 +105,7 @@ export const LessonRow = ({
         <p className="text-sm leading-snug break-words">{lesson.title}</p>
 
         <p className="text-muted-foreground text-xs">
-          <span>{KIND_LABELS[lesson.kind]}</span>
+          <span>{copy.kind[lesson.kind]}</span>
           {lesson.duration === null || watching ? null : (
             <span className="tabular-nums">
               {" · "}
@@ -129,8 +128,7 @@ export const LessonRow = ({
             )}
           >
             <ProgressLabel className="text-muted-foreground text-xs font-normal tabular-nums">
-              {formatClock(lesson.watched ?? 0)} of{" "}
-              {formatClock(lesson.duration)}
+              {`${formatClock(lesson.watched ?? 0)} / ${formatClock(lesson.duration)}`}
             </ProgressLabel>
             <ProgressValue className="text-xs" />
           </Progress>
@@ -139,7 +137,7 @@ export const LessonRow = ({
 
       <span className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs">
         <StatusIcon aria-hidden="true" className="size-3" />
-        {STATUS_LABELS[lesson.status]}
+        {copy.status[lesson.status]}
       </span>
     </li>
   );

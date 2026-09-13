@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
+import type { Dictionary } from "@thaipass/internationalization";
 import { ListPlus, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 
@@ -15,43 +17,45 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { useCourses } from "@/hooks/use-courses";
-import { formatDuration } from "@/lib/format";
+import { fill, formatDuration } from "@/lib/format";
 import { MAX_COURSES } from "@/lib/learn-run";
 import type { LmsCourse } from "@/lib/lms";
+
+type CourseCopy = Dictionary["learning"]["courses"];
 
 /** The three states a course can be in, in the order a run works through them. */
 const GROUPS = [
   {
-    heading: "Started",
+    key: "started",
     match: (course: LmsCourse) => course.started && !course.done,
   },
   {
-    heading: "Not started",
+    key: "notStarted",
     match: (course: LmsCourse) => !(course.started || course.done),
   },
-  { heading: "Finished", match: (course: LmsCourse) => course.done },
+  { key: "finished", match: (course: LmsCourse) => course.done },
 ] as const;
 
 /** What the row says about the course on the right: state first, then price. */
-const stateOf = (course: LmsCourse): string => {
+const stateOf = (course: LmsCourse, copy: CourseCopy): string => {
   if (course.done) {
-    return "Finished";
+    return copy.state.done;
   }
   if (course.started) {
     return course.progress === null
-      ? "Started"
-      : `${Math.round(course.progress)}% done`;
+      ? copy.state.started
+      : fill(copy.state.progress, Math.round(course.progress));
   }
-  return "Not started";
+  return copy.state.notStarted;
 };
 
-const priceOf = (course: LmsCourse): string | null => {
+const priceOf = (course: LmsCourse, copy: CourseCopy): string | null => {
   const parts: string[] = [];
   if (course.exp !== null) {
-    parts.push(`${course.exp.toLocaleString()} EXP`);
+    parts.push(fill(copy.price.exp, course.exp.toLocaleString()));
   }
   if (course.bonus) {
-    parts.push(`+${course.bonus.toLocaleString()} on completion`);
+    parts.push(fill(copy.price.bonus, course.bonus.toLocaleString()));
   }
   return parts.length === 0 ? null : parts.join(" · ");
 };
@@ -73,6 +77,8 @@ export const CoursePicker = ({
   onChange,
   value,
 }: CoursePickerProps) => {
+  const { t } = useI18n();
+  const copy = t.learning.courses;
   const [open, setOpen] = useState(false);
   // Once opened, the catalogue stays loaded; reopening should not re-walk it.
   const [asked, setAsked] = useState(false);
@@ -109,12 +115,12 @@ export const CoursePicker = ({
           variant="outline"
         >
           <ListPlus />
-          Choose courses
+          {copy.open}
         </Button>
         <span className="text-muted-foreground text-xs">
           {value.length === 0
-            ? "Every course, started ones first"
-            : `${value.length} of ${MAX_COURSES} chosen`}
+            ? copy.every
+            : fill(copy.limit, value.length, MAX_COURSES)}
         </span>
       </div>
 
@@ -125,7 +131,7 @@ export const CoursePicker = ({
               <Badge className="gap-1 pr-1" variant="secondary">
                 <span className="font-mono">{code}</span>
                 <button
-                  aria-label={`Remove ${titleOf(code)}`}
+                  aria-label={fill(copy.remove, titleOf(code))}
                   className="hover:bg-foreground/10 focus-visible:ring-ring/50 rounded-full p-0.5 outline-none focus-visible:ring-2"
                   onClick={() => toggle(code)}
                   type="button"
@@ -140,20 +146,20 @@ export const CoursePicker = ({
 
       <CommandDialog
         className="data-closed:animate-none data-open:animate-none"
-        description="Search the account's catalogue and pick the courses a run should cover."
+        description={copy.purpose}
         onOpenChange={setOpen}
         open={open}
-        title="Choose courses"
+        title={copy.open}
       >
         <Command shouldFilter={!loading}>
           <CommandInput
             className="text-base sm:text-sm"
-            placeholder="Search by code or title…"
+            placeholder={copy.placeholder}
           />
           <CommandList>
             {loading ? (
               <output className="text-muted-foreground block py-6 text-center text-sm">
-                Reading the catalogue…
+                {copy.loading}
               </output>
             ) : null}
 
@@ -165,7 +171,7 @@ export const CoursePicker = ({
             ) : null}
 
             {loading || error ? null : (
-              <CommandEmpty>No course matched.</CommandEmpty>
+              <CommandEmpty>{copy.noMatch}</CommandEmpty>
             )}
 
             {GROUPS.map((group) => {
@@ -174,10 +180,10 @@ export const CoursePicker = ({
                 return null;
               }
               return (
-                <CommandGroup heading={group.heading} key={group.heading}>
+                <CommandGroup heading={copy.groups[group.key]} key={group.key}>
                   {rows.map((course) => {
                     const picked = chosen.has(course.code);
-                    const price = priceOf(course);
+                    const price = priceOf(course, copy);
                     return (
                       <CommandItem
                         data-checked={picked}
@@ -192,7 +198,7 @@ export const CoursePicker = ({
                           </p>
                           <p className="text-muted-foreground text-xs">
                             <span className="font-mono">{course.code}</span>
-                            {` · ${stateOf(course)}`}
+                            {` · ${stateOf(course, copy)}`}
                             {course.duration
                               ? ` · ${formatDuration(course.duration)}`
                               : ""}
@@ -211,8 +217,8 @@ export const CoursePicker = ({
         <div className="flex items-center justify-between gap-2 border-t px-2 py-2">
           <span className="text-muted-foreground pl-1 text-xs">
             {full
-              ? `${MAX_COURSES} is the most a run takes`
-              : `${value.length} chosen`}
+              ? fill(copy.full, MAX_COURSES)
+              : fill(copy.chosen, value.length)}
           </span>
           <div className="flex gap-1">
             <Button
@@ -222,10 +228,10 @@ export const CoursePicker = ({
               type="button"
               variant="ghost"
             >
-              Clear
+              {t.common.actions.clear}
             </Button>
             <Button onClick={() => setOpen(false)} size="sm" type="button">
-              Done
+              {copy.done}
             </Button>
           </div>
         </div>

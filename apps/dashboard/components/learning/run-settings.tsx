@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
+
 import { CoursePicker } from "@/components/learning/course-picker";
 import { OptionSwitch } from "@/components/learning/option-switch";
 import { ModelSelect } from "@/components/playground/model-select";
@@ -16,21 +18,6 @@ import { MAX_LESSONS, PACE_STEPS } from "@/lib/learn-run";
 import type { RunField, RunGoal, RunOptions } from "@/lib/learn-run";
 import type { CatalogModel } from "@/lib/proxy";
 import { cn } from "@/lib/utils";
-
-const GOAL_ITEMS: Record<RunGoal, string> = {
-  earn: "Earn in this run",
-  target: "Reach a period total",
-};
-
-const AMOUNT_LABELS: Record<RunGoal, string> = {
-  earn: "EXP to earn",
-  target: "Period total",
-};
-
-const AMOUNT_HINTS: Record<RunGoal, string> = {
-  earn: "This run stops once it has earned this much, whatever the period holds.",
-  target: "A period that already holds this much ends the run after one read.",
-};
 
 const PACE_ITEMS: Record<string, string> = Object.fromEntries(
   PACE_STEPS.map((step) => [String(step), `${step}×`])
@@ -80,6 +67,13 @@ export const RunSettings = ({
   patch,
   running,
 }: RunSettingsProps) => {
+  const { t } = useI18n();
+  const copy = t.learning.settings;
+  const goalItems: Record<RunGoal, string> = {
+    earn: copy.goal.earn,
+    target: copy.goal.target,
+  };
+
   const errorFor = (field: RunField): string | undefined =>
     invalid?.field === field ? `run-${field}-error` : undefined;
 
@@ -88,9 +82,9 @@ export const RunSettings = ({
       <div className="space-y-1.5">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="run-goal">Goal</Label>
+            <Label htmlFor="run-goal">{copy.goal.label}</Label>
             <Select
-              items={GOAL_ITEMS}
+              items={goalItems}
               onValueChange={(next) => patch({ goal: asGoal(next) })}
               value={options.goal}
             >
@@ -98,14 +92,14 @@ export const RunSettings = ({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="target">{GOAL_ITEMS.target}</SelectItem>
-                <SelectItem value="earn">{GOAL_ITEMS.earn}</SelectItem>
+                <SelectItem value="target">{copy.goal.target}</SelectItem>
+                <SelectItem value="earn">{copy.goal.earn}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="run-amount">{AMOUNT_LABELS[options.goal]}</Label>
+            <Label htmlFor="run-amount">{copy.amount[options.goal]}</Label>
             <Input
               aria-describedby={cn("run-amount-hint", errorFor("amount"))}
               aria-invalid={invalid?.field === "amount"}
@@ -128,13 +122,13 @@ export const RunSettings = ({
               line of explanation instead of leaving a gap beside the
               select. */}
         <p className="text-muted-foreground text-xs" id="run-amount-hint">
-          {AMOUNT_HINTS[options.goal]}
+          {copy.hint[options.goal]}
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="run-pace">Playback speed</Label>
+          <Label htmlFor="run-pace">{copy.pace.label}</Label>
           <Select
             items={PACE_ITEMS}
             onValueChange={(next) => patch({ pace: Number(next) })}
@@ -151,13 +145,11 @@ export const RunSettings = ({
               ))}
             </SelectContent>
           </Select>
-          <p className="text-muted-foreground text-xs">
-            At 1× a ten-minute video takes ten minutes.
-          </p>
+          <p className="text-muted-foreground text-xs">{copy.pace.hint}</p>
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="run-lessons">Lessons per run</Label>
+          <Label htmlFor="run-lessons">{copy.lessons.label}</Label>
           <Input
             aria-describedby={cn("run-lessons-hint", errorFor("maxLessons"))}
             aria-invalid={invalid?.field === "maxLessons"}
@@ -174,14 +166,14 @@ export const RunSettings = ({
             value={options.maxLessons}
           />
           <p className="text-muted-foreground text-xs" id="run-lessons-hint">
-            The run stops here even if the goal is not met.
+            {copy.lessons.hint}
           </p>
           <FieldError field="maxLessons" invalid={invalid} />
         </div>
       </div>
 
       <div className="space-y-1.5 border-t pt-3">
-        <span className="text-sm leading-none font-medium">Courses</span>
+        <span className="text-sm leading-none font-medium">{copy.courses}</span>
         <CoursePicker
           disabled={!hasSession}
           onChange={(courses) => patch({ courses })}
@@ -193,27 +185,27 @@ export const RunSettings = ({
       <div className="divide-y border-t">
         <OptionSwitch
           checked={options.attachments}
-          description="Marking an attachment read is what earns its EXP."
-          label="Read attachments"
+          description={copy.options.attachments.description}
+          label={copy.options.attachments.label}
           onChange={(next) => patch({ attachments: next })}
         />
         <OptionSwitch
           checked={options.articles}
-          description="The same for article lessons."
-          label="Read articles"
+          description={copy.options.articles.description}
+          label={copy.options.articles.label}
           onChange={(next) => patch({ articles: next })}
         />
         <OptionSwitch
           checked={options.quiz}
-          description="An attempt is spent for good, and the LMS rarely gives another. A model on your own session picks the answers."
-          label="Answer quizzes"
+          description={copy.options.quiz.description}
+          label={copy.options.quiz.label}
           onChange={(next) => patch({ quiz: next })}
         />
       </div>
 
       {options.quiz ? (
         <div className="space-y-1.5">
-          <Label htmlFor="run-quiz-model">Model that answers</Label>
+          <Label htmlFor="run-quiz-model">{copy.quizModel}</Label>
           <ModelSelect
             id="run-quiz-model"
             models={chatModels}

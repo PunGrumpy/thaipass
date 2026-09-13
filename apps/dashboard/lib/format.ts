@@ -85,3 +85,13 @@ export const fill = (
   }
   return text;
 };
+
+/**
+ * Picks the form a count needs and fills it. Thai has one form for every
+ * count, so both entries hold the same string there; English does not.
+ */
+export const pluralize = (
+  count: number,
+  forms: { one: string; other: string }
+): string =>
+  fill(count === 1 ? forms.one : forms.other, count.toLocaleString());

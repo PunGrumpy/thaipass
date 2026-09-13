@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useConnection } from "@/hooks/use-connection";
 import { useLearnRun } from "@/hooks/use-learn-run";
 import { useLearning } from "@/hooks/use-learning";
+import { fill } from "@/lib/format";
 import { isResumable, isRunEmpty, plannedSeconds } from "@/lib/learn-run";
 import { MONTHLY_TARGET } from "@/lib/lms";
 import { cn } from "@/lib/utils";
@@ -64,17 +65,15 @@ const LearningPage = () => {
       {hasSession ? null : (
         <Alert>
           <TriangleAlert />
-          <AlertTitle>No session connected</AlertTitle>
-          <AlertDescription>
-            Add a session cookie in Settings to read the LMS and to run lessons.
-          </AlertDescription>
+          <AlertTitle>{t.learning.session.title}</AlertTitle>
+          <AlertDescription>{t.learning.session.description}</AlertDescription>
         </Alert>
       )}
 
       {error ? (
         <Alert variant="destructive">
           <TriangleAlert />
-          <AlertTitle>Could not read the LMS</AlertTitle>
+          <AlertTitle>{t.learning.error}</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
@@ -95,19 +94,22 @@ const LearningPage = () => {
 
       <section aria-labelledby="breakdown-heading" className="space-y-4">
         <h2 className="text-base font-medium" id="breakdown-heading">
-          Where the EXP came from
+          {t.learning.breakdown.title}
         </h2>
 
         <div className="bg-border ring-border grid gap-px overflow-hidden rounded-xl ring-1 sm:grid-cols-2">
           <StatCard
-            footer="Courses the list below does not break down"
-            label="From standard courses"
+            footer={t.learning.breakdown.standard.footer}
+            label={t.learning.breakdown.standard.label}
             loading={loading && !data}
             value={data?.normalCourseExp ?? null}
           />
           <StatCard
-            footer={`The default target for a month is ${MONTHLY_TARGET.toLocaleString()} EXP`}
-            label="EXP this month"
+            footer={fill(
+              t.learning.breakdown.monthly.footer,
+              MONTHLY_TARGET.toLocaleString()
+            )}
+            label={t.learning.breakdown.monthly.label}
             loading={loading && !data}
             value={monthly}
           />

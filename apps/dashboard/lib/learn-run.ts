@@ -1,4 +1,3 @@
-import { formatPlural } from "./format";
 import { MONTHLY_TARGET } from "./lms";
 import type {
   LearnCourseEvent,
@@ -57,30 +56,6 @@ export const DEFAULT_RUN_OPTIONS: RunOptions = {
 };
 
 /**
- * The fine print under the button, which says the goal itself. Only the limits
- * and the options that change the outcome are named.
- */
-export const describeLimits = (options: RunOptions): string => {
-  const parts = [
-    `at most ${formatPlural(options.maxLessons, "lesson")}`,
-    options.courses.length === 0
-      ? "every course"
-      : formatPlural(options.courses.length, "chosen course"),
-    options.pace === 1 ? "normal speed" : `${options.pace}× speed`,
-  ];
-  if (!options.attachments) {
-    parts.push("no attachments");
-  }
-  if (!options.articles) {
-    parts.push("no articles");
-  }
-  if (options.quiz) {
-    parts.push("answering quizzes");
-  }
-  return parts.join(" · ");
-};
-
-/**
  * How long the lessons a preview planned would take to watch. Only videos
  * carry a duration, so this is the watching, not the whole run.
  */
@@ -100,35 +75,23 @@ export type RunField = "amount" | "courses" | "maxLessons";
 
 export type RunCheck =
   | { body: LearnRunBody; ok: true }
-  | { field: RunField; message: string; ok: false };
+  | { field: RunField; ok: false };
 
 const isWhole = (value: number, least: number, most: number): boolean =>
   Number.isInteger(value) && value >= least && value <= most;
 
-/** The body to send, or the one field to point at and why. */
+/** The body to send, or the one field to point at; its message is the page's. */
 export const checkRun = (options: RunOptions, dryRun: boolean): RunCheck => {
   if (!isWhole(options.amount, 1, Number.MAX_SAFE_INTEGER)) {
-    return {
-      field: "amount",
-      message: "Give a whole number of EXP, 1 or more.",
-      ok: false,
-    };
+    return { field: "amount", ok: false };
   }
   if (!isWhole(options.maxLessons, 1, MAX_LESSONS)) {
-    return {
-      field: "maxLessons",
-      message: `Lessons per run goes from 1 to ${MAX_LESSONS}.`,
-      ok: false,
-    };
+    return { field: "maxLessons", ok: false };
   }
 
   const codes = options.courses;
   if (codes.length > MAX_COURSES) {
-    return {
-      field: "courses",
-      message: `Name at most ${MAX_COURSES} courses.`,
-      ok: false,
-    };
+    return { field: "courses", ok: false };
   }
 
   const body: LearnRunBody = {
