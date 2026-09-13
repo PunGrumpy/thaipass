@@ -1,66 +1,37 @@
 "use client";
 
-import { ChevronDown, Eraser, Eye, Play, Square } from "lucide-react";
+import { ChevronDown, Eraser, Play, Square } from "lucide-react";
 import { useState } from "react";
 
-import { CoursePicker } from "@/components/learning/course-picker";
-import { OptionSwitch } from "@/components/learning/option-switch";
-import { ModelSelect } from "@/components/playground/model-select";
+import { RunSettings } from "@/components/learning/run-settings";
+import type { Invalid } from "@/components/learning/run-settings";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Progress, ProgressLabel } from "@/components/ui/progress";
 import { useCatalog } from "@/hooks/use-gateway";
-import {
-  checkRun,
-  DEFAULT_RUN_OPTIONS,
-  describeRun,
-  MAX_LESSONS,
-  PACE_STEPS,
-} from "@/lib/learn-run";
-import type { RunField, RunGoal, RunOptions } from "@/lib/learn-run";
+import { formatDuration, formatPercent, formatPlural } from "@/lib/format";
+import { checkRun, DEFAULT_RUN_OPTIONS, describeLimits } from "@/lib/learn-run";
+import type { RunOptions } from "@/lib/learn-run";
 import type { LearnRunBody } from "@/lib/lms";
-import { cn } from "@/lib/utils";
-
-const GOAL_ITEMS: Record<RunGoal, string> = {
-  earn: "Earn in this run",
-  target: "Reach a period total",
-};
-
-const AMOUNT_LABELS: Record<RunGoal, string> = {
-  earn: "EXP to earn",
-  target: "Period total",
-};
-
-const AMOUNT_HINTS: Record<RunGoal, string> = {
-  earn: "This run stops once it has earned this much, whatever the period holds.",
-  target: "A period that already holds this much ends the run after one read.",
-};
-
-const PACE_ITEMS: Record<string, string> = Object.fromEntries(
-  PACE_STEPS.map((step) => [String(step), `${step}×`])
-);
 
 const CHAT_KIND = "chat";
 
-/** A select can report no value at all; the goal has two states, and one default. */
-const asGoal = (value: string | null): RunGoal =>
-  value === "earn" ? "earn" : "target";
+/** What the last check found, so the button can say what pressing it costs. */
+export interface RunEstimate {
+  lessons: number;
+  seconds: number;
+}
 
 export interface RunPanelProps {
   canClear: boolean;
+  estimate: RunEstimate | null;
   hasSession: boolean;
+  /** This period's EXP, which is what the headline and the button count from. */
+  monthly: number | null;
   onClear: () => void;
   onStart: (body: LearnRunBody) => void;
   onStop: () => void;
@@ -69,27 +40,54 @@ export interface RunPanelProps {
   running: boolean;
 }
 
-interface Invalid {
-  field: RunField;
-  message: string;
+interface Offer {
+  label: string;
+  /** A settings change the press writes as well as runs. */
+  over?: Partial<RunOptions>;
 }
 
+const headlineOf = (monthly: number | null, amount: number): string =>
+  monthly === null
+    ? "Earn EXP"
+    : `${monthly.toLocaleString()} of ${amount.toLocaleString()} EXP this month`;
+
 /**
- * The message belongs under the control that failed, not in one place at the
- * bottom of a form whose fields are folded away.
+ * What the one button offers, in the words of the outcome rather than the
+ * form. Reaching a target the period already holds ends after a single read,
+ * so that case offers to earn instead of doing nothing convincingly.
  */
-const FieldError = ({
-  field,
-  invalid,
+const offerOf = ({
+  confirming,
+  monthly,
+  options,
+  paused,
 }: {
-  readonly field: RunField;
-  readonly invalid: Invalid | null;
-}) =>
-  invalid?.field === field ? (
-    <p className="text-destructive text-xs" id={`run-${field}-error`}>
-      {invalid.message}
-    </p>
-  ) : null;
+  confirming: boolean;
+  monthly: number | null;
+  options: RunOptions;
+  paused: boolean;
+}): Offer => {
+  if (confirming) {
+    return { label: "Yes, answer the quizzes" };
+  }
+  if (paused) {
+    return { label: "Carry on where it stopped" };
+  }
+  if (options.goal === "earn") {
+    return { label: `Earn ${options.amount.toLocaleString()} more EXP` };
+  }
+  if (monthly === null) {
+    return { label: "Start learning" };
+  }
+  const gap = options.amount - monthly;
+  if (gap <= 0) {
+    return {
+      label: `Earn another ${options.amount.toLocaleString()} EXP`,
+      over: { goal: "earn" },
+    };
+  }
+  return { label: `Earn the remaining ${gap.toLocaleString()} EXP` };
+};
 
 /**
  * The run is the one thing on this page that changes the account. Its defaults
@@ -101,7 +99,9 @@ const FieldError = ({
  */
 export const RunPanel = ({
   canClear,
+  estimate,
   hasSession,
+  monthly,
   onClear,
   onStart,
   onStop,
@@ -121,8 +121,18 @@ export const RunPanel = ({
     setConfirming(false);
   };
 
-  const submit = (dryRun: boolean) => {
-    const check = checkRun(options, dryRun);
+  /*
+   * `over` is how the one button changes the goal it offers: reaching a target
+   * means nothing once the period already holds it, so the press that says
+   * "Earn another 100" writes that choice into the settings as well as running
+   * it, rather than doing something the panel does not show.
+   */
+  const submit = (dryRun: boolean, over?: Partial<RunOptions>) => {
+    const wanted = over ? { ...options, ...over } : options;
+    if (over) {
+      setOptions(wanted);
+    }
+    const check = checkRun(wanted, dryRun);
     if (!check.ok) {
       setInvalid({ field: check.field, message: check.message });
       return;
@@ -131,7 +141,7 @@ export const RunPanel = ({
 
     // Off by default, so turning it on is deliberate; spending an attempt for
     // good still deserves the second press.
-    if (!dryRun && options.quiz && !confirming) {
+    if (!dryRun && wanted.quiz && !confirming) {
       setConfirming(true);
       return;
     }
@@ -139,26 +149,34 @@ export const RunPanel = ({
     onStart(check.body);
   };
 
-  const errorFor = (field: RunField): string | undefined =>
-    invalid?.field === field ? `run-${field}-error` : undefined;
+  const gap = monthly === null ? null : options.amount - monthly;
+  const share =
+    monthly === null
+      ? null
+      : formatPercent(monthly, Math.max(1, options.amount));
+  const met = options.goal === "target" && gap !== null && gap <= 0;
 
-  const startLabel = (): string => {
-    if (confirming) {
-      return "Confirm and start";
-    }
-    return paused ? "Resume run" : "Start run";
-  };
+  const offer = offerOf({ confirming, monthly, options, paused });
 
   return (
     <section aria-labelledby="run-heading" className="max-w-2xl space-y-4">
-      <div className="space-y-1">
-        <h2 className="text-base font-medium" id="run-heading">
-          Earn EXP
+      <div className="space-y-2">
+        <h2
+          className="text-2xl font-semibold tracking-tight tabular-nums"
+          id="run-heading"
+        >
+          {headlineOf(monthly, options.amount)}
         </h2>
-        <p className="text-muted-foreground max-w-[68ch] text-sm text-pretty">
-          The gateway opens each lesson the way the LMS player does and stamps
-          it complete, courses already started first. This changes the account.
-        </p>
+
+        {share === null ? null : (
+          <Progress className="gap-1" value={share}>
+            <ProgressLabel className="text-muted-foreground text-sm font-normal">
+              {met
+                ? "You have reached this month's target."
+                : `${(gap ?? 0).toLocaleString()} to go`}
+            </ProgressLabel>
+          </Progress>
+        )}
       </div>
 
       <form
@@ -168,10 +186,6 @@ export const RunPanel = ({
           submit(false);
         }}
       >
-        {/* What the current settings add up to, so the form can stay folded and
-            Start is still an informed press rather than a blind one. */}
-        <p className="text-sm">{describeRun(options)}</p>
-
         <Collapsible
           className="border-t"
           onOpenChange={setSettingsOpen}
@@ -185,236 +199,117 @@ export const RunPanel = ({
           {/* A run carries the body it was started with, so a field changed
               half way through would look live and do nothing. */}
           <CollapsibleContent>
-            <fieldset className="space-y-4 pb-2" disabled={running}>
-              <div className="space-y-1.5">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="run-goal">Goal</Label>
-                    <Select
-                      items={GOAL_ITEMS}
-                      onValueChange={(next) => patch({ goal: asGoal(next) })}
-                      value={options.goal}
-                    >
-                      <SelectTrigger className="w-full" id="run-goal">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="target">
-                          {GOAL_ITEMS.target}
-                        </SelectItem>
-                        <SelectItem value="earn">{GOAL_ITEMS.earn}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="run-amount">
-                      {AMOUNT_LABELS[options.goal]}
-                    </Label>
-                    <Input
-                      aria-describedby={cn(
-                        "run-amount-hint",
-                        errorFor("amount")
-                      )}
-                      aria-invalid={invalid?.field === "amount"}
-                      className="tabular-nums"
-                      id="run-amount"
-                      inputMode="numeric"
-                      min={1}
-                      onChange={(event) =>
-                        patch({ amount: Number(event.target.value) })
-                      }
-                      step={1}
-                      type="number"
-                      value={options.amount}
-                    />
-                    <FieldError field="amount" invalid={invalid} />
-                  </div>
-                </div>
-
-                {/* The goal and its figure are one decision, so they share one
-                    line of explanation instead of leaving a gap beside the
-                    select. */}
-                <p
-                  className="text-muted-foreground text-xs"
-                  id="run-amount-hint"
-                >
-                  {AMOUNT_HINTS[options.goal]}
-                </p>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="run-pace">Playback speed</Label>
-                  <Select
-                    items={PACE_ITEMS}
-                    onValueChange={(next) => patch({ pace: Number(next) })}
-                    value={String(options.pace)}
-                  >
-                    <SelectTrigger className="w-full" id="run-pace">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PACE_STEPS.map((step) => (
-                        <SelectItem key={step} value={String(step)}>
-                          {PACE_ITEMS[String(step)]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-muted-foreground text-xs">
-                    At 1× a ten-minute video takes ten minutes.
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="run-lessons">Lessons per run</Label>
-                  <Input
-                    aria-describedby={cn(
-                      "run-lessons-hint",
-                      errorFor("maxLessons")
-                    )}
-                    aria-invalid={invalid?.field === "maxLessons"}
-                    className="tabular-nums"
-                    id="run-lessons"
-                    inputMode="numeric"
-                    max={MAX_LESSONS}
-                    min={1}
-                    onChange={(event) =>
-                      patch({ maxLessons: Number(event.target.value) })
-                    }
-                    step={1}
-                    type="number"
-                    value={options.maxLessons}
-                  />
-                  <p
-                    className="text-muted-foreground text-xs"
-                    id="run-lessons-hint"
-                  >
-                    The run stops here even if the goal is not met.
-                  </p>
-                  <FieldError field="maxLessons" invalid={invalid} />
-                </div>
-              </div>
-
-              <div className="space-y-1.5 border-t pt-3">
-                <span className="text-sm leading-none font-medium">
-                  Courses
-                </span>
-                <CoursePicker
-                  disabled={!hasSession}
-                  onChange={(courses) => patch({ courses })}
-                  value={options.courses}
-                />
-                <FieldError field="courses" invalid={invalid} />
-              </div>
-
-              <div className="divide-y border-t">
-                <OptionSwitch
-                  checked={options.attachments}
-                  description="Marking an attachment read is what earns its EXP."
-                  label="Read attachments"
-                  onChange={(next) => patch({ attachments: next })}
-                />
-                <OptionSwitch
-                  checked={options.articles}
-                  description="The same for article lessons."
-                  label="Read articles"
-                  onChange={(next) => patch({ articles: next })}
-                />
-                <OptionSwitch
-                  checked={options.quiz}
-                  description="An attempt is spent for good, and the LMS rarely gives another. A model on your own session picks the answers."
-                  label="Answer quizzes"
-                  onChange={(next) => patch({ quiz: next })}
-                />
-              </div>
-
-              {options.quiz ? (
-                <div className="space-y-1.5">
-                  <Label htmlFor="run-quiz-model">Model that answers</Label>
-                  <ModelSelect
-                    id="run-quiz-model"
-                    models={chatModels}
-                    onChange={(next) => patch({ quizModel: next })}
-                    value={options.quizModel}
-                  />
-                </div>
-              ) : null}
-            </fieldset>
+            <RunSettings
+              chatModels={chatModels}
+              hasSession={hasSession}
+              invalid={invalid}
+              options={options}
+              patch={patch}
+              running={running}
+            />
           </CollapsibleContent>
         </Collapsible>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {running ? (
-            /*
-             * React reuses this node for the submit button below, so by the
-             * time the browser acts on the click its type has become "submit"
-             * and the form would run again. Cancelling the default is what
-             * keeps Stop from starting a second run.
-             */
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {running ? (
+              /*
+               * React reuses this node for the submit button below, so by the
+               * time the browser acts on the click its type has become "submit"
+               * and the form would run again. Cancelling the default is what
+               * keeps Stop from starting a second run.
+               */
+              <Button
+                onClick={(event) => {
+                  event.preventDefault();
+                  onStop();
+                }}
+                size="lg"
+                type="button"
+                variant="outline"
+              >
+                <Square />
+                Stop
+              </Button>
+            ) : (
+              <Button
+                disabled={!hasSession}
+                onClick={() => submit(false, offer.over)}
+                size="lg"
+                type="button"
+              >
+                <Play />
+                {offer.label}
+              </Button>
+            )}
+
+            {confirming && !running ? (
+              <Button
+                onClick={() => setConfirming(false)}
+                type="button"
+                variant="ghost"
+              >
+                Cancel
+              </Button>
+            ) : null}
+
+            {canClear && !running ? (
+              <Button onClick={onClear} type="button" variant="ghost">
+                <Eraser />
+                Clear
+              </Button>
+            ) : null}
+
+            {hasSession ? null : (
+              <span className="text-muted-foreground text-xs">
+                Needs a session cookie
+              </span>
+            )}
+          </div>
+
+          {/* The one unknown worth answering before a press that can run for
+              hours: how many lessons, and how much video. */}
+          {estimate === null ? (
             <Button
-              onClick={(event) => {
-                event.preventDefault();
-                onStop();
-              }}
+              className="h-auto p-0"
+              disabled={!hasSession || running}
+              onClick={() => submit(true)}
               type="button"
-              variant="outline"
+              variant="link"
             >
-              <Square />
-              Stop
+              See what it would take first
             </Button>
           ) : (
-            <Button disabled={!hasSession} type="submit">
-              <Play />
-              {startLabel()}
-            </Button>
+            <p className="text-sm">
+              {`Last check: ${formatPlural(estimate.lessons, "lesson")}`}
+              {estimate.seconds > 0
+                ? `, about ${formatDuration(estimate.seconds / options.pace)} of video`
+                : ""}
+              {". "}
+              <Button
+                className="h-auto p-0"
+                disabled={!hasSession || running}
+                onClick={() => submit(true)}
+                type="button"
+                variant="link"
+              >
+                Check again
+              </Button>
+            </p>
           )}
 
-          {confirming && !running ? (
-            <Button
-              onClick={() => setConfirming(false)}
-              type="button"
-              variant="ghost"
-            >
-              Cancel
-            </Button>
-          ) : null}
-
-          <Button
-            disabled={!hasSession || running}
-            onClick={() => submit(true)}
-            type="button"
-            variant="outline"
-          >
-            <Eye />
-            Preview
-          </Button>
-
-          {canClear && !running ? (
-            <Button onClick={onClear} type="button" variant="ghost">
-              <Eraser />
-              Clear
-            </Button>
-          ) : null}
-
-          {hasSession ? null : (
-            <span className="text-muted-foreground text-xs">
-              Needs a session cookie
-            </span>
-          )}
+          <p className="text-muted-foreground text-xs">
+            Each lesson is opened and marked done on your account ·{" "}
+            {describeLimits(options)}
+          </p>
         </div>
 
         {confirming ? (
           <p className="text-xs">
-            This run submits quiz attempts, which cannot be taken back. Confirm
-            to go ahead, or turn quizzes off under Run settings.
+            This also submits quiz answers, and a quiz attempt cannot be taken
+            back. Turn quizzes off under Run settings to leave them alone.
           </p>
-        ) : (
-          <p className="text-muted-foreground text-xs">
-            Preview lists what a run would do and changes nothing.
-          </p>
-        )}
+        ) : null}
       </form>
     </section>
   );

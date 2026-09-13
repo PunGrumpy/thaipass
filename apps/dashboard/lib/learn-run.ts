@@ -57,26 +57,17 @@ export const DEFAULT_RUN_OPTIONS: RunOptions = {
 };
 
 /**
- * One line of what pressing Start would do, so the settings can stay folded
- * away and the reader still knows what they are about to run. Only the options
- * that change the outcome are named; the defaults are left unsaid.
+ * The fine print under the button, which says the goal itself. Only the limits
+ * and the options that change the outcome are named.
  */
-export const describeRun = (options: RunOptions): string => {
-  const goal =
-    options.goal === "earn"
-      ? `Earn ${options.amount.toLocaleString()} EXP in this run`
-      : `Learn until the period holds ${options.amount.toLocaleString()} EXP`;
-
+export const describeLimits = (options: RunOptions): string => {
   const parts = [
-    goal,
-    `up to ${options.maxLessons} lessons`,
+    `at most ${formatPlural(options.maxLessons, "lesson")}`,
     options.courses.length === 0
       ? "every course"
       : formatPlural(options.courses.length, "chosen course"),
+    options.pace === 1 ? "normal speed" : `${options.pace}× speed`,
   ];
-  if (options.pace !== 1) {
-    parts.push(`${options.pace}× playback`);
-  }
   if (!options.attachments) {
     parts.push("no attachments");
   }
@@ -87,6 +78,22 @@ export const describeRun = (options: RunOptions): string => {
     parts.push("answering quizzes");
   }
   return parts.join(" · ");
+};
+
+/**
+ * How long the lessons a preview planned would take to watch. Only videos
+ * carry a duration, so this is the watching, not the whole run.
+ */
+export const plannedSeconds = (state: RunState): number => {
+  let total = 0;
+  for (const course of state.courses) {
+    for (const lesson of course.lessons) {
+      if (lesson.status === "planned") {
+        total += lesson.duration ?? 0;
+      }
+    }
+  }
+  return total;
 };
 
 export type RunField = "amount" | "courses" | "maxLessons";

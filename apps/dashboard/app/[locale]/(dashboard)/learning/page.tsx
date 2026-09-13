@@ -10,13 +10,11 @@ import { RunPanel } from "@/components/learning/run-panel";
 import { StatCard } from "@/components/overview/stat-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Progress, ProgressLabel } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConnection } from "@/hooks/use-connection";
 import { useLearnRun } from "@/hooks/use-learn-run";
 import { useLearning } from "@/hooks/use-learning";
-import { formatPercent } from "@/lib/format";
-import { isResumable, isRunEmpty } from "@/lib/learn-run";
+import { isResumable, isRunEmpty, plannedSeconds } from "@/lib/learn-run";
 import { MONTHLY_TARGET } from "@/lib/lms";
 import { cn } from "@/lib/utils";
 
@@ -34,8 +32,17 @@ const LearningPage = () => {
   } = useLearnRun(reload);
 
   const monthly = data?.monthly ?? null;
-  const share =
-    monthly === null ? null : formatPercent(monthly, MONTHLY_TARGET);
+
+  /* A preview walks the catalogue and changes nothing, so what it found is the
+     honest answer to "how long would this take" — and the only one available
+     before the run itself starts. */
+  const estimate =
+    runState.preview && runState.summary
+      ? {
+          lessons: runState.summary.lessons,
+          seconds: plannedSeconds(runState),
+        }
+      : null;
 
   return (
     <>
@@ -72,40 +79,11 @@ const LearningPage = () => {
         </Alert>
       ) : null}
 
-      <div className="bg-border ring-border grid gap-px overflow-hidden rounded-xl ring-1 sm:grid-cols-2">
-        <StatCard
-          footer={
-            share === null ? (
-              "The payload named no monthly figure"
-            ) : (
-              /* The page is about closing a gap, so the gap is drawn rather
-                 than left as a percentage to work out. */
-              <Progress
-                aria-label="EXP this period against the target"
-                className="gap-1"
-                value={share}
-              >
-                <ProgressLabel className="text-muted-foreground text-xs font-normal">
-                  {`${share}% of the ${MONTHLY_TARGET.toLocaleString()} EXP default target`}
-                </ProgressLabel>
-              </Progress>
-            )
-          }
-          label="EXP this period"
-          loading={loading && !data}
-          value={monthly}
-        />
-        <StatCard
-          footer="Courses outside the per-type breakdown"
-          label="Standard course EXP"
-          loading={loading && !data}
-          value={data?.normalCourseExp ?? null}
-        />
-      </div>
-
       <RunPanel
         canClear={!isRunEmpty(runState)}
+        estimate={estimate}
         hasSession={hasSession}
+        monthly={monthly}
         onClear={handleClear}
         onStart={handleStart}
         onStop={handleStop}
@@ -117,8 +95,24 @@ const LearningPage = () => {
 
       <section aria-labelledby="breakdown-heading" className="space-y-4">
         <h2 className="text-base font-medium" id="breakdown-heading">
-          By lesson type
+          Where the EXP came from
         </h2>
+
+        <div className="bg-border ring-border grid gap-px overflow-hidden rounded-xl ring-1 sm:grid-cols-2">
+          <StatCard
+            footer="Courses the list below does not break down"
+            label="From standard courses"
+            loading={loading && !data}
+            value={data?.normalCourseExp ?? null}
+          />
+          <StatCard
+            footer={`The default target for a month is ${MONTHLY_TARGET.toLocaleString()} EXP`}
+            label="EXP this month"
+            loading={loading && !data}
+            value={monthly}
+          />
+        </div>
+
         {loading && !data ? (
           <Skeleton className="h-48 w-full" />
         ) : (
