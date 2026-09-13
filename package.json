@@ -14,6 +14,7 @@
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "lms": "bun run --cwd apps/proxy lms",
+    "login": "bun run --cwd apps/proxy login",
     "check": "ultracite check",
     "fix": "ultracite fix",
     "changeset": "changeset",
