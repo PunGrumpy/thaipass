@@ -170,6 +170,8 @@ export interface RunState {
   courses: readonly RunCourse[];
   failures: readonly RunFailure[];
   monthly: number | null;
+  /** The run was a dry run, so every figure below is what would have happened. */
+  preview: boolean;
   /** The reader stopped the run, so it ended with no `done` line of its own. */
   stopped: boolean;
   summary: LearnDoneEvent | null;
@@ -181,6 +183,7 @@ export const EMPTY_RUN: RunState = {
   courses: [],
   failures: [],
   monthly: null,
+  preview: false,
   stopped: false,
   summary: null,
 };
@@ -344,7 +347,7 @@ const applyDone = (state: RunState, event: LearnDoneEvent): RunState => ({
 
 export type RunAction =
   | { event: LearnEvent; kind: "event" }
-  | { kind: "reset" }
+  | { kind: "reset"; preview: boolean }
   | { kind: "stopped" };
 
 /**
@@ -371,7 +374,7 @@ const applyStopped = (state: RunState): RunState => {
 
 export const runReducer = (state: RunState, action: RunAction): RunState => {
   if (action.kind === "reset") {
-    return EMPTY_RUN;
+    return { ...EMPTY_RUN, preview: action.preview };
   }
   if (action.kind === "stopped") {
     return applyStopped(state);

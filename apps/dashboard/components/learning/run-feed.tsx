@@ -3,6 +3,7 @@ import { TriangleAlert } from "lucide-react";
 import { StatusDot } from "@/components/layout/status-dot";
 import { LessonRow } from "@/components/learning/lesson-row";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { formatPlural } from "@/lib/format";
 import { activeLesson, isRunEmpty } from "@/lib/learn-run";
 import type { RunFailure, RunState } from "@/lib/learn-run";
@@ -28,9 +29,14 @@ const statusLine = (state: RunState, running: boolean): string => {
     return `${VERBS[lesson.kind]} \u201C${lesson.title}\u201D`;
   }
   if (running) {
-    return "Reading what this account has left to learn…";
+    return state.preview
+      ? "Working out what a run would do…"
+      : "Reading what this account has left to learn…";
   }
   if (state.summary) {
+    if (state.preview) {
+      return "This is what a run would do. Nothing was changed.";
+    }
     return state.summary.reached
       ? "The run reached its goal."
       : "The run stopped short of its goal.";
@@ -42,19 +48,29 @@ const statusLine = (state: RunState, running: boolean): string => {
 };
 
 const RunSummary = ({ state }: { readonly state: RunState }) => {
-  const { summary } = state;
+  const { preview, summary } = state;
   if (!summary) {
     return null;
   }
 
+  const lessons = formatPlural(summary.lessons, "lesson");
+  const earned = summary.earned.toLocaleString();
+
   return (
     <div className="ring-foreground/10 space-y-1 rounded-xl px-3 py-2.5 ring-1">
       <p className="text-sm font-medium tabular-nums">
-        {`+${summary.earned.toLocaleString()} EXP in ${formatPlural(summary.lessons, "lesson")}`}
+        {preview
+          ? `Would earn ${earned} EXP across ${lessons}`
+          : `+${earned} EXP in ${lessons}`}
       </p>
       <p className="text-muted-foreground text-xs">
         {`Period total ${summary.monthly?.toLocaleString() ?? "unknown"} of ${summary.target.toLocaleString()} · ${summary.reason}`}
       </p>
+      {preview ? (
+        <p className="text-xs">
+          Nothing was changed. Start the run to do it for real.
+        </p>
+      ) : null}
       {summary.paused ? (
         <p className="text-xs">
           The run used up its time budget mid-lesson. Start it again to pick up
@@ -83,14 +99,20 @@ export const RunFeed = ({
           <h2 className="text-base font-medium" id="activity-heading">
             Activity
           </h2>
-          {running ? <StatusDot label="Run in progress" tone="online" /> : null}
+          {state.preview ? <Badge variant="secondary">Preview</Badge> : null}
+          {running ? (
+            <StatusDot
+              label={state.preview ? "Preview in progress" : "Run in progress"}
+              tone="online"
+            />
+          ) : null}
         </div>
         <output
           aria-live="polite"
           className="text-muted-foreground block text-sm"
         >
           {line === ""
-            ? "No run yet. Start one and its lessons appear here."
+            ? "No run yet. Preview one to see what it would do, or start it to earn."
             : line}
         </output>
       </div>
