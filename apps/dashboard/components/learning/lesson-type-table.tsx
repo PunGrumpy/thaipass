@@ -34,7 +34,7 @@ export const LessonTypeTable = ({
               <TableCell>{row.lessonType}</TableCell>
               <TableCell className="text-right tabular-nums">
                 {row.exp === null ? (
-                  <span className="text-muted-foreground/60">—</span>
+                  <span className="text-muted-foreground">—</span>
                 ) : (
                   row.exp.toLocaleString()
                 )}

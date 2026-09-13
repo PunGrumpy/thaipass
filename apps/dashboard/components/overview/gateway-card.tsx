@@ -98,7 +98,7 @@ export const GatewayCard = ({
                 )}
               >
                 {row.value === null ? (
-                  <span className="text-muted-foreground/50">—</span>
+                  <span className="text-muted-foreground">—</span>
                 ) : (
                   row.value
                 )}

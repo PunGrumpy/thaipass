@@ -47,7 +47,7 @@ export const StatCard = ({
       <div
         className={cn(
           "flex items-baseline gap-1.5 text-2xl font-semibold tracking-tight tabular-nums",
-          value === null && "text-muted-foreground/50"
+          value === null && "text-muted-foreground"
         )}
       >
         <span>{value === null ? placeholder : value.toLocaleString()}</span>
