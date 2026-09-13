@@ -135,6 +135,12 @@ export const en = {
       badge: "No session connected",
       description:
         "The gateway forwards your own AI Pass credentials and stores nothing. Add the session cookie once to enable quota, catalog, and the playground.",
+      player: {
+        pause: "Pause",
+        play: "Play",
+        replay: "Replay",
+        step: "Step %s",
+      },
       step: "Step %s of %s",
       steps: {
         copy: {

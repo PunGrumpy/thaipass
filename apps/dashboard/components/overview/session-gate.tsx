@@ -67,6 +67,7 @@ export const SessionGate = () => {
           */}
           <StepPlayer
             duration={STEP_MS}
+            labels={{ ...gate.player, track: gate.step }}
             loop
             onValueChange={setStep}
             seekable
