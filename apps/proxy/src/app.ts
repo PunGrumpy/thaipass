@@ -3,6 +3,7 @@ import { log } from "evlog";
 import { z } from "zod";
 
 import { anthropicError } from "./anthropic/errors";
+import { scopeGuard } from "./lib/authz";
 import { cors } from "./lib/cors";
 import { requestLogger } from "./lib/logger";
 import "./lib/settings";
@@ -15,6 +16,7 @@ import { imageRoutes } from "./routes/images";
 import { lmsRoutes } from "./routes/lms";
 import { messageRoutes } from "./routes/messages";
 import { modelRoutes } from "./routes/models";
+import { oauthRoutes } from "./routes/oauth";
 import { responsesRoutes } from "./routes/responses";
 import { usageRoutes } from "./routes/usage";
 import { videoRoutes } from "./routes/videos";
@@ -85,6 +87,7 @@ export const app = new Elysia()
     );
   })
   .use(cors)
+  .use(scopeGuard(errorBody))
   .use(requestLogger)
   .use(chatRoutes)
   .use(responsesRoutes)
@@ -96,6 +99,7 @@ export const app = new Elysia()
   .use(healthRoutes)
   .use(usageRoutes)
   .use(lmsRoutes)
+  .use(oauthRoutes)
   .use(docsRoutes);
 
 export default app;

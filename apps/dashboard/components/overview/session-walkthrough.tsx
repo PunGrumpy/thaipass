@@ -1,7 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
-
+import { MockKey, MockWindow } from "@/components/ui/mock-window";
 import { cn } from "@/lib/utils";
 
 /**
@@ -12,35 +11,9 @@ import { cn } from "@/lib/utils";
  * tools panel beside it, and the row to copy, lit in turn.
  */
 
-const Key = ({ children }: { readonly children: ReactNode }) => (
-  <kbd className="bg-background text-foreground rounded border px-1 py-0.5 font-mono text-[10px] leading-none shadow-sm">
-    {children}
-  </kbd>
-);
-
-const Window = ({
-  children,
-  url,
-}: {
-  readonly children: ReactNode;
-  readonly url: string;
-}) => (
-  <div className="bg-background overflow-hidden rounded-md border">
-    <div className="bg-muted/60 flex items-center gap-1.5 border-b px-2 py-1.5">
-      <span className="bg-muted-foreground/30 size-1.5 rounded-full" />
-      <span className="bg-muted-foreground/30 size-1.5 rounded-full" />
-      <span className="bg-muted-foreground/30 size-1.5 rounded-full" />
-      <span className="bg-background text-muted-foreground ml-1 flex-1 truncate rounded px-1.5 py-0.5 text-[10px]">
-        {url}
-      </span>
-    </div>
-    <div className="flex h-32">{children}</div>
-  </div>
-);
-
 /** Step 1: the AI Pass sign-in page, as the reader already knows it. */
 const SignInFrame = () => (
-  <Window url="de.aipass.net">
+  <MockWindow title="de.aipass.net">
     <div className="flex flex-1 flex-col items-center justify-center gap-2">
       <div className="from-primary size-6 rounded-md bg-gradient-to-b to-sky-400" />
       <div className="bg-muted h-1.5 w-16 rounded-full" />
@@ -48,7 +21,7 @@ const SignInFrame = () => (
         Sign in
       </div>
     </div>
-  </Window>
+  </MockWindow>
 );
 
 const PANEL_TABS = ["Elements", "Console", "Application"] as const;
@@ -115,14 +88,14 @@ const Panel = ({ detailed }: { readonly detailed: boolean }) => (
 /** Step 2: the panel arriving, with the key that brings it. */
 const OpenFrame = () => (
   <div className="relative">
-    <Window url="de.aipass.net">
+    <MockWindow title="de.aipass.net">
       <div className="flex-1" />
       <Panel detailed={false} />
-    </Window>
+    </MockWindow>
     <div className="absolute inset-x-0 bottom-3 flex justify-center gap-1">
-      <Key>F12</Key>
+      <MockKey>F12</MockKey>
       <span className="text-muted-foreground text-[10px]">/</span>
-      <Key>⌥ ⌘ I</Key>
+      <MockKey>⌥ ⌘ I</MockKey>
     </div>
   </div>
 );
@@ -130,12 +103,12 @@ const OpenFrame = () => (
 /** Step 3: the row to copy, lit. */
 const CopyFrame = () => (
   <div className="relative">
-    <Window url="de.aipass.net">
+    <MockWindow title="de.aipass.net">
       <div className="bg-muted/20 flex-1" />
       <Panel detailed />
-    </Window>
+    </MockWindow>
     <div className="absolute right-3 bottom-3">
-      <Key>Ctrl C</Key>
+      <MockKey>Ctrl C</MockKey>
     </div>
   </div>
 );
@@ -143,7 +116,7 @@ const CopyFrame = () => (
 /** Step 4: back here, where the paste lands. */
 const PasteFrame = ({ label }: { readonly label: string }) => (
   <div className="relative">
-    <Window url="thaipass.vercel.app">
+    <MockWindow title="thaipass.vercel.app">
       <div className="flex flex-1 flex-col justify-center gap-2 px-4">
         <div className="bg-muted h-1.5 w-20 rounded-full" />
         <div className="flex items-center gap-2">
@@ -153,9 +126,9 @@ const PasteFrame = ({ label }: { readonly label: string }) => (
           </div>
         </div>
       </div>
-    </Window>
+    </MockWindow>
     <div className="absolute bottom-3 left-3">
-      <Key>Ctrl V</Key>
+      <MockKey>Ctrl V</MockKey>
     </div>
   </div>
 );

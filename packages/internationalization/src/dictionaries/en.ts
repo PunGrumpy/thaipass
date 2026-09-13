@@ -1,4 +1,38 @@
 export const en = {
+  authorize: {
+    account: {
+      none: "No AI Pass session is connected in this browser yet. Connect one, then come back to this screen.",
+      signedIn: "Signed in as",
+      unknown: "Could not read the account behind this session.",
+    },
+    action: {
+      approve: "Allow %s",
+      cancel: "Cancel",
+      connect: "Connect a session",
+      working: "Allowing…",
+    },
+    badge: "Login with thaipass",
+    description:
+      "%s is asking to use your AI Pass account through this gateway. It never sees your session cookie — it gets a key that this gateway can take back.",
+    failed: "The gateway would not issue the code",
+    invalid: {
+      description:
+        "The link is missing the app, the redirect, or the challenge it has to carry. Start the login again from the app itself.",
+      title: "This login link is incomplete",
+    },
+    redirect: "The key goes to %s",
+    scopes: {
+      chat: "Send chat, message and response requests on your account",
+      lms: "Open lessons and earn EXP, including spending quiz attempts",
+      media: "Generate images, video and audio, which spend credits",
+      models: "See the models your account can reach",
+      title: "It will be able to",
+      usage: "See your credit balance",
+    },
+    title: "Allow %s to use your account?",
+    unverified:
+      "thaipass does not check who publishes an app. Allow one only if you started this login yourself.",
+  },
   brand: {
     name: "THAI passport",
     tagline: "Control center for the THAIpass gateway",

@@ -40,9 +40,56 @@ curl -sN localhost:3001/v1/chat/completions \
 
 `gemini-3.1-flash-lite` is the free default model. `GET /v1/models` lists the rest. See [Models](#models).
 
+## Login with thaipass
+
+A cookie is a poor key. It is the whole account, it cannot be taken back, and every machine and app that wants one needs its own copy — pasted again each time AI Pass rotates the session.
+
+A deployment that carries `THAIPASS_TOKEN_KEY` can hand out its own keys instead. Someone signs in once, on the dashboard where their session already is, and an app leaves with a `tp_v1_…` token: scoped to what they approved, expiring with the session it stands for, and worth nothing on any other deployment. Nothing is stored — the token _is_ the cookie, sealed under that key, so the gateway keeps no credential and needs no database.
+
+```bash
+bun run login keygen           # THAIPASS_TOKEN_KEY=…, into the gateway's environment
+```
+
+### Sign a machine in
+
+```bash
+bun run login                  # opens the consent screen, saves the token
+bun run login whoami           # whose account it opens, and for how long
+export ANTHROPIC_AUTH_TOKEN=$(bun run login token)
+```
+
+The token goes wherever the cookie went: `Authorization: Bearer`, or `x-api-key` from an Anthropic client. Nothing else about a client changes.
+
+### Sign an app in
+
+The flow is authorization code with PKCE. The consent screen is a page on the dashboard, because that is where the account holder's session lives; the gateway only issues and exchanges.
+
+1. Send them to `<dashboard>/authorize` with `client_id`, `redirect_uri`, `code_challenge` (S256), `state`, and the `scope` you want. A redirect must be `https`, or `http` on loopback for a command line app.
+2. They approve, and land on your `redirect_uri` with `code` and `state`.
+3. `POST /oauth/token` with `grant_type=authorization_code`, the code, your `code_verifier`, `client_id` and the same `redirect_uri`. You get the token, the account it belongs to, and the scopes granted.
+4. `GET /oauth/userinfo` with the token says who it belongs to, and what it may do.
+
+`GET /oauth/metadata` names all three endpoints for a client that would rather discover them.
+
+### Scopes
+
+| Scope    | What it opens                                                   |
+| -------- | --------------------------------------------------------------- |
+| `chat`   | `/v1/chat/completions`, `/v1/messages`, `/v1/responses`         |
+| `media`  | `/v1/images/generations`, `/v1/videos`, `/v1/audio/generations` |
+| `models` | `/v1/models`                                                    |
+| `usage`  | `/v1/usage`                                                     |
+| `lms`    | `/v1/lms/*`, which can spend a quiz attempt                     |
+
+An app that asks for nothing gets `chat models usage`. A raw cookie stays unscoped: whoever sends one is the account holder.
+
+### What it will not do
+
+There is no refresh token. A thaipass token cannot outlive the AI Pass session sealed inside it, and no proxy can renew someone's browser session for them. Signing out of AI Pass ends every token at once; rotating `THAIPASS_TOKEN_KEY` does the same. A gateway started without the key issues nothing and keeps taking cookies, which is what a personal setup wants.
+
 ## Connect a client
 
-Each client needs a base URL, the cookie as its key, and a model id from the catalog.
+Each client needs a base URL, a credential as its key, and a model id from the catalog. The credential is the cookie, or a thaipass token from [`bun run login`](#login-with-thaipass) where the gateway issues them — every client below takes either, in the same place. The dashboard's Integrations page writes these out with your own values filled in.
 
 ### Anthropic SDK and agents
 
@@ -84,7 +131,7 @@ const client = new OpenAI({
 
 ### Codex
 
-Codex removed `wire_api = "chat"` in February 2026, so it speaks only the Responses protocol. Point a custom provider at `/v1` in `~/.codex/config.toml` and put the cookie in the environment variable it names:
+Codex removed `wire_api = "chat"` in February 2026, so it speaks only the Responses protocol. Point a custom provider at `/v1` in `~/.codex/config.toml` and put the credential in the environment variable it names:
 
 ```toml
 model = "claude-sonnet-5@default"
@@ -131,7 +178,7 @@ File parts upload as attachments, and a generated file comes back as the SDK's o
 
 Every route the proxy serves:
 
-| Route | What it does | Cookie |
+| Route | What it does | Credential |
 | --- | --- | --- |
 | `POST /v1/chat/completions` | OpenAI protocol, streams by default | yes |
 | `POST /v1/responses` | OpenAI Responses protocol, buffered unless `stream: true` | yes |
@@ -145,6 +192,10 @@ Every route the proxy serves:
 | `GET /v1/lms/exp` | The account's learning EXP | yes |
 | `GET /v1/lms/courses` | The account's course catalogue | yes |
 | `POST /v1/lms/learn` | Learns lessons until a target EXP | yes |
+| `POST /oauth/code` | Issues an authorization code, from the dashboard | yes |
+| `POST /oauth/token` | Exchanges a code for a thaipass token | no |
+| `GET /oauth/userinfo` | The account behind a credential | yes |
+| `GET /oauth/metadata` | Where the login endpoints are | no |
 | `GET /health` | Liveness | no |
 | `GET /` | OpenAPI docs rendered by Scalar, JSON at `/openapi.json` | no |
 
@@ -158,6 +209,7 @@ Every setting has a default, so the proxy runs with no `.env`:
 | `AIPASS_HOST` | `127.0.0.1` | Bind address, local only |
 | `AIPASS_PORT` | `3001` | Port, local only |
 | `AIPASS_PRICES` | OpenRouter's model list | Where per-token prices come from, `off` for none |
+| `THAIPASS_TOKEN_KEY` | none | 32 bytes of base64, from `bun run login keygen`. Without it the gateway issues no tokens and takes only cookies. See [Login with thaipass](#login-with-thaipass) |
 | `POSTHOG_API_KEY` | none | Project token (`phc_…`), enables PostHog |
 | `POSTHOG_HOST` | `https://us.i.posthog.com` | PostHog ingestion host |
 
@@ -408,6 +460,8 @@ The proxy stops at the first failed call instead of trying the next course. An u
 ## Deploy to Vercel
 
 Set the Vercel project's Root Directory to `apps/proxy` and turn on the option to include source files outside it, so the build can read `packages/core`. There, `vercel.json` sets `bunVersion`, runs `bun run build`, and names `dist` as the output directory. The build inlines `packages/core` and leaves the real dependencies as imports, so Vercel traces them into the function's `node_modules`.
+
+The dashboard is a second Vercel project with Root Directory `apps/dashboard`. Give it `NEXT_PUBLIC_PROXY_URL` (the gateway it talks to) and `NEXT_PUBLIC_WEB_URL` (its own address, which the gateway names as the login screen). A dashboard whose gateway is not on loopback pins it: the origin field in Settings is read-only, so a reader cannot point your deployment at a gateway you do not run and take its traffic, and its logs, with them. `NEXT_PUBLIC_PROXY_LOCKED=0` unpins it, `1` pins a local one.
 
 Two settings keep that tracing honest. The root `bunfig.toml` installs hoisted, so the traced files are real directories rather than links into a store outside the Root Directory. The install command deletes every `node_modules` first, because Vercel's build cache keeps the old isolated layout's links beside the hoisted one and the tracer follows them into a store the function does not carry. Keep Deployment Protection on. The deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
 

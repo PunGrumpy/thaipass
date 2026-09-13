@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import type { ParseOptions, TokenType } from "sugar-high/core";
 import * as json from "sugar-high/lang/json";
 import * as shell from "sugar-high/lang/shell";
+import * as toml from "sugar-high/lang/toml";
 import * as typescript from "sugar-high/lang/typescript";
 
 import { Button } from "@/components/ui/button";
@@ -16,12 +17,13 @@ import { cn } from "@/lib/utils";
 
 /**
  * The `core` entry takes a grammar object rather than a language name, so the
- * bundle carries only these three and none of the Editor or FileTree code the
+ * bundle carries only these four and none of the Editor or FileTree code the
  * root entry pulls in.
  */
 const GRAMMARS: Record<SnippetLanguage, ParseOptions> = {
   bash: shell,
   json,
+  toml,
   tsx: typescript,
 };
 
@@ -45,21 +47,24 @@ const COPIED_RESET_MS = 1500;
 
 export interface SnippetBlockProps {
   /** False when there is no session to substitute in. */
-  canUseCookie: boolean;
+  canReveal: boolean;
   code: string;
+  /** Which secret this snippet would carry, named on the toggle. */
+  credential: "cookie" | "token";
   filename: string;
   language: SnippetLanguage;
-  onToggleCookie: () => void;
-  usingCookie: boolean;
+  onToggleReveal: () => void;
+  revealed: boolean;
 }
 
 export const SnippetBlock = ({
-  canUseCookie,
+  canReveal,
   code,
+  credential,
   filename,
   language,
-  onToggleCookie,
-  usingCookie,
+  onToggleReveal,
+  revealed,
 }: SnippetBlockProps) => {
   const [copied, setCopied] = useState(false);
 
@@ -87,20 +92,25 @@ export const SnippetBlock = ({
             says so and reports its state through aria-pressed.
           */}
           <Button
-            aria-pressed={usingCookie}
-            className={cn("touch-target", usingCookie && "text-warning")}
-            disabled={!canUseCookie}
-            onClick={onToggleCookie}
+            aria-pressed={revealed}
+            className={cn(
+              "touch-target",
+              revealed && credential === "cookie" && "text-warning"
+            )}
+            disabled={!canReveal}
+            onClick={onToggleReveal}
             size="xs"
             title={
-              canUseCookie
-                ? "Write your session cookie into the snippet"
-                : "Add a session cookie in Settings first"
+              canReveal
+                ? `Write your ${credential === "token" ? "thaipass token" : "session cookie"} into the snippet`
+                : "Connect a session first"
             }
             variant="ghost"
           >
-            {usingCookie ? <Eye /> : <EyeOff />}
-            <span className="hidden sm:inline">My cookie</span>
+            {revealed ? <Eye /> : <EyeOff />}
+            <span className="hidden sm:inline">
+              {credential === "token" ? "My token" : "My cookie"}
+            </span>
           </Button>
 
           <Button
