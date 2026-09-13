@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import { ArrowUpRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -28,36 +29,40 @@ export const GatewayCard = ({
   readonly health: HealthResource;
 }) => {
   const { proxyUrl } = useConnection();
+  const { t } = useI18n();
+  const { gateway } = t.overview;
   const reference = `${normalizeProxyUrl(proxyUrl)}/`;
 
   const rows: Row[] = [
-    { label: "Proxy origin", mono: true, value: proxyUrl },
-    { label: "Upstream", mono: true, value: health.data?.origin ?? "unknown" },
+    { label: gateway.rows.origin, mono: true, value: proxyUrl },
     {
-      label: "Built-in chat models",
+      label: gateway.rows.upstream,
+      mono: true,
+      value: health.data?.origin ?? "unknown",
+    },
+    {
+      label: gateway.rows.models,
       value: health.data ? String(health.data.models) : "—",
     },
     {
-      label: "Cost estimation",
-      value: health.data?.prices ? "OpenRouter (live)" : "Disabled",
+      label: gateway.rows.cost,
+      value: health.data?.prices ? gateway.costLive : gateway.costOff,
     },
   ];
 
   return (
     <Card>
       <CardHeader className="border-b">
-        <CardTitle>Gateway</CardTitle>
+        <CardTitle>{gateway.title}</CardTitle>
         <CardDescription>
-          {health.online
-            ? "Reachable and forwarding to AI Pass."
-            : (health.error ?? "Waiting for the gateway to answer.")}
+          {health.online ? gateway.online : (health.error ?? gateway.offline)}
         </CardDescription>
         <CardAction>
           <Button
             nativeButton={false}
             render={
               <a
-                aria-label="Open the API reference"
+                aria-label={gateway.actionLabel}
                 href={reference}
                 rel="noopener noreferrer"
                 target="_blank"
@@ -66,7 +71,7 @@ export const GatewayCard = ({
             size="sm"
             variant="outline"
           >
-            API reference
+            {t.navigation.apiReference}
             <ArrowUpRight data-icon="inline-end" />
           </Button>
         </CardAction>

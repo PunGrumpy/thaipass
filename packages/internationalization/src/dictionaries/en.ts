@@ -99,22 +99,71 @@ export const en = {
   },
   overview: {
     balanceError: "Could not read the balance",
-    cards: {
-      catalog: "Model Catalog",
-      gateway: "Gateway Status",
+    catalog: {
+      action: "Browse models",
+      description: "%s models across chat and media endpoints.",
+      priced: "%s of %s priced",
+      pricedLabel: "Market pricing",
+      title: "Catalog mix",
     },
     description:
       "Health of the local gateway, what the session has left to spend, and what it can reach.",
+    gateway: {
+      actionLabel: "Open the API reference",
+      costLive: "OpenRouter (live)",
+      costOff: "Disabled",
+      offline: "Waiting for the gateway to answer.",
+      online: "Reachable and forwarding to AI Pass.",
+      rows: {
+        cost: "Cost estimation",
+        models: "Built-in chat models",
+        origin: "Proxy origin",
+        upstream: "Upstream",
+      },
+      title: "Gateway",
+    },
     sessionGate: {
-      action: "Go to Settings",
+      action: "Add session cookie",
+      badge: "No session connected",
       description:
-        "Connect your AI Pass session cookie in Settings to see your live quota balance, model catalog, and start making requests.",
-      title: "No Session Cookie Found",
+        "The gateway forwards your own AI Pass credentials and stores nothing. Add the session cookie once to enable quota, catalog, and the playground.",
+      step: "Step %s of %s",
+      steps: {
+        copy: {
+          body: "In DevTools → Network, right-click any request and choose Copy as cURL (or copy the Cookie header).",
+          label: "Copy as cURL or Cookie",
+        },
+        paste: {
+          body: "Paste into Settings. The dashboard automatically parses and extracts your session cookie.",
+          label: "Paste into Settings",
+        },
+        signIn: {
+          body: "Open de.aipass.net and sign in, so the browser holds a live session.",
+          label: "Sign in to AI Pass",
+        },
+      },
+      title: "Connect your AI Pass session",
     },
     stats: {
-      catalog: "Available Models",
-      credits: "Credits Remaining",
-      health: "Gateway Health",
+      catalog: {
+        builtin: "Built-in list. Connect a session for yours",
+        label: "Models reachable",
+        live: "Live from your account catalog",
+      },
+      credits: {
+        label: "Credits available",
+        resets: "Resets %s",
+      },
+      free: {
+        chat: "%s of them answer chat requests",
+        label: "Free models",
+        priced: "%s models priced via OpenRouter",
+      },
+      noSession: "No session",
+      used: {
+        label: "Credits used",
+        share: "%s% of the period used",
+      },
     },
     title: "Overview",
   },

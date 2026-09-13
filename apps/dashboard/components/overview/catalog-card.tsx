@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { countByKind, KIND_LABELS, MODEL_KINDS } from "@/lib/catalog";
+import { fill } from "@/lib/format";
 import type { CatalogModel } from "@/lib/proxy";
 
 const CatalogChart = dynamic(
@@ -34,7 +35,8 @@ export const CatalogCard = ({
 }: {
   readonly models: readonly CatalogModel[];
 }) => {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
+  const { catalog } = t.overview;
   const slices = useMemo(() => {
     const counts = countByKind(models);
     const list: CatalogSlice[] = [];
@@ -62,9 +64,9 @@ export const CatalogCard = ({
   return (
     <Card>
       <CardHeader className="border-b">
-        <CardTitle>Catalog mix</CardTitle>
+        <CardTitle>{catalog.title}</CardTitle>
         <CardDescription>
-          {models.length} models across chat and media endpoints.
+          {fill(catalog.description, models.length)}
         </CardDescription>
         <CardAction>
           <Button
@@ -73,7 +75,7 @@ export const CatalogCard = ({
             size="sm"
             variant="ghost"
           >
-            Browse models
+            {catalog.action}
           </Button>
         </CardAction>
       </CardHeader>
@@ -99,9 +101,11 @@ export const CatalogCard = ({
 
           {pricedCount > 0 ? (
             <div className="flex items-center justify-between border-t pt-2.5 text-xs">
-              <span className="text-muted-foreground">Market pricing</span>
+              <span className="text-muted-foreground">
+                {catalog.pricedLabel}
+              </span>
               <span className="text-foreground font-medium tabular-nums">
-                {pricedCount} of {models.length} priced
+                {fill(catalog.priced, pricedCount, models.length)}
               </span>
             </div>
           ) : null}

@@ -72,3 +72,16 @@ export const formatRatePerMillion = (perTokenRate: number): string => {
   }
   return `$${perMillion.toFixed(2)}`;
 };
+
+const SLOT = /%s/u;
+
+export const fill = (
+  template: string,
+  ...values: readonly (number | string)[]
+): string => {
+  let text = template;
+  for (const value of values) {
+    text = text.replace(SLOT, String(value));
+  }
+  return text;
+};

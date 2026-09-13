@@ -1,9 +1,11 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
+
 import { StatCard } from "@/components/overview/stat-card";
 import type { CatalogResource } from "@/hooks/use-gateway";
 import type { Resource } from "@/hooks/use-resource";
-import { formatPercent, formatResetAt } from "@/lib/format";
+import { fill, formatPercent, formatResetAt } from "@/lib/format";
 import type { CreditBalance } from "@/lib/proxy";
 
 const LOW_CREDIT_PERCENT = 90;
@@ -37,12 +39,9 @@ const breakdownOf = (models: CatalogResource["models"]): CatalogBreakdown => {
   return { chat, free, priced };
 };
 
-const freeFooterOf = (priced: number, chat: number): string =>
-  priced > 0
-    ? `${priced} models priced via OpenRouter`
-    : `${chat} of them answer chat requests`;
-
 export const StatRow = ({ catalog, credits }: StatRowProps) => {
+  const { t } = useI18n();
+  const { stats } = t.overview;
   const balance = credits.data;
   const percent = balance ? formatPercent(balance.used, balance.limit) : null;
   const waiting = credits.loading && !balance;
@@ -53,40 +52,40 @@ export const StatRow = ({ catalog, credits }: StatRowProps) => {
     (balance.available === 0 || (percent ?? 0) >= LOW_CREDIT_PERCENT);
 
   const { chat, free, priced } = breakdownOf(catalog.models);
+  const freeFooter =
+    priced > 0 ? fill(stats.free.priced, priced) : fill(stats.free.chat, chat);
 
   return (
     <div className="bg-border ring-border grid gap-px overflow-hidden rounded-xl ring-1 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard
         footer={
-          balance ? `Resets ${formatResetAt(balance.reset_at)}` : "No session"
+          balance
+            ? fill(stats.credits.resets, formatResetAt(balance.reset_at))
+            : stats.noSession
         }
-        label="Credits available"
+        label={stats.credits.label}
         loading={waiting}
         tone={low ? "warning" : "default"}
         value={balance?.available ?? null}
       />
       <StatCard
         footer={
-          percent === null ? "No session" : `${percent}% of the period used`
+          percent === null ? stats.noSession : fill(stats.used.share, percent)
         }
-        label="Credits used"
+        label={stats.used.label}
         loading={waiting}
         suffix={balance ? `/ ${balance.limit.toLocaleString()}` : undefined}
         value={balance?.used ?? null}
       />
       <StatCard
-        footer={
-          catalog.builtin
-            ? "Built-in list. Connect a session for yours"
-            : "Live from your account catalog"
-        }
-        label="Models reachable"
+        footer={catalog.builtin ? stats.catalog.builtin : stats.catalog.live}
+        label={stats.catalog.label}
         loading={catalog.loading && catalog.builtin}
         value={catalog.models.length}
       />
       <StatCard
-        footer={freeFooterOf(priced, chat)}
-        label="Free models"
+        footer={freeFooter}
+        label={stats.free.label}
         loading={catalog.loading && catalog.builtin}
         value={free}
       />
