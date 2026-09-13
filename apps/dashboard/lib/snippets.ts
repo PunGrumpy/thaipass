@@ -1,12 +1,20 @@
 import { FREE_MODEL } from "./catalog";
 
 export interface SnippetParams {
+  /** The credential the snippet carries: a thaipass token, or the cookie. */
   cookie: string;
   model: string;
   proxyUrl: string;
 }
 
-export type SnippetLanguage = "bash" | "json" | "tsx";
+export type SnippetLanguage = "bash" | "json" | "toml" | "tsx";
+
+/**
+ * Where the credential in a snippet is spent. A client that calls this
+ * gateway can carry a thaipass token; one that calls AI Pass itself needs the
+ * cookie, because only the gateway holds the key that opens a token.
+ */
+export type SnippetTarget = "gateway" | "upstream";
 
 export interface Snippet {
   code: (params: SnippetParams) => string;
@@ -15,9 +23,14 @@ export interface Snippet {
   id: string;
   label: string;
   language: SnippetLanguage;
+  target: SnippetTarget;
 }
 
 export const COOKIE_PLACEHOLDER = "<YOUR_AIPASS_COOKIE>";
+export const TOKEN_PLACEHOLDER = "<YOUR_THAIPASS_TOKEN>";
+
+/** What a client actually calls: completions, and the catalogue behind a picker. */
+export const CLIENT_SCOPE = "chat models";
 
 export const SNIPPETS: readonly Snippet[] = [
   {
@@ -36,6 +49,27 @@ claude`,
     id: "claude-code",
     label: "Claude Code",
     language: "bash",
+    target: "gateway",
+  },
+  {
+    code: ({ cookie, model, proxyUrl }) => `# 1. In the shell that runs codex:
+#    export AIPASS_COOKIE="${cookie}"
+#
+# 2. In ~/.codex/config.toml:
+model = "${model}"
+model_provider = "thaipass"
+
+[model_providers.thaipass]
+name = "thaipass"
+base_url = "${proxyUrl}/v1"
+wire_api = "responses"
+env_key = "AIPASS_COOKIE"`,
+    filename: "~/.codex/config.toml",
+    hint: 'Codex speaks only the Responses protocol, so the provider points at /v1 with wire_api = "responses" and reads the credential from the environment variable it names. It resends the whole conversation every turn and opens with a large instructions block, which is the shape the AI Pass edge refuses most: a first 400 usually means the prompt, not the setup.',
+    id: "codex",
+    label: "Codex",
+    language: "toml",
+    target: "gateway",
   },
   {
     code: ({ cookie, model, proxyUrl }) => `{
@@ -54,6 +88,7 @@ claude`,
     id: "cursor",
     label: "Cursor",
     language: "json",
+    target: "gateway",
   },
   {
     code: ({ cookie, model, proxyUrl }) => `{
@@ -67,6 +102,7 @@ claude`,
     id: "cline",
     label: "Cline",
     language: "json",
+    target: "gateway",
   },
   {
     code: ({ cookie, model }) => `import { streamText } from "ai";
@@ -83,10 +119,11 @@ for await (const delta of result.textStream) {
   process.stdout.write(delta);
 }`,
     filename: "stream.ts",
-    hint: "The provider calls AI Pass directly, so no proxy process is needed.",
+    hint: "The provider calls AI Pass directly, so no proxy process is needed — and so it takes the cookie, unless the process also holds the THAIPASS_TOKEN_KEY that opens a token.",
     id: "ai-sdk",
     label: "AI SDK",
     language: "tsx",
+    target: "upstream",
   },
   {
     code: ({ cookie, model, proxyUrl }) => `import OpenAI from "openai";
@@ -110,6 +147,7 @@ for await (const chunk of completion) {
     id: "openai-sdk",
     label: "OpenAI SDK",
     language: "tsx",
+    target: "gateway",
   },
   {
     code: ({
@@ -125,9 +163,10 @@ for await (const chunk of completion) {
     "stream": true
   }'`,
     filename: "smoke-test.sh",
-    hint: "The fastest check that the gateway and the cookie both work.",
+    hint: "The fastest check that the gateway and the credential both work.",
     id: "curl",
     label: "cURL",
     language: "bash",
+    target: "gateway",
   },
 ];

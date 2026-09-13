@@ -130,6 +130,74 @@ export const requestCode = async (
   return body.code;
 };
 
+const VERIFIER_BYTES = 48;
+
+const base64url = (bytes: Uint8Array): string =>
+  // Each byte is its own code point here, so the two spellings agree.
+  btoa(String.fromCodePoint(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+
+/**
+ * The dashboard mints for itself, so it plays both halves of the login: it is
+ * the app asking and the account holder answering, and the reader is already
+ * looking at their own session. The verifier still never leaves this page, and
+ * the code is still spent once, because the gateway checks both either way.
+ */
+export const mintToken = async (
+  proxyUrl: string,
+  cookie: string,
+  request: { clientId: string; scope: string }
+): Promise<TokenGrant> => {
+  const verifier = base64url(
+    crypto.getRandomValues(new Uint8Array(VERIFIER_BYTES))
+  );
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(verifier)
+  );
+  const challenge = base64url(new Uint8Array(digest));
+  // Never navigated to: it only has to be an allowed redirect, and to match at
+  // the exchange. This page's own address is the honest one to name.
+  const redirectUri = `${window.location.origin}/authorize`;
+
+  const code = await requestCode(proxyUrl, cookie, {
+    clientId: request.clientId,
+    codeChallenge: challenge,
+    redirectUri,
+    scope: request.scope,
+    state: null,
+  });
+
+  const response = await gatewayFetch(
+    `${normalizeProxyUrl(proxyUrl)}/oauth/token`,
+    {
+      body: JSON.stringify({
+        client_id: request.clientId,
+        code,
+        code_verifier: verifier,
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri,
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    }
+  );
+  if (!response.ok) {
+    throw new Error(await readOAuthError(response));
+  }
+  // SAFETY: POST /oauth/token returns the TokenResponse schema on 200.
+  return (await response.json()) as TokenGrant;
+};
+
+export interface TokenGrant {
+  access_token: string;
+  account: Account;
+  expires_in: number;
+  scope: string;
+}
+
 /** Where the browser goes next, carrying either the code or the refusal. */
 export const completionUrl = (
   request: AuthorizeRequest,

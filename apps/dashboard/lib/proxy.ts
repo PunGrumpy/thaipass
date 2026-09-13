@@ -9,6 +9,8 @@ export interface ProxyHealth {
   ok: boolean;
   origin: string;
   prices?: boolean;
+  /** True when the gateway can issue thaipass tokens. */
+  tokens?: boolean;
 }
 
 export interface CreditBalance {
