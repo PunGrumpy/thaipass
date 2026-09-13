@@ -119,7 +119,7 @@ const ModelPriceCell = ({ model }: { readonly model: CatalogModel }) => {
     );
   }
 
-  return <span className="text-muted-foreground/60 text-xs">—</span>;
+  return <span className="text-muted-foreground text-xs">—</span>;
 };
 
 export const ModelTable = ({
@@ -268,7 +268,7 @@ export const ModelTable = ({
                       <TableCell className="hidden lg:table-cell">
                         <div className="flex flex-wrap gap-1">
                           {capabilities.length === 0 ? (
-                            <span className="text-muted-foreground/60 text-xs">
+                            <span className="text-muted-foreground text-xs">
                               —
                             </span>
                           ) : (

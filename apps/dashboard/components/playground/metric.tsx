@@ -21,7 +21,7 @@ export const Metric = ({
       <span className="text-muted-foreground text-xs">{label}</span>
       <span className="text-sm font-medium tabular-nums">
         {display === "—" ? (
-          <span className="text-muted-foreground/50">—</span>
+          <span className="text-muted-foreground">—</span>
         ) : (
           <>
             {display}

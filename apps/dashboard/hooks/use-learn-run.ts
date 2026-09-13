@@ -46,7 +46,7 @@ export const useLearnRun = (onFinish?: () => void): LearnRun => {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      dispatch({ kind: "reset" });
+      dispatch({ kind: "reset", preview: body.dry_run === true });
       setError(null);
       setRunning(true);
 
@@ -90,7 +90,7 @@ export const useLearnRun = (onFinish?: () => void): LearnRun => {
   }, []);
 
   const clear = useCallback(() => {
-    dispatch({ kind: "reset" });
+    dispatch({ kind: "reset", preview: false });
     setError(null);
   }, []);
 

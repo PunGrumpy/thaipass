@@ -188,11 +188,16 @@ const Sidebar = ({
   className,
   children,
   dir,
+  mobileLabel = "Sidebar",
+  mobileDescription = "Displays the mobile sidebar.",
   ...props
 }: React.ComponentProps<"div"> & {
   side?: "left" | "right";
   variant?: "sidebar" | "floating" | "inset";
   collapsible?: "offcanvas" | "icon" | "none";
+  /** Screen-reader name and description for the mobile sheet. */
+  mobileLabel?: string;
+  mobileDescription?: string;
 }) => {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
 
@@ -230,8 +235,8 @@ const Sidebar = ({
           side={side}
         >
           <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+            <SheetTitle>{mobileLabel}</SheetTitle>
+            <SheetDescription>{mobileDescription}</SheetDescription>
           </SheetHeader>
           <div className="flex h-full w-full flex-col">{children}</div>
         </SheetContent>
@@ -288,8 +293,9 @@ const Sidebar = ({
 const SidebarTrigger = ({
   className,
   onClick,
+  label = "Toggle Sidebar",
   ...props
-}: React.ComponentProps<typeof Button>) => {
+}: React.ComponentProps<typeof Button> & { label?: string }) => {
   const { toggleSidebar } = useSidebar();
 
   return (
@@ -306,12 +312,16 @@ const SidebarTrigger = ({
       {...props}
     >
       <PanelLeftIcon />
-      <span className="sr-only">Toggle Sidebar</span>
+      <span className="sr-only">{label}</span>
     </Button>
   );
 }
 
-const SidebarRail = ({ className, ...props }: React.ComponentProps<"button">) => {
+const SidebarRail = ({
+  className,
+  label = "Toggle Sidebar",
+  ...props
+}: React.ComponentProps<"button"> & { label?: string }) => {
   const { toggleSidebar } = useSidebar();
 
   return (
@@ -319,10 +329,10 @@ const SidebarRail = ({ className, ...props }: React.ComponentProps<"button">) =>
       type="button"
       data-sidebar="rail"
       data-slot="sidebar-rail"
-      aria-label="Toggle Sidebar"
+      aria-label={label}
       tabIndex={-1}
       onClick={toggleSidebar}
-      title="Toggle Sidebar"
+      title={label}
       className={cn(
         "hover:after:bg-sidebar-border absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
         "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",

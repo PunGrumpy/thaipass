@@ -57,11 +57,27 @@ const iconStateFor = (finished: boolean, playing: boolean): IconState => {
   return playing ? "pause" : "play";
 };
 
-const CONTROL_LABEL: Record<IconState, string> = {
+export interface StepPlayerLabels {
+  track: string;
+  pause: string;
+  play: string;
+  replay: string;
+  step: string;
+}
+
+const DEFAULT_LABELS: StepPlayerLabels = {
   pause: "Pause",
   play: "Play",
   replay: "Replay",
+  step: "Step %s",
+  track: "Step %s of %s",
 };
+
+const fillLabel = (template: string, ...values: (number | string)[]): string =>
+  values.reduce<string>(
+    (text, value) => text.replace("%s", String(value)),
+    template
+  );
 
 type StepState = "active" | "past" | "pending";
 
@@ -115,6 +131,7 @@ export type StepPlayerProps = Omit<
   showControl?: boolean;
   controlPosition?: "left" | "right";
   seekable?: boolean;
+  labels?: Partial<StepPlayerLabels>;
 };
 
 const ICON_PAINT = {
@@ -233,6 +250,7 @@ const StepPlayer = ({
   showControl = true,
   controlPosition = "right",
   seekable = false,
+  labels,
   className,
   ...props
 }: StepPlayerProps) => {
@@ -256,6 +274,7 @@ const StepPlayer = ({
   const index = Math.min(isValueControlled ? value : indexState, count - 1);
   const isPlaying = isPlayingControlled ? playing : playingState;
 
+  const text = { ...DEFAULT_LABELS, ...labels };
   const shouldReduceMotion = useReducedMotion();
   const metrics = useMemo(() => metricsFor(size), [size]);
   const progress = useMotionValue(0);
@@ -360,7 +379,7 @@ const StepPlayer = ({
           data-slot="step-player-control"
           type="button"
           onClick={handleControl}
-          aria-label={CONTROL_LABEL[iconState]}
+          aria-label={text[iconState]}
           whileTap={shouldReduceMotion ? undefined : { scale: 0.88 }}
           transition={shouldReduceMotion ? { duration: 0 } : TAP_SPRING}
           style={{ height: metrics.track, width: metrics.track }}
@@ -377,7 +396,7 @@ const StepPlayer = ({
       <div
         data-slot="step-player-track"
         role="group"
-        aria-label={`Step ${index + 1} of ${count}`}
+        aria-label={fillLabel(text.track, index + 1, count)}
         style={{
           gap: metrics.gap,
           height: metrics.track,
@@ -423,7 +442,7 @@ const StepPlayer = ({
               {seekable && (
                 <button
                   type="button"
-                  aria-label={step.label ?? `Step ${i + 1}`}
+                  aria-label={step.label ?? fillLabel(text.step, i + 1)}
                   aria-current={state === "active" ? "step" : undefined}
                   onClick={() => {
                     commitIndex(i);

@@ -1,66 +1,74 @@
+"use client";
+
+import { useI18n } from "@thaipass/internationalization";
+import type { Dictionary } from "@thaipass/internationalization";
 import { TriangleAlert } from "lucide-react";
 
 import { StatusDot } from "@/components/layout/status-dot";
 import { LessonRow } from "@/components/learning/lesson-row";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { formatPlural } from "@/lib/format";
+import { Badge } from "@/components/ui/badge";
+import { fill, pluralize } from "@/lib/format";
 import { activeLesson, isRunEmpty } from "@/lib/learn-run";
-import type { RunFailure, RunState } from "@/lib/learn-run";
-import type { LessonKind } from "@/lib/lms";
+import type { RunState } from "@/lib/learn-run";
 
-const VERBS: Record<LessonKind, string> = {
-  article: "Reading",
-  attachment: "Reading",
-  quiz: "Answering",
-  video: "Watching",
-};
-
-const SCOPE_TITLES: Record<RunFailure["scope"], string> = {
-  course: "A course was left unfinished",
-  lesson: "A lesson was left unfinished",
-  session: "The run stopped",
-};
+type FeedCopy = Dictionary["learning"]["feed"];
 
 /** One sentence for a screen reader and for anyone not watching the list. */
-const statusLine = (state: RunState, running: boolean): string => {
+const statusLine = (
+  state: RunState,
+  running: boolean,
+  copy: FeedCopy
+): string => {
   const lesson = activeLesson(state);
   if (lesson) {
-    return `${VERBS[lesson.kind]} \u201C${lesson.title}\u201D`;
+    return fill(copy.active[lesson.kind], lesson.title);
   }
   if (running) {
-    return "Reading what this account has left to learn…";
+    return state.preview ? copy.previewRunning : copy.reading;
   }
   if (state.summary) {
-    return state.summary.reached
-      ? "The run reached its goal."
-      : "The run stopped short of its goal.";
+    if (state.preview) {
+      return copy.previewDone;
+    }
+    return state.summary.reached ? copy.reached : copy.short;
   }
   if (state.stopped) {
-    return "You stopped the run. Starting it again picks up from the last stamp.";
+    return copy.stopped;
   }
   return "";
 };
 
-const RunSummary = ({ state }: { readonly state: RunState }) => {
-  const { summary } = state;
+const RunSummary = ({
+  copy,
+  state,
+}: {
+  readonly copy: FeedCopy;
+  readonly state: RunState;
+}) => {
+  const { preview, summary } = state;
   if (!summary) {
     return null;
   }
 
+  const lessons = pluralize(summary.lessons, copy.lessons);
+  const earned = summary.earned.toLocaleString();
+
   return (
     <div className="ring-foreground/10 space-y-1 rounded-xl px-3 py-2.5 ring-1">
       <p className="text-sm font-medium tabular-nums">
-        {`+${summary.earned.toLocaleString()} EXP in ${formatPlural(summary.lessons, "lesson")}`}
+        {fill(preview ? copy.previewSummary : copy.summary, earned, lessons)}
       </p>
       <p className="text-muted-foreground text-xs">
-        {`Period total ${summary.monthly?.toLocaleString() ?? "unknown"} of ${summary.target.toLocaleString()} · ${summary.reason}`}
+        {fill(
+          copy.total,
+          summary.monthly?.toLocaleString() ?? copy.unknown,
+          summary.target.toLocaleString(),
+          summary.reason
+        )}
       </p>
-      {summary.paused ? (
-        <p className="text-xs">
-          The run used up its time budget mid-lesson. Start it again to pick up
-          from the last stamp.
-        </p>
-      ) : null}
+      {preview ? <p className="text-xs">{copy.previewUnchanged}</p> : null}
+      {summary.paused ? <p className="text-xs">{copy.paused}</p> : null}
     </div>
   );
 };
@@ -74,31 +82,41 @@ export const RunFeed = ({
   readonly running: boolean;
   readonly state: RunState;
 }) => {
-  const line = statusLine(state, running);
+  const { t } = useI18n();
+  const copy = t.learning.feed;
+  const line = statusLine(state, running, copy);
 
   return (
     <section aria-labelledby="activity-heading" className="space-y-4">
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-medium" id="activity-heading">
-            Activity
+            {copy.title}
           </h2>
-          {running ? <StatusDot label="Run in progress" tone="online" /> : null}
+          {state.preview ? (
+            <Badge variant="secondary">{copy.preview}</Badge>
+          ) : null}
+          {running ? (
+            <StatusDot
+              label={
+                state.preview ? copy.previewRunningLabel : copy.runningLabel
+              }
+              tone="online"
+            />
+          ) : null}
         </div>
         <output
           aria-live="polite"
           className="text-muted-foreground block text-sm"
         >
-          {line === ""
-            ? "No run yet. Start one and its lessons appear here."
-            : line}
+          {line === "" ? copy.idle : line}
         </output>
       </div>
 
       {error ? (
         <Alert variant="destructive">
           <TriangleAlert />
-          <AlertTitle>The run could not be followed</AlertTitle>
+          <AlertTitle>{copy.failed}</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
@@ -114,21 +132,21 @@ export const RunFeed = ({
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <span className="font-mono text-xs">{course.code}</span>
                   <span className="text-sm font-medium">
-                    {course.title ?? "Untitled course"}
+                    {course.title ?? copy.untitled}
                   </span>
                 </div>
                 <span className="text-muted-foreground text-xs">
-                  {formatPlural(course.planned, "lesson")}
+                  {pluralize(course.planned, copy.lessons)}
                   {course.bonus
-                    ? ` · +${course.bonus.toLocaleString()} EXP on completion`
+                    ? ` · ${fill(copy.courseBonus, course.bonus.toLocaleString())}`
                     : ""}
-                  {course.closed ? " · closed" : ""}
+                  {course.closed ? ` · ${copy.courseClosed}` : ""}
                 </span>
               </div>
 
               {course.lessons.length === 0 ? (
                 <p className="text-muted-foreground px-3 py-2.5 text-xs">
-                  Nothing open in this course.
+                  {copy.courseEmpty}
                 </p>
               ) : (
                 <ul className="divide-y">
@@ -146,7 +164,7 @@ export const RunFeed = ({
         </ol>
       )}
 
-      <RunSummary state={state} />
+      <RunSummary copy={copy} state={state} />
 
       {state.failures.length === 0 ? null : (
         <ul className="space-y-2">
@@ -154,7 +172,7 @@ export const RunFeed = ({
             <li key={failure.key}>
               <Alert variant="destructive">
                 <TriangleAlert />
-                <AlertTitle>{SCOPE_TITLES[failure.scope]}</AlertTitle>
+                <AlertTitle>{copy.scope[failure.scope]}</AlertTitle>
                 <AlertDescription>
                   {failure.message}
                   {failure.detail ? (

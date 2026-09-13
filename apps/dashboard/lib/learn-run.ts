@@ -55,39 +55,43 @@ export const DEFAULT_RUN_OPTIONS: RunOptions = {
   quizModel: DEFAULT_QUIZ_MODEL,
 };
 
+/**
+ * How long the lessons a preview planned would take to watch. Only videos
+ * carry a duration, so this is the watching, not the whole run.
+ */
+export const plannedSeconds = (state: RunState): number => {
+  let total = 0;
+  for (const course of state.courses) {
+    for (const lesson of course.lessons) {
+      if (lesson.status === "planned") {
+        total += lesson.duration ?? 0;
+      }
+    }
+  }
+  return total;
+};
+
 export type RunField = "amount" | "courses" | "maxLessons";
 
 export type RunCheck =
   | { body: LearnRunBody; ok: true }
-  | { field: RunField; message: string; ok: false };
+  | { field: RunField; ok: false };
 
 const isWhole = (value: number, least: number, most: number): boolean =>
   Number.isInteger(value) && value >= least && value <= most;
 
-/** The body to send, or the one field to point at and why. */
+/** The body to send, or the one field to point at; its message is the page's. */
 export const checkRun = (options: RunOptions, dryRun: boolean): RunCheck => {
   if (!isWhole(options.amount, 1, Number.MAX_SAFE_INTEGER)) {
-    return {
-      field: "amount",
-      message: "Give a whole number of EXP, 1 or more.",
-      ok: false,
-    };
+    return { field: "amount", ok: false };
   }
   if (!isWhole(options.maxLessons, 1, MAX_LESSONS)) {
-    return {
-      field: "maxLessons",
-      message: `Lessons per run goes from 1 to ${MAX_LESSONS}.`,
-      ok: false,
-    };
+    return { field: "maxLessons", ok: false };
   }
 
   const codes = options.courses;
   if (codes.length > MAX_COURSES) {
-    return {
-      field: "courses",
-      message: `Name at most ${MAX_COURSES} courses.`,
-      ok: false,
-    };
+    return { field: "courses", ok: false };
   }
 
   const body: LearnRunBody = {
@@ -170,6 +174,8 @@ export interface RunState {
   courses: readonly RunCourse[];
   failures: readonly RunFailure[];
   monthly: number | null;
+  /** The run was a dry run, so every figure below is what would have happened. */
+  preview: boolean;
   /** The reader stopped the run, so it ended with no `done` line of its own. */
   stopped: boolean;
   summary: LearnDoneEvent | null;
@@ -181,6 +187,7 @@ export const EMPTY_RUN: RunState = {
   courses: [],
   failures: [],
   monthly: null,
+  preview: false,
   stopped: false,
   summary: null,
 };
@@ -344,7 +351,7 @@ const applyDone = (state: RunState, event: LearnDoneEvent): RunState => ({
 
 export type RunAction =
   | { event: LearnEvent; kind: "event" }
-  | { kind: "reset" }
+  | { kind: "reset"; preview: boolean }
   | { kind: "stopped" };
 
 /**
@@ -371,7 +378,7 @@ const applyStopped = (state: RunState): RunState => {
 
 export const runReducer = (state: RunState, action: RunAction): RunState => {
   if (action.kind === "reset") {
-    return EMPTY_RUN;
+    return { ...EMPTY_RUN, preview: action.preview };
   }
   if (action.kind === "stopped") {
     return applyStopped(state);

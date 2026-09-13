@@ -1,5 +1,6 @@
 import "../globals.css";
 import {
+  DEFAULT_LOCALE,
   getDictionary,
   I18nProvider,
   isLocale,
@@ -15,13 +16,21 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { fonts } from "@/lib/fonts";
 
-export const metadata: Metadata = {
-  description:
-    "Control center for the THAIpass gateway: health, quota, model catalog, client configuration, and a streaming playground.",
-  title: {
-    default: "TH, AI Passport",
-    template: "%s ✦ AI Passport",
-  },
+export const generateMetadata = async ({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> => {
+  const { locale } = await params;
+  const dictionary = getDictionary(isLocale(locale) ? locale : DEFAULT_LOCALE);
+
+  return {
+    description: dictionary.brand.tagline,
+    title: {
+      default: dictionary.brand.name,
+      template: dictionary.brand.titleTemplate,
+    },
+  };
 };
 
 export const viewport: Viewport = {

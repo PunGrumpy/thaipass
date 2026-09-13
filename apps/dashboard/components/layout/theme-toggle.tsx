@@ -1,7 +1,8 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import { Moon, Sun } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useTheme } from "next-themes";
 
 import { Button } from "@/components/ui/button";
@@ -16,12 +17,17 @@ import { useHydrated } from "@/hooks/use-hydrated";
 import { THEME_OPTIONS } from "@/lib/theme";
 
 const SPRING = { bounce: 0, duration: 0.3, type: "spring" } as const;
+const INSTANT = { duration: 0 } as const;
 const HIDDEN = { filter: "blur(4px)", opacity: 0, scale: 0.25 } as const;
 const SHOWN = { filter: "blur(0px)", opacity: 1, scale: 1 } as const;
 
 export const ThemeToggle = () => {
   const { resolvedTheme, setTheme, theme } = useTheme();
   const hydrated = useHydrated();
+  // The icon swap is the only motion here that a stylesheet cannot reach,
+  // so it asks the preference directly, as step-player does.
+  const still = useReducedMotion();
+  const { t } = useI18n();
   const dark = hydrated && resolvedTheme === "dark";
   const Icon = dark ? Moon : Sun;
 
@@ -30,7 +36,7 @@ export const ThemeToggle = () => {
       <DropdownMenuTrigger
         render={
           <Button
-            aria-label="Change theme"
+            aria-label={t.common.theme.label}
             className="relative size-8"
             size="icon"
             variant="ghost"
@@ -41,10 +47,10 @@ export const ThemeToggle = () => {
         <AnimatePresence initial={false} mode="popLayout">
           <motion.span
             animate={SHOWN}
-            exit={HIDDEN}
-            initial={HIDDEN}
+            exit={still ? SHOWN : HIDDEN}
+            initial={still ? SHOWN : HIDDEN}
             key={dark ? "dark" : "light"}
-            transition={SPRING}
+            transition={still ? INSTANT : SPRING}
           >
             <Icon className="size-4" />
           </motion.span>

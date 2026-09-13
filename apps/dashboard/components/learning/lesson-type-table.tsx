@@ -1,3 +1,7 @@
+"use client";
+
+import { useI18n } from "@thaipass/internationalization";
+
 import {
   Table,
   TableBody,
@@ -17,6 +21,8 @@ export const LessonTypeTable = ({
 }: {
   readonly rows: readonly LessonTypeExp[];
 }) => {
+  const { t } = useI18n();
+  const copy = t.learning.breakdown;
   const total = rows.reduce((sum, row) => sum + (row.exp ?? 0), 0);
 
   return (
@@ -24,8 +30,8 @@ export const LessonTypeTable = ({
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40">
-            <TableHead>Lesson type</TableHead>
-            <TableHead className="text-right">EXP</TableHead>
+            <TableHead>{copy.type}</TableHead>
+            <TableHead className="text-right">{copy.exp}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -34,7 +40,7 @@ export const LessonTypeTable = ({
               <TableCell>{row.lessonType}</TableCell>
               <TableCell className="text-right tabular-nums">
                 {row.exp === null ? (
-                  <span className="text-muted-foreground/60">—</span>
+                  <span className="text-muted-foreground">—</span>
                 ) : (
                   row.exp.toLocaleString()
                 )}
@@ -44,7 +50,7 @@ export const LessonTypeTable = ({
 
           {rows.length > 0 ? (
             <TableRow className="bg-muted/40">
-              <TableCell className="font-medium">Total</TableCell>
+              <TableCell className="font-medium">{copy.total}</TableCell>
               <TableCell className="text-right font-medium tabular-nums">
                 {total.toLocaleString()}
               </TableCell>
@@ -55,7 +61,7 @@ export const LessonTypeTable = ({
                 className="text-muted-foreground py-12 text-center text-sm"
                 colSpan={2}
               >
-                The LMS reported no per-type breakdown for this account.
+                {copy.empty}
               </TableCell>
             </TableRow>
           )}

@@ -38,7 +38,11 @@ export const AppSidebar = () => {
   const navItems = useNavItems();
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar
+      collapsible="icon"
+      mobileDescription={t.navigation.sidebarDescription}
+      mobileLabel={t.navigation.sidebar}
+    >
       <SidebarHeader>
         <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
           <SidebarMenu className="min-w-0 flex-1">
@@ -52,7 +56,11 @@ export const AppSidebar = () => {
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
-          <SidebarTrigger className="shrink-0" size="icon" />
+          <SidebarTrigger
+            className="shrink-0"
+            label={t.navigation.toggleSidebar}
+            size="icon"
+          />
         </div>
       </SidebarHeader>
 
@@ -68,7 +76,7 @@ export const AppSidebar = () => {
                   <Search />
                   <span>{t.navigation.search}</span>
                   {modifier === null ? null : (
-                    <kbd className="bg-muted text-muted-foreground ml-auto rounded-sm border px-1 font-mono text-xs">
+                    <kbd className="bg-card text-muted-foreground ml-auto rounded-sm border px-1 font-mono text-xs">
                       {modifier}K
                     </kbd>
                   )}
@@ -151,7 +159,7 @@ export const AppSidebar = () => {
         </div>
       </SidebarFooter>
 
-      <SidebarRail />
+      <SidebarRail label={t.navigation.toggleSidebar} />
       <CommandMenu {...commandMenu} />
     </Sidebar>
   );

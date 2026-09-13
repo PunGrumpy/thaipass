@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@thaipass/internationalization";
 import { ArrowUpRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,8 @@ import { cn } from "@/lib/utils";
 interface Row {
   label: string;
   mono?: boolean;
-  value: string;
+  /** `null` where health has not answered yet, rendered as the null dash. */
+  value: string | null;
 }
 
 export const GatewayCard = ({
@@ -28,36 +30,45 @@ export const GatewayCard = ({
   readonly health: HealthResource;
 }) => {
   const { proxyUrl } = useConnection();
+  const { t } = useI18n();
+  const { gateway } = t.overview;
   const reference = `${normalizeProxyUrl(proxyUrl)}/`;
+  const { data } = health;
 
+  const costOf = (): string | null => {
+    if (!data) {
+      return null;
+    }
+    return data.prices ? gateway.costLive : gateway.costOff;
+  };
+  const cost = costOf();
+
+  // Every row below the origin reads from one health response, so when that
+  // response is missing they all say so the same way rather than mixing a
+  // dash, the word "unknown", and a setting the gateway has not reported.
   const rows: Row[] = [
-    { label: "Proxy origin", mono: true, value: proxyUrl },
-    { label: "Upstream", mono: true, value: health.data?.origin ?? "unknown" },
+    { label: gateway.rows.origin, mono: true, value: proxyUrl },
+    { label: gateway.rows.upstream, mono: true, value: data?.origin ?? null },
     {
-      label: "Built-in chat models",
-      value: health.data ? String(health.data.models) : "—",
+      label: gateway.rows.models,
+      value: data ? String(data.models) : null,
     },
-    {
-      label: "Cost estimation",
-      value: health.data?.prices ? "OpenRouter (live)" : "Disabled",
-    },
+    { label: gateway.rows.cost, value: cost },
   ];
 
   return (
     <Card>
       <CardHeader className="border-b">
-        <CardTitle>Gateway</CardTitle>
+        <CardTitle as="h2">{gateway.title}</CardTitle>
         <CardDescription>
-          {health.online
-            ? "Reachable and forwarding to AI Pass."
-            : (health.error ?? "Waiting for the gateway to answer.")}
+          {health.online ? gateway.online : (health.error ?? gateway.offline)}
         </CardDescription>
         <CardAction>
           <Button
             nativeButton={false}
             render={
               <a
-                aria-label="Open the API reference"
+                aria-label={gateway.actionLabel}
                 href={reference}
                 rel="noopener noreferrer"
                 target="_blank"
@@ -66,7 +77,7 @@ export const GatewayCard = ({
             size="sm"
             variant="outline"
           >
-            API reference
+            {t.navigation.apiReference}
             <ArrowUpRight data-icon="inline-end" />
           </Button>
         </CardAction>
@@ -86,7 +97,11 @@ export const GatewayCard = ({
                   row.mono ? "font-mono" : "font-medium tabular-nums"
                 )}
               >
-                {row.value}
+                {row.value === null ? (
+                  <span className="text-muted-foreground">—</span>
+                ) : (
+                  row.value
+                )}
               </dd>
             </div>
           ))}

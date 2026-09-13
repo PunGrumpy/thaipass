@@ -34,7 +34,7 @@ export const StatCard = ({
   <div
     className={cn(
       "space-y-1.5 px-4 py-3 sm:px-5",
-      tone === "warning" ? "bg-warning/10" : "bg-card"
+      tone === "warning" ? "bg-warning/5" : "bg-card"
     )}
   >
     <span className="text-muted-foreground block text-xs font-medium">
@@ -47,7 +47,7 @@ export const StatCard = ({
       <div
         className={cn(
           "flex items-baseline gap-1.5 text-2xl font-semibold tracking-tight tabular-nums",
-          value === null && "text-muted-foreground/50"
+          value === null && "text-muted-foreground"
         )}
       >
         <span>{value === null ? placeholder : value.toLocaleString()}</span>
