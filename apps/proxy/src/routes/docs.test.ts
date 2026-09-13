@@ -69,6 +69,10 @@ test("documents every route the app serves", async () => {
   const spec = await document();
   expect(Object.keys(spec.paths).toSorted()).toEqual([
     "/health",
+    "/oauth/code",
+    "/oauth/metadata",
+    "/oauth/token",
+    "/oauth/userinfo",
     "/v1/audio/generations",
     "/v1/chat/completions",
     "/v1/images/generations",
@@ -156,5 +160,7 @@ test("marks the model routes and the usage route as needing the cookie", async (
     "/v1/lms/exp",
     "/v1/lms/courses",
     "/v1/lms/learn",
+    "/oauth/code",
+    "/oauth/userinfo",
   ]);
 });

@@ -31,6 +31,8 @@ export const env = createEnv({
       .default(DEFAULT_PRICES_URL),
     POSTHOG_API_KEY: z.string().startsWith("phc_").optional(),
     POSTHOG_HOST: z.url().optional().default("https://us.i.posthog.com"),
+    /** 32 bytes of base64. Without it the gateway issues no thaipass tokens. */
+    THAIPASS_TOKEN_KEY: z.string().optional(),
     VERCEL: z.string().optional(),
   },
   skipValidation: process.env.SKIP_ENV_VALIDATION === "true",
