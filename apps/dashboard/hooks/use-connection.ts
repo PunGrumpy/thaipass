@@ -11,7 +11,23 @@ const COOKIE_KEY = "thaipass:cookie";
 
 export const DEFAULT_PROXY_URL = env.NEXT_PUBLIC_PROXY_URL;
 
+const LOOPBACK = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/u;
+
+/**
+ * A deployment pins its gateway. Whoever hosts the dashboard is the one who
+ * answers for what it sends and keeps the logs of it, and a reader who repoints
+ * it at their own gateway takes both away; the honest fix is to run a copy.
+ * Locally the field stays editable, since pointing a dev dashboard at a dev
+ * gateway is the whole point of having it.
+ */
+export const PROXY_LOCKED =
+  env.NEXT_PUBLIC_PROXY_LOCKED === undefined
+    ? !LOOPBACK.test(DEFAULT_PROXY_URL)
+    : env.NEXT_PUBLIC_PROXY_LOCKED === "1";
+
 export interface Connection {
+  /** True when this deployment pins the gateway and the field is read-only. */
+  proxyLocked: boolean;
   clear: () => void;
   cookie: string;
   hasSession: boolean;
@@ -21,7 +37,9 @@ export interface Connection {
 }
 
 const readProxyUrl = (): string =>
-  readLocal(PROXY_URL_KEY) ?? DEFAULT_PROXY_URL;
+  PROXY_LOCKED
+    ? DEFAULT_PROXY_URL
+    : (readLocal(PROXY_URL_KEY) ?? DEFAULT_PROXY_URL);
 const serverProxyUrl = (): string => DEFAULT_PROXY_URL;
 
 const readCookie = (): string => readLocal(COOKIE_KEY) ?? "";
@@ -36,6 +54,9 @@ export const useConnection = (): Connection => {
   const cookie = useSyncExternalStore(subscribeLocal, readCookie, serverCookie);
 
   const setProxyUrl = useCallback((next: string) => {
+    if (PROXY_LOCKED) {
+      return;
+    }
     writeLocal(PROXY_URL_KEY, normalizeProxyUrl(next));
   }, []);
 
@@ -52,6 +73,7 @@ export const useConnection = (): Connection => {
     clear,
     cookie,
     hasSession: cookie.length > 0,
+    proxyLocked: PROXY_LOCKED,
     proxyUrl,
     setCookie,
     setProxyUrl,

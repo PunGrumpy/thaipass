@@ -89,7 +89,7 @@ There is no refresh token. A thaipass token cannot outlive the AI Pass session s
 
 ## Connect a client
 
-Each client needs a base URL, the cookie as its key, and a model id from the catalog.
+Each client needs a base URL, a credential as its key, and a model id from the catalog. The credential is the cookie, or a thaipass token from [`bun run login`](#login-with-thaipass) where the gateway issues them — every client below takes either, in the same place. The dashboard's Integrations page writes these out with your own values filled in.
 
 ### Anthropic SDK and agents
 
@@ -131,7 +131,7 @@ const client = new OpenAI({
 
 ### Codex
 
-Codex removed `wire_api = "chat"` in February 2026, so it speaks only the Responses protocol. Point a custom provider at `/v1` in `~/.codex/config.toml` and put the cookie in the environment variable it names:
+Codex removed `wire_api = "chat"` in February 2026, so it speaks only the Responses protocol. Point a custom provider at `/v1` in `~/.codex/config.toml` and put the credential in the environment variable it names:
 
 ```toml
 model = "claude-sonnet-5@default"
@@ -460,6 +460,8 @@ The proxy stops at the first failed call instead of trying the next course. An u
 ## Deploy to Vercel
 
 Set the Vercel project's Root Directory to `apps/proxy` and turn on the option to include source files outside it, so the build can read `packages/core`. There, `vercel.json` sets `bunVersion`, runs `bun run build`, and names `dist` as the output directory. The build inlines `packages/core` and leaves the real dependencies as imports, so Vercel traces them into the function's `node_modules`.
+
+The dashboard is a second Vercel project with Root Directory `apps/dashboard`. Give it `NEXT_PUBLIC_PROXY_URL` (the gateway it talks to) and `NEXT_PUBLIC_WEB_URL` (its own address, which the gateway names as the login screen). A dashboard whose gateway is not on loopback pins it: the origin field in Settings is read-only, so a reader cannot point your deployment at a gateway you do not run and take its traffic, and its logs, with them. `NEXT_PUBLIC_PROXY_LOCKED=0` unpins it, `1` pins a local one.
 
 Two settings keep that tracing honest. The root `bunfig.toml` installs hoisted, so the traced files are real directories rather than links into a store outside the Root Directory. The install command deletes every `node_modules` first, because Vercel's build cache keeps the old isolated layout's links beside the hoisted one and the tracer follows them into a store the function does not carry. Keep Deployment Protection on. The deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
 

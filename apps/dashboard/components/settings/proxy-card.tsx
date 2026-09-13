@@ -1,10 +1,11 @@
 "use client";
 
-import { CheckCircle2, Plug, XCircle } from "lucide-react";
+import { CheckCircle2, Lock, Plug, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { SettingsSection } from "@/components/settings/settings-section";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,13 +14,21 @@ import { attempt } from "@/lib/attempt";
 import { fetchHealth } from "@/lib/proxy";
 
 export const ProxyCard = () => {
-  const { proxyUrl, setProxyUrl } = useConnection();
+  const { proxyLocked, proxyUrl, setProxyUrl } = useConnection();
   const [edited, setEdited] = useState<string | null>(null);
   const draft = edited ?? proxyUrl;
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(
     null
   );
+
+  const testLabel = () => {
+    if (testing) {
+      return "Testing…";
+    }
+    // A pinned gateway is still worth checking; it just cannot be changed.
+    return proxyLocked ? "Test" : "Test & save";
+  };
 
   const handleTest = async () => {
     setTesting(true);
@@ -45,7 +54,19 @@ export const ProxyCard = () => {
 
   return (
     <SettingsSection
-      description="Where the thaipass proxy is listening. The dashboard calls it from your browser, so it has to be reachable from here."
+      action={
+        proxyLocked ? (
+          <Badge variant="secondary">
+            <Lock />
+            fixed by this deployment
+          </Badge>
+        ) : null
+      }
+      description={
+        proxyLocked
+          ? "This dashboard talks to one gateway, and only that one. Run your own copy of thaipass to point somewhere else — the source and the deploy steps are in the README."
+          : "Where the thaipass proxy is listening. The dashboard calls it from your browser, so it has to be reachable from here."
+      }
       title="Gateway origin"
     >
       <div className="space-y-1.5">
@@ -53,18 +74,21 @@ export const ProxyCard = () => {
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input
             className="font-mono text-base sm:max-w-sm sm:text-xs"
+            disabled={proxyLocked}
             id="proxy-url"
             onChange={(event) => setEdited(event.target.value)}
             placeholder={DEFAULT_PROXY_URL}
+            readOnly={proxyLocked}
             value={draft}
           />
           <Button
             className="shrink-0"
             disabled={testing || draft.trim() === ""}
             onClick={handleTest}
+            variant={proxyLocked ? "outline" : "default"}
           >
             <Plug />
-            {testing ? "Testing…" : "Test & save"}
+            {testLabel()}
           </Button>
         </div>
       </div>
