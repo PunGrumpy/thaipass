@@ -42,6 +42,7 @@ const LearningPage = () => {
         action={
           <Button
             disabled={loading || !hasSession}
+            focusableWhenDisabled
             onClick={() => reload()}
             variant="outline"
           >

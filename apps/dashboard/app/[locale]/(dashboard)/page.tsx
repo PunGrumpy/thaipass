@@ -25,7 +25,12 @@ const OverviewPage = () => {
     <>
       <PageHeader
         action={
-          <Button disabled={refreshing} onClick={refresh} variant="outline">
+          <Button
+            disabled={refreshing}
+            focusableWhenDisabled
+            onClick={refresh}
+            variant="outline"
+          >
             <RefreshCw className={cn(refreshing && "animate-spin")} />
             {refreshing
               ? t.common.actions.refreshing

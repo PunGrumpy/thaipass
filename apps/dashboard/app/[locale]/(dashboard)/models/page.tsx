@@ -20,6 +20,7 @@ const ModelsPage = () => {
         action={
           <Button
             disabled={catalog.loading}
+            focusableWhenDisabled
             onClick={() => catalog.reload()}
             variant="outline"
           >
