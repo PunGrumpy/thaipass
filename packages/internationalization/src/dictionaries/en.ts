@@ -317,10 +317,19 @@ export const en = {
       title: "Gateway",
     },
     sessionGate: {
-      action: "Add session cookie",
+      action: "Paste it in Settings",
       badge: "No session connected",
+      clipboard: {
+        action: "Paste from clipboard",
+        blocked:
+          "This browser would not share the clipboard. Paste into the field in Settings instead.",
+        busy: "Reading clipboard…",
+        done: "Session connected",
+        empty: "Nothing in the clipboard yet",
+        invalid: "That copy holds no AI Pass session",
+      },
       description:
-        "The gateway forwards your own AI Pass credentials and stores nothing. Add the session cookie once to enable quota, catalog, and the playground.",
+        "The gateway forwards your own AI Pass credentials and stores nothing. Copying the session takes four steps and no code — the pictures show where to click, and the paste lands anywhere on this page.",
       player: {
         pause: "Pause",
         play: "Play",
@@ -330,12 +339,16 @@ export const en = {
       step: "Step %s of %s",
       steps: {
         copy: {
-          body: "In DevTools → Network, right-click any request and choose Copy as cURL (or copy the Cookie header).",
-          label: "Copy as cURL or Cookie",
+          body: "In that panel, click Application, then Cookies, then de.aipass.net. Click the row named __Secure-ai_passport_auth.session_token and copy its Value with Ctrl+C.",
+          label: "Copy the one long row",
+        },
+        open: {
+          body: "Press F12 — on a Mac, ⌥⌘I. A panel opens beside the page. Nothing you do in it changes anything.",
+          label: "Open the browser panel",
         },
         paste: {
-          body: "Paste into Settings. The dashboard automatically parses and extracts your session cookie.",
-          label: "Paste into Settings",
+          body: "Press Paste from clipboard, or just hit Ctrl+V anywhere on this page. Whatever you copied, the token is pulled out of it.",
+          label: "Paste it here",
         },
         signIn: {
           body: "Open de.aipass.net and sign in, so the browser holds a live session.",
