@@ -4,7 +4,9 @@ import { KeyRound, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { SetupIllustration } from "@/components/integrations/setup-illustration";
 import { SnippetBlock } from "@/components/integrations/snippet-block";
+import { SnippetSteps } from "@/components/integrations/snippet-steps";
 import { ModelSelect } from "@/components/playground/model-select";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -173,18 +175,32 @@ export const IntegrationPanel = () => {
               key={snippet.id}
               value={snippet.id}
             >
-              <p className="text-muted-foreground max-w-[68ch] text-sm text-pretty">
-                {snippet.hint}
-              </p>
-              <SnippetBlock
-                canReveal={hasSession}
-                code={view.code}
-                credential={view.credential}
-                filename={snippet.filename}
-                language={snippet.language}
-                onToggleReveal={() => setReveal((on) => !on)}
-                revealed={view.revealed}
-              />
+              <div className="grid min-w-0 gap-6 md:grid-cols-[minmax(0,1fr)_16rem]">
+                <div className="min-w-0 space-y-3">
+                  <p className="text-muted-foreground max-w-[68ch] text-sm text-pretty">
+                    {snippet.summary}
+                  </p>
+                  <SnippetSteps
+                    block={
+                      <SnippetBlock
+                        canReveal={hasSession}
+                        code={view.code}
+                        credential={view.credential}
+                        filename={snippet.filename}
+                        language={snippet.language}
+                        onToggleReveal={() => setReveal((on) => !on)}
+                        revealed={view.revealed}
+                      />
+                    }
+                    steps={snippet.steps}
+                  />
+                </div>
+
+                {/* The drawing answers "where does this go" before the steps say it. */}
+                <div className="hidden md:block">
+                  <SetupIllustration place={snippet.place} />
+                </div>
+              </div>
             </TabsContent>
           );
         })}

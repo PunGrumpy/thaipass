@@ -52,6 +52,16 @@ describe("snippets", () => {
     expect(byId("codex").filename).toBe("~/.codex/config.toml");
   });
 
+  it("reads as steps, with exactly one carrying the code", () => {
+    for (const snippet of SNIPPETS) {
+      expect(snippet.steps.length).toBeGreaterThan(0);
+      expect(snippet.steps.filter((step) => step.code === true)).toHaveLength(
+        1
+      );
+      expect(snippet.summary.length).toBeGreaterThan(0);
+    }
+  });
+
   it("asks only for what a client calls", () => {
     expect(CLIENT_SCOPE).toBe("chat models");
   });
