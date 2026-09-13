@@ -1,0 +1,181 @@
+"use client";
+
+import type { ReactNode } from "react";
+
+import { cn } from "@/lib/utils";
+
+/**
+ * Copying the session is the one step the browser will not do for a reader:
+ * the cookie is `HttpOnly`, so no page can read it and no link can hand it
+ * over. What is left is showing someone exactly what their screen will look
+ * like at each step, which is what these drawings are — a browser window, the
+ * tools panel beside it, and the row to copy, lit in turn.
+ */
+
+const Key = ({ children }: { readonly children: ReactNode }) => (
+  <kbd className="bg-background text-foreground rounded border px-1 py-0.5 font-mono text-[10px] leading-none shadow-sm">
+    {children}
+  </kbd>
+);
+
+const Window = ({
+  children,
+  url,
+}: {
+  readonly children: ReactNode;
+  readonly url: string;
+}) => (
+  <div className="bg-background overflow-hidden rounded-md border">
+    <div className="bg-muted/60 flex items-center gap-1.5 border-b px-2 py-1.5">
+      <span className="bg-muted-foreground/30 size-1.5 rounded-full" />
+      <span className="bg-muted-foreground/30 size-1.5 rounded-full" />
+      <span className="bg-muted-foreground/30 size-1.5 rounded-full" />
+      <span className="bg-background text-muted-foreground ml-1 flex-1 truncate rounded px-1.5 py-0.5 text-[10px]">
+        {url}
+      </span>
+    </div>
+    <div className="flex h-32">{children}</div>
+  </div>
+);
+
+/** Step 1: the AI Pass sign-in page, as the reader already knows it. */
+const SignInFrame = () => (
+  <Window url="de.aipass.net">
+    <div className="flex flex-1 flex-col items-center justify-center gap-2">
+      <div className="from-primary size-6 rounded-md bg-gradient-to-b to-sky-400" />
+      <div className="bg-muted h-1.5 w-16 rounded-full" />
+      <div className="border-primary/40 bg-primary/10 text-primary rounded-full border px-3 py-1 text-[10px] font-medium">
+        Sign in
+      </div>
+    </div>
+  </Window>
+);
+
+const PANEL_TABS = ["Elements", "Console", "Application"] as const;
+
+/**
+ * The tools panel, drawn twice: once as the blank thing that appears when the
+ * key is pressed, then again with the cookie row a reader is looking for.
+ */
+const Panel = ({ detailed }: { readonly detailed: boolean }) => (
+  <div
+    className={cn(
+      "bg-muted/40 flex w-[62%] flex-col border-l",
+      detailed ? "opacity-100" : "opacity-70"
+    )}
+  >
+    <div className="flex gap-2 border-b px-2 py-1">
+      {PANEL_TABS.map((tab) => (
+        <span
+          className={cn(
+            "text-[9px]",
+            tab === "Application" && detailed
+              ? "text-primary border-primary border-b font-medium"
+              : "text-muted-foreground"
+          )}
+          key={tab}
+        >
+          {tab}
+        </span>
+      ))}
+    </div>
+    {detailed ? (
+      <div className="flex min-h-0 flex-1">
+        <div className="w-1/3 space-y-1 border-r p-1.5">
+          <div className="text-muted-foreground text-[9px]">Cookies</div>
+          <div className="text-primary truncate text-[9px] font-medium">
+            de.aipass.net
+          </div>
+        </div>
+        <div className="flex-1 space-y-1 p-1.5 pr-2.5">
+          <div className="text-muted-foreground flex gap-2 text-[9px]">
+            <span className="w-1/2">Name</span>
+            <span>Value</span>
+          </div>
+          <div className="bg-muted-foreground/20 h-1.5 w-full rounded-full" />
+          <div className="ring-primary bg-primary/10 flex items-center gap-2 rounded-sm px-1 py-0.5 ring-1">
+            <span className="text-primary w-1/2 truncate font-mono text-[8px]">
+              __Secure-…session_token
+            </span>
+            <span className="bg-primary/30 h-1.5 flex-1 rounded-full" />
+          </div>
+          <div className="bg-muted-foreground/20 h-1.5 w-4/5 rounded-full" />
+        </div>
+      </div>
+    ) : (
+      <div className="flex-1 space-y-1.5 p-2">
+        <div className="bg-muted-foreground/20 h-1.5 w-2/3 rounded-full" />
+        <div className="bg-muted-foreground/20 h-1.5 w-1/2 rounded-full" />
+        <div className="bg-muted-foreground/20 h-1.5 w-3/5 rounded-full" />
+      </div>
+    )}
+  </div>
+);
+
+/** Step 2: the panel arriving, with the key that brings it. */
+const OpenFrame = () => (
+  <div className="relative">
+    <Window url="de.aipass.net">
+      <div className="flex-1" />
+      <Panel detailed={false} />
+    </Window>
+    <div className="absolute inset-x-0 bottom-3 flex justify-center gap-1">
+      <Key>F12</Key>
+      <span className="text-muted-foreground text-[10px]">/</span>
+      <Key>⌥ ⌘ I</Key>
+    </div>
+  </div>
+);
+
+/** Step 3: the row to copy, lit. */
+const CopyFrame = () => (
+  <div className="relative">
+    <Window url="de.aipass.net">
+      <div className="bg-muted/20 flex-1" />
+      <Panel detailed />
+    </Window>
+    <div className="absolute right-3 bottom-3">
+      <Key>Ctrl C</Key>
+    </div>
+  </div>
+);
+
+/** Step 4: back here, where the paste lands. */
+const PasteFrame = ({ label }: { readonly label: string }) => (
+  <div className="relative">
+    <Window url="thaipass.vercel.app">
+      <div className="flex flex-1 flex-col justify-center gap-2 px-4">
+        <div className="bg-muted h-1.5 w-20 rounded-full" />
+        <div className="flex items-center gap-2">
+          <div className="bg-muted/60 h-5 flex-1 rounded border" />
+          <div className="bg-primary text-primary-foreground ring-primary/30 truncate rounded px-2 py-1 text-[9px] font-medium ring-4">
+            {label}
+          </div>
+        </div>
+      </div>
+    </Window>
+    <div className="absolute bottom-3 left-3">
+      <Key>Ctrl V</Key>
+    </div>
+  </div>
+);
+
+export interface WalkthroughProps {
+  /** Which of the four steps to draw. */
+  readonly index: number;
+  /** The paste button's own label, so the drawing matches the page. */
+  readonly pasteLabel: string;
+}
+
+export const SessionWalkthrough = ({ index, pasteLabel }: WalkthroughProps) => {
+  if (index === 1) {
+    return <OpenFrame />;
+  }
+  if (index === 2) {
+    return <CopyFrame />;
+  }
+  if (index === 3) {
+    return <PasteFrame label={pasteLabel} />;
+  }
+  return <SignInFrame />;
+};

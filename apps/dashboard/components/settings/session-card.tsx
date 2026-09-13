@@ -3,13 +3,14 @@
 import {
   AlertCircle,
   Check,
-  CheckCircle2,
   ChevronDown,
   ClipboardPaste,
   ExternalLink,
   Eye,
   EyeOff,
   HelpCircle,
+  Loader2,
+  RefreshCw,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
@@ -32,94 +33,97 @@ import {
 } from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import { useConnection } from "@/hooks/use-connection";
-import { attempt } from "@/lib/attempt";
+import { useGateway } from "@/hooks/use-gateway";
 import { formatResetAt } from "@/lib/format";
-import { fetchCredits, hasSessionToken, normalizeCookie } from "@/lib/proxy";
+import { hasSessionToken } from "@/lib/proxy";
 import type { CreditBalance } from "@/lib/proxy";
+import { readClipboardSession } from "@/lib/session-paste";
 import { cn } from "@/lib/utils";
 
+const AIPASS_URL = "https://de.aipass.net";
+
+/** What the gateway made of the session, without anyone pressing Verify. */
+const SessionStatus = ({
+  balance,
+  error,
+  loading,
+}: {
+  readonly balance: CreditBalance | null;
+  readonly error: string | null;
+  readonly loading: boolean;
+}) => {
+  if (loading) {
+    return (
+      <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+        <Loader2 className="size-3 animate-spin" />
+        Checking the session…
+      </p>
+    );
+  }
+  if (error !== null) {
+    return <p className="text-destructive text-xs text-pretty">{error}</p>;
+  }
+  if (balance === null) {
+    return null;
+  }
+  return (
+    <dl className="grid max-w-lg gap-3 rounded-lg border p-3 text-xs sm:grid-cols-3">
+      <div>
+        <dt className="text-muted-foreground">Available</dt>
+        <dd className="font-medium tabular-nums">
+          {balance.available.toLocaleString()}
+        </dd>
+      </div>
+      <div>
+        <dt className="text-muted-foreground">Used of limit</dt>
+        <dd className="font-medium tabular-nums">
+          {balance.used.toLocaleString()} / {balance.limit.toLocaleString()}
+        </dd>
+      </div>
+      <div>
+        <dt className="text-muted-foreground">Resets</dt>
+        <dd className="font-medium">{formatResetAt(balance.reset_at)}</dd>
+      </div>
+    </dl>
+  );
+};
+
 export const SessionCard = () => {
-  const { cookie, hasSession, proxyUrl, setCookie } = useConnection();
+  const { cookie, hasSession, setCookie } = useConnection();
+  const { credits } = useGateway();
+  const handleRecheck = credits.reload;
   const [visible, setVisible] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [balance, setBalance] = useState<CreditBalance | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [pasting, setPasting] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState<boolean | null>(null);
 
   const isTokenValid = hasSession && hasSessionToken(cookie);
 
-  const handleVerify = async () => {
-    setVerifying(true);
-    setError(null);
+  const handlePaste = async () => {
+    setPasting(true);
+    const outcome = await readClipboardSession();
+    setPasting(false);
 
-    const outcome = await attempt(() => fetchCredits(proxyUrl, cookie));
-    setVerifying(false);
-
-    if (outcome.ok) {
-      setBalance(outcome.data);
-      toast.success("Session accepted");
+    if (outcome.kind === "saved") {
+      setCookie(outcome.cookie);
+      toast.success("Session connected");
       return;
     }
-
-    setBalance(null);
-    setError(outcome.message);
-    toast.error("Session rejected");
+    if (outcome.kind === "empty") {
+      toast.error("Nothing in the clipboard yet");
+      return;
+    }
+    if (outcome.kind === "invalid") {
+      toast.error("That copy holds no AI Pass session");
+      return;
+    }
+    toast.error("This browser would not share the clipboard. Paste below.");
   };
 
   const handleClear = () => {
     setConfirming(false);
     setCookie("");
-    setBalance(null);
-    setError(null);
-    toast.info("Session cookie removed from this browser");
-  };
-
-  const handlePasteFromClipboard = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (!text.trim()) {
-        toast.error("Clipboard is empty");
-        return;
-      }
-      const cleaned = normalizeCookie(text);
-      if (!cleaned) {
-        toast.error("No valid cookie found in clipboard");
-        return;
-      }
-      setCookie(cleaned);
-      if (hasSessionToken(cleaned)) {
-        toast.success("Cookie extracted and saved from clipboard");
-      } else {
-        toast.warning(
-          "Pasted from clipboard, but session token (__Secure-ai_passport_auth.session_token) is missing"
-        );
-      }
-    } catch {
-      toast.error(
-        "Could not access clipboard. Please paste manually into the field."
-      );
-    }
-  };
-
-  const renderTokenStatus = () => {
-    if (!hasSession) {
-      return null;
-    }
-    if (isTokenValid) {
-      return (
-        <span className="text-muted-foreground flex items-center gap-1 text-xs">
-          <Check className="text-success size-3" />
-          Session token found
-        </span>
-      );
-    }
-    return (
-      <span className="text-destructive flex items-center gap-1 text-xs">
-        <AlertCircle className="size-3" />
-        Missing session token
-      </span>
-    );
+    toast.info("Session removed from this browser");
   };
 
   return (
@@ -132,50 +136,54 @@ export const SessionCard = () => {
           </Badge>
         ) : null
       }
-      description="Paste the Cookie header or a cURL command from a signed-in de.aipass.net tab. It is kept in this browser only and is sent to nothing but your own gateway."
+      description="The session of a signed-in de.aipass.net tab. It stays in this browser, goes to nothing but your own gateway, and is checked the moment you paste it."
       title="AI Pass session"
     >
       <div className="max-w-lg space-y-1.5">
         <div className="flex items-center justify-between">
-          <Label htmlFor="session-cookie">Cookie or cURL command</Label>
-          {renderTokenStatus()}
+          <Label htmlFor="session-cookie">Session cookie</Label>
+          {isTokenValid ? (
+            <span className="text-muted-foreground flex items-center gap-1 text-xs">
+              <Check className="text-success size-3" />
+              Session token found
+            </span>
+          ) : null}
         </div>
-        <InputGroup>
-          <InputGroupInput
-            autoComplete="off"
-            className="font-mono text-base sm:text-xs"
-            id="session-cookie"
-            onChange={(event) => setCookie(event.target.value)}
-            placeholder="Paste Cookie header, cURL, or __Secure-ai_passport_auth.session_token=…"
-            spellCheck={false}
-            type={visible ? "text" : "password"}
-            value={cookie}
-          />
-          <InputGroupAddon align="inline-end">
-            <InputGroupButton
-              aria-label="Paste from clipboard"
-              onClick={handlePasteFromClipboard}
-              size="icon-xs"
-              title="Paste from clipboard"
-              variant="ghost"
-            >
-              <ClipboardPaste />
-            </InputGroupButton>
-            <InputGroupButton
-              aria-label={visible ? "Hide cookie" : "Show cookie"}
-              onClick={() => setVisible((previous) => !previous)}
-              size="icon-xs"
-              variant="ghost"
-            >
-              {visible ? <EyeOff /> : <Eye />}
-            </InputGroupButton>
-          </InputGroupAddon>
-        </InputGroup>
+
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <InputGroup>
+            <InputGroupInput
+              autoComplete="off"
+              className="font-mono text-base sm:text-xs"
+              id="session-cookie"
+              onChange={(event) => setCookie(event.target.value)}
+              placeholder="Paste the token, the Cookie header, or a cURL command"
+              spellCheck={false}
+              type={visible ? "text" : "password"}
+              value={cookie}
+            />
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                aria-label={visible ? "Hide cookie" : "Show cookie"}
+                onClick={() => setVisible((previous) => !previous)}
+                size="icon-xs"
+                variant="ghost"
+              >
+                {visible ? <EyeOff /> : <Eye />}
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+          <Button className="shrink-0" disabled={pasting} onClick={handlePaste}>
+            <ClipboardPaste />
+            {pasting ? "Reading…" : "Paste and connect"}
+          </Button>
+        </div>
+
         {hasSession && !isTokenValid ? (
-          <p className="text-destructive text-xs">
-            Cookie does not contain{" "}
-            <code>__Secure-ai_passport_auth.session_token</code>. Copy the full
-            Cookie header or request as cURL from DevTools.
+          <p className="text-destructive text-xs text-pretty">
+            This holds no <code>__Secure-ai_passport_auth.session_token</code>.
+            Copy the token&apos;s value, the whole Cookie header, or the request
+            as cURL.
           </p>
         ) : null}
       </div>
@@ -183,27 +191,26 @@ export const SessionCard = () => {
       <Collapsible
         className="max-w-lg"
         onOpenChange={setGuideOpen}
-        open={guideOpen}
+        open={guideOpen ?? !hasSession}
       >
         <CollapsibleTrigger className="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1.5 text-xs transition-colors">
           <HelpCircle className="size-3.5" />
-          <span>How to copy cookie in 30 seconds</span>
+          <span>Where to find it</span>
           <ChevronDown
             className={cn(
               "size-3.5 transition-transform duration-200",
-              guideOpen && "rotate-180"
+              (guideOpen ?? !hasSession) && "rotate-180"
             )}
           />
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-2">
-          <div className="bg-muted/40 space-y-2 rounded-lg border p-3 text-xs">
-            <p className="font-medium">Quickest shortcut: Copy as cURL</p>
+          <div className="bg-muted/40 rounded-lg border p-3 text-xs">
             <ol className="text-muted-foreground list-decimal space-y-1 pl-4">
               <li>
                 Sign in to{" "}
                 <a
                   className="hover:text-foreground inline-flex items-center gap-0.5 underline underline-offset-2"
-                  href="https://de.aipass.net"
+                  href={AIPASS_URL}
                   rel="noopener noreferrer"
                   target="_blank"
                 >
@@ -213,80 +220,70 @@ export const SessionCard = () => {
                 .
               </li>
               <li>
-                Open DevTools (
+                Press{" "}
                 <kbd className="bg-background rounded border px-1 py-0.5 font-mono text-xs">
                   F12
                 </kbd>{" "}
-                or right-click → Inspect) and switch to the{" "}
-                <strong>Network</strong> tab.
+                → <strong>Application</strong> → <strong>Cookies</strong> →{" "}
+                <code>https://de.aipass.net</code>.
               </li>
               <li>
-                Right-click any request to <code>de.aipass.net</code> →{" "}
-                <strong>Copy</strong> → <strong>Copy as cURL</strong>.
-              </li>
-              <li>
-                Click the <strong>Paste</strong> button or paste it directly
-                above — the dashboard automatically extracts the session token!
+                Copy the value of{" "}
+                <code>__Secure-ai_passport_auth.session_token</code>, then press{" "}
+                <strong>Paste and connect</strong>. The whole Cookie header and
+                a <strong>Copy as cURL</strong> from the Network tab work just
+                as well — the field takes any of them.
               </li>
             </ol>
           </div>
         </CollapsibleContent>
       </Collapsible>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          disabled={!hasSession || verifying || confirming}
-          onClick={handleVerify}
-        >
-          <CheckCircle2 />
-          {verifying ? "Verifying…" : "Verify session"}
-        </Button>
-
-        {hasSession && !confirming ? (
-          <Button onClick={() => setConfirming(true)} variant="ghost">
-            <Trash2 />
-            Remove session
+      {hasSession ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            disabled={credits.loading || confirming}
+            onClick={handleRecheck}
+            variant="outline"
+          >
+            <RefreshCw />
+            Check again
           </Button>
-        ) : null}
 
-        {confirming ? (
-          <>
-            <Button onClick={handleClear} variant="destructive">
+          {confirming ? (
+            <>
+              <Button onClick={handleClear} variant="destructive">
+                <Trash2 />
+                Confirm removal
+              </Button>
+              <Button onClick={() => setConfirming(false)} variant="ghost">
+                Cancel
+              </Button>
+              <span className="text-muted-foreground text-xs">
+                You will need to paste the cookie again to reconnect.
+              </span>
+            </>
+          ) : (
+            <Button onClick={() => setConfirming(true)} variant="ghost">
               <Trash2 />
-              Confirm removal
+              Remove session
             </Button>
-            <Button onClick={() => setConfirming(false)} variant="ghost">
-              Cancel
-            </Button>
-            <span className="text-muted-foreground text-xs">
-              You will need to copy the cookie again to reconnect.
-            </span>
-          </>
-        ) : null}
-      </div>
-
-      {error ? <p className="text-destructive text-xs">{error}</p> : null}
-
-      {balance ? (
-        <dl className="grid max-w-lg gap-3 rounded-lg border p-3 text-xs sm:grid-cols-3">
-          <div>
-            <dt className="text-muted-foreground">Available</dt>
-            <dd className="font-medium tabular-nums">
-              {balance.available.toLocaleString()}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Used of limit</dt>
-            <dd className="font-medium tabular-nums">
-              {balance.used.toLocaleString()} / {balance.limit.toLocaleString()}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Resets</dt>
-            <dd className="font-medium">{formatResetAt(balance.reset_at)}</dd>
-          </div>
-        </dl>
+          )}
+        </div>
       ) : null}
+
+      {hasSession ? (
+        <SessionStatus
+          balance={credits.data}
+          error={credits.error}
+          loading={credits.loading}
+        />
+      ) : (
+        <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          <AlertCircle className="size-3" />
+          No session yet. Nothing here reaches your account until one is pasted.
+        </p>
+      )}
     </SettingsSection>
   );
 };

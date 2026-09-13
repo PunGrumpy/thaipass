@@ -116,6 +116,16 @@ const extractSnippetCookie = (text: string): string | null => {
   return null;
 };
 
+/**
+ * DevTools → Application → Cookies copies the value on its own, without the
+ * name in front of it. That is the shortest manual route to a session, so the
+ * name goes back on rather than the paste being rejected.
+ */
+const BARE_TOKEN_REGEX = /^[A-Za-z0-9._~%+-]{20,}$/u;
+
+const nameBareToken = (val: string): string =>
+  BARE_TOKEN_REGEX.test(val) ? `${SESSION_TOKEN_NAME}=${val}` : val;
+
 const stripQuotes = (val: string): string => {
   if (
     (val.startsWith('"') && val.endsWith('"')) ||
@@ -140,6 +150,7 @@ export const normalizeProxyUrl = (raw: string): string =>
  * - Raw multi-line DevTools request headers
  * - Shell env variables (AIPASS_COOKIE=..., COOKIE=...)
  * - JSON / JS snippets
+ * - The session token's value alone, as the Application panel copies it
  */
 export const normalizeCookie = (raw: string): string => {
   const trimmed = raw.trim();
@@ -158,7 +169,11 @@ export const normalizeCookie = (raw: string): string => {
     .replace(BEARER_PREFIX, "")
     .trim();
 
-  return stripQuotes(stripped).replace(TRAILING_BACKSLASH_REGEX, "").trim();
+  const cookie = stripQuotes(stripped)
+    .replace(TRAILING_BACKSLASH_REGEX, "")
+    .trim();
+
+  return nameBareToken(cookie);
 };
 
 interface ApiErrorBody {

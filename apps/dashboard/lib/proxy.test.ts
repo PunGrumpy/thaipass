@@ -67,6 +67,24 @@ Sec-Fetch-Site: same-origin
     expect(normalizeCookie(`{ "cookie": "${VALID_TOKEN}" }`)).toBe(VALID_TOKEN);
   });
 
+  it("names a bare session token value, as the Application panel copies it", () => {
+    const value = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..7Qk-x_1";
+    expect(normalizeCookie(value)).toBe(
+      `__Secure-ai_passport_auth.session_token=${value}`
+    );
+    expect(hasSessionToken(normalizeCookie(value))).toBe(true);
+  });
+
+  it("leaves anything that is not a bare token alone", () => {
+    expect(normalizeCookie("short")).toBe("short");
+    expect(normalizeCookie("http://127.0.0.1:3001/v1")).toBe(
+      "http://127.0.0.1:3001/v1"
+    );
+    expect(normalizeCookie("app_lang=th; theme=dark")).toBe(
+      "app_lang=th; theme=dark"
+    );
+  });
+
   it("strips wrapping quotes", () => {
     expect(normalizeCookie(`"${VALID_TOKEN}"`)).toBe(VALID_TOKEN);
     expect(normalizeCookie(`'${VALID_TOKEN}'`)).toBe(VALID_TOKEN);
