@@ -32,9 +32,13 @@ const CardHeader = ({ className, ...props }: React.ComponentProps<"div">) =>
   )
 
 
-const CardTitle = ({ className, ...props }: React.ComponentProps<"div">) => 
+const CardTitle = ({
+  className,
+  as: Component = "div",
+  ...props
+}: React.ComponentProps<"div"> & { as?: "div" | "h2" | "h3" | "h4" }) => 
   (
-    <div
+    <Component
       data-slot="card-title"
       className={cn(
         "font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm",

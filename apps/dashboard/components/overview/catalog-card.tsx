@@ -64,7 +64,7 @@ export const CatalogCard = ({
   return (
     <Card>
       <CardHeader className="border-b">
-        <CardTitle>{catalog.title}</CardTitle>
+        <CardTitle as="h2">{catalog.title}</CardTitle>
         <CardDescription>
           {fill(catalog.description, models.length)}
         </CardDescription>

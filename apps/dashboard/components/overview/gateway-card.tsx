@@ -59,7 +59,7 @@ export const GatewayCard = ({
   return (
     <Card>
       <CardHeader className="border-b">
-        <CardTitle>{gateway.title}</CardTitle>
+        <CardTitle as="h2">{gateway.title}</CardTitle>
         <CardDescription>
           {health.online ? gateway.online : (health.error ?? gateway.offline)}
         </CardDescription>
