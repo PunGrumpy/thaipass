@@ -7,14 +7,14 @@ import {
 } from "@thaipass/internationalization";
 import { Languages } from "lucide-react";
 
-import { SettingsSection } from "@/components/settings/settings-section";
+import { Section } from "@/components/layout/section";
 import { cn } from "@/lib/utils";
 
 export const LanguageCard = () => {
   const { locale, setLocale, t } = useI18n();
 
   return (
-    <SettingsSection
+    <Section
       description={t.settings.language.description}
       title={t.settings.language.title}
     >
@@ -45,6 +45,6 @@ export const LanguageCard = () => {
           );
         })}
       </fieldset>
-    </SettingsSection>
+    </Section>
   );
 };

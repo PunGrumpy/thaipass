@@ -17,7 +17,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { SettingsSection } from "@/components/settings/settings-section";
+import { Section } from "@/components/layout/section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,7 +42,6 @@ import { cn } from "@/lib/utils";
 
 const AIPASS_URL = "https://de.aipass.net";
 
-/** What the gateway made of the session, without anyone pressing Verify. */
 const SessionStatus = ({
   balance,
   error,
@@ -127,8 +126,8 @@ export const SessionCard = () => {
   };
 
   return (
-    <SettingsSection
-      action={
+    <Section
+      badge={
         hasSession ? (
           <Badge variant="secondary">
             <ShieldCheck />
@@ -284,6 +283,6 @@ export const SessionCard = () => {
           No session yet. Nothing here reaches your account until one is pasted.
         </p>
       )}
-    </SettingsSection>
+    </Section>
   );
 };
