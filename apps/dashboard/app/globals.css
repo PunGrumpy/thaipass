@@ -110,6 +110,9 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 286);
   --sidebar-border: oklch(0.915 0.004 286);
   --sidebar-ring: oklch(0.21 0.006 286);
+
+  --vendor-anthropic: #c96a4a;
+  --vendor-pathumma: #b23a55;
 }
 
 .dark {
@@ -153,6 +156,10 @@
   --sidebar-accent-foreground: oklch(0.965 0.002 286);
   --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.62 0.012 286);
+
+  /* Lifted for the dark ground; the same hue, enough lightness to stay read. */
+  --vendor-anthropic: #e08b6f;
+  --vendor-pathumma: #d9748f;
 }
 
 /* This layer is by Verno Studio */
