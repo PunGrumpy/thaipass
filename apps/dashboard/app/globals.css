@@ -208,6 +208,17 @@
   }
 }
 
+/*
+ * The step player's transport ships no focus indicator, and both its button and
+ * its seek steps are keyboard-reachable. Its file is registry-generated, so the
+ * ring lives here instead, keyed to the slots the registry itself emits.
+ */
+[data-slot="step-player-control"]:focus-visible,
+[data-slot="step-player-step"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 .touch-target {
   position: relative;
 }
