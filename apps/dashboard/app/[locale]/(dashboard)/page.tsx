@@ -1,46 +1,65 @@
 "use client";
 
 import { useI18n } from "@thaipass/internationalization";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowUpRight } from "lucide-react";
+import Link from "next/link";
 
-import { PageHeader } from "@/components/layout/page-header";
+import { Section } from "@/components/layout/section";
 import { CatalogCard } from "@/components/overview/catalog-card";
 import { GatewayCard } from "@/components/overview/gateway-card";
+import { ModelGrid } from "@/components/overview/model-grid";
 import { SessionGate } from "@/components/overview/session-gate";
-import { StatRow } from "@/components/overview/stat-row";
+import { UsageList } from "@/components/overview/usage-list";
+import type { UsageRow } from "@/components/overview/usage-list";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useConnection } from "@/hooks/use-connection";
 import { useGateway } from "@/hooks/use-gateway";
-import { cn } from "@/lib/utils";
+import { fill, formatPercent, formatResetAt } from "@/lib/format";
+import { normalizeProxyUrl } from "@/lib/proxy";
+
+const LOW_CREDIT_PERCENT = 90;
 
 const OverviewPage = () => {
-  const { hasSession } = useConnection();
-  const { catalog, credits, health, refresh } = useGateway();
-  const { t } = useI18n();
+  const { hasSession, proxyUrl } = useConnection();
+  const { catalog, credits, health } = useGateway();
+  const { locale, t } = useI18n();
+  const { sections, usage } = t.overview;
 
-  const refreshing = health.loading || credits.loading || catalog.loading;
+  const balance = credits.data;
+  const percent = balance ? formatPercent(balance.used, balance.limit) : null;
+  const low =
+    balance !== null &&
+    (balance.available === 0 || (percent ?? 0) >= LOW_CREDIT_PERCENT);
+  const free = catalog.models.filter((model) => model.free).length;
+
+  const rows: UsageRow[] = [
+    {
+      id: "credits",
+      label: usage.credits,
+      limit: balance?.limit ?? null,
+      note: balance
+        ? fill(usage.creditsNote, formatResetAt(balance.reset_at))
+        : usage.noSession,
+      tone: low ? "warning" : "default",
+      value: balance?.used ?? null,
+    },
+    {
+      id: "models",
+      label: usage.models,
+      note: catalog.builtin ? usage.modelsNoteBuiltin : usage.modelsNoteLive,
+      value: catalog.models.length,
+    },
+    {
+      id: "free",
+      label: usage.free,
+      note: usage.freeNote,
+      value: free,
+    },
+  ];
 
   return (
     <>
-      <PageHeader
-        action={
-          <Button
-            disabled={refreshing}
-            focusableWhenDisabled
-            onClick={refresh}
-            variant="outline"
-          >
-            <RefreshCw className={cn(refreshing && "animate-spin")} />
-            {refreshing
-              ? t.common.actions.refreshing
-              : t.common.actions.refresh}
-          </Button>
-        }
-        description={t.overview.description}
-        title={t.overview.title}
-      />
-
       {hasSession ? null : <SessionGate />}
 
       {credits.error ? (
@@ -53,11 +72,61 @@ const OverviewPage = () => {
         </Alert>
       ) : null}
 
-      <StatRow catalog={catalog} credits={credits} />
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[22rem_1fr]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <Section title={sections.usage}>
+            <UsageList
+              heading={usage.heading}
+              loading={credits.loading && !balance}
+              rows={rows}
+            />
+          </Section>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <GatewayCard health={health} />
-        <CatalogCard models={catalog.models} />
+          <Section
+            action={
+              <Button
+                nativeButton={false}
+                render={
+                  <a
+                    aria-label={t.overview.gateway.actionLabel}
+                    href={`${normalizeProxyUrl(proxyUrl)}/`}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  />
+                }
+                size="sm"
+                variant="ghost"
+              >
+                {t.navigation.apiReference}
+                <ArrowUpRight data-icon="inline-end" />
+              </Button>
+            }
+            title={sections.gateway}
+          >
+            <GatewayCard health={health} />
+          </Section>
+
+          <Section title={t.overview.catalog.title}>
+            <CatalogCard models={catalog.models} />
+          </Section>
+        </div>
+
+        <Section
+          action={
+            <Button
+              nativeButton={false}
+              render={<Link href={`/${locale}/models`} />}
+              size="sm"
+              variant="ghost"
+            >
+              {t.overview.catalog.action}
+            </Button>
+          }
+          className="min-w-0"
+          title={sections.models}
+        >
+          <ModelGrid models={catalog.models} />
+        </Section>
       </div>
     </>
   );

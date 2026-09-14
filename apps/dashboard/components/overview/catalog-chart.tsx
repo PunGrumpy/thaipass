@@ -25,30 +25,27 @@ const CHART_CONFIG = {
   video: { color: "var(--chart-3)", label: KIND_LABELS.video },
 } satisfies ChartConfig;
 
-/**
- * Split out so the page can load recharts on demand — it is the heaviest
- * dependency here and the only screen that draws with it is this one card.
- */
 const CatalogChart = ({
   slices,
 }: {
   readonly slices: readonly CatalogSlice[];
 }) => (
   <ChartContainer
-    className="mx-auto aspect-square w-[160px]"
+    className="mx-auto aspect-square w-full max-w-[140px]"
     config={CHART_CONFIG}
   >
-    <PieChart>
+    <PieChart accessibilityLayer={false} role="presentation" tabIndex={-1}>
       <ChartTooltip
         content={<ChartTooltipContent hideLabel nameKey="label" />}
         cursor={false}
       />
       <Pie
         data={[...slices]}
+        rootTabIndex={-1}
         dataKey="value"
-        innerRadius={46}
+        innerRadius="62%"
         nameKey="label"
-        outerRadius={72}
+        outerRadius="98%"
         paddingAngle={2}
         strokeWidth={0}
       >
