@@ -974,11 +974,29 @@ const missing = (run: Run, catalogue: readonly Course[]): string[] => {
   return [...run.courses].filter((code) => !known.has(code));
 };
 
+/** The catalogue, or the reason there is none to walk; a run cannot go on without it. */
+const catalogueOf = async (
+  run: Run
+): Promise<{ courses: Course[] } | { failure: unknown }> => {
+  try {
+    return { courses: await readCatalogue(run.cookie, run.signal) };
+  } catch (error) {
+    return { failure: error };
+  }
+};
+
 // Walks the catalogue; the return value says why it stopped.
 const learnPages = async function* learnPages(
   run: Run
 ): AsyncGenerator<LearnEvent, string> {
-  const catalogue = await readCatalogue(run.cookie, run.signal);
+  const read = await catalogueOf(run);
+  if ("failure" in read) {
+    yield failure(read.failure, "course", true);
+    return isAuthFailure(read.failure)
+      ? "the LMS refused the session"
+      : "the LMS would not list the account's courses, see the error event";
+  }
+  const catalogue = read.courses;
   for (const code of missing(run, catalogue)) {
     yield failure(
       new Error(`course ${code} is not in the account's catalogue`),

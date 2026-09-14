@@ -12,6 +12,7 @@ const DETAIL_LENGTH = 400;
 const REDIRECT_LOW = 300;
 const REDIRECT_HIGH = 400;
 const UNAUTHORIZED = 401;
+const NOT_FOUND = 404;
 const BAD_GATEWAY = 502;
 
 export type LmsMethod = "GET" | "POST" | "PUT" | "DELETE";
@@ -35,6 +36,35 @@ const STALE = "the LMS redirected to sign-in; cookie is stale, re-auth needed";
 
 const explainUnauthorized = (path: string, message: string | undefined) =>
   `the LMS answered 401 on ${path}${message ? ` (${message})` : ""}; the cookie is stale, or was not copied from a browser that has opened /lms`;
+
+/**
+ * The LMS says this when the session signs in but carries no learner record in
+ * the project the request resolves to, which reads as a missing course rather
+ * than as the credential problem it is.
+ */
+const NO_LEARNER = /project learner/iu;
+
+const explainNoLearner = (path: string, message: string) =>
+  `the LMS answered 404 on ${path} (${message}); the session signs in but the LMS has no learner for it in the project this cookie names, so open ${LMS_REFERER} in the browser and copy the Cookie header from a request made on that page`;
+
+/** What the refusal means, in words a caller can act on. */
+const explain = (
+  status: number,
+  path: string,
+  message: string | undefined
+): string => {
+  if (status === UNAUTHORIZED) {
+    return explainUnauthorized(path, message);
+  }
+  if (
+    status === NOT_FOUND &&
+    message !== undefined &&
+    NO_LEARNER.test(message)
+  ) {
+    return explainNoLearner(path, message);
+  }
+  return `the LMS answered ${status} on ${path}${message ? `: ${message}` : ""}`;
+};
 
 /** What the LMS backend answered, whether as an HTTP status or inside a 200 envelope. */
 export class LmsError extends Error {
@@ -116,14 +146,10 @@ export const lmsRequest = async <T>(
   const envelope = parseEnvelope(text);
   if (!response.ok || refusedInside(envelope)) {
     const status = envelope?.statusCode ?? response.status;
-    const message =
-      status === UNAUTHORIZED
-        ? explainUnauthorized(path, envelope?.message)
-        : `the LMS answered ${status} on ${path}${envelope?.message ? `: ${envelope.message}` : ""}`;
     throw new LmsError(
       status,
       path,
-      message,
+      explain(status, path, envelope?.message),
       envelope?.code,
       text.slice(0, DETAIL_LENGTH)
     );

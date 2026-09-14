@@ -54,6 +54,19 @@ const refused = (): Response =>
     { status: 401 }
   );
 
+/** As the live LMS refuses an account it has no learner record for. */
+const noLearner = (): Response =>
+  Response.json(
+    {
+      code: "COURSE_NOT_FOUND",
+      errorCode: "E01T00192",
+      message: "Project learner not found",
+      statusCode: 404,
+      success: false,
+    },
+    { status: 404 }
+  );
+
 interface Fixture {
   /** The period's EXP before the run. */
   readonly monthly?: number;
@@ -67,6 +80,8 @@ interface Fixture {
   /** Whether the period's EXP moves when a lesson completes. */
   readonly expMoves?: boolean;
   readonly refuse?: string;
+  /** The LMS signs the session in but carries no learner for it. */
+  readonly noLearner?: boolean;
 }
 
 const asLesson = (value: Payload) => lessonSchema.parse(value);
@@ -218,6 +233,16 @@ const writeReply = (
   return undefined;
 };
 
+/** The catalogue page the run asks for, or the refusal an unenrolled account gets. */
+const catalogueReply = (fixture: Fixture, path: string): Response => {
+  if (fixture.noLearner) {
+    return noLearner();
+  }
+  const pages = upstream.sent.filter((call) => call.path === path).length;
+  const courses = pages <= 1 ? (fixture.courses ?? DEFAULT_COURSES) : [];
+  return ok({ courses, limit: 20, page: pages, total: courses.length });
+};
+
 /** The LMS as the lesson page sees it: one course with one video and one lesson it leaves alone. */
 const lmsUpstream = (fixture: Fixture = {}): Upstream => {
   const progress: Progress = { completed: false, exp: 0 };
@@ -246,9 +271,7 @@ const lmsUpstream = (fixture: Fixture = {}): Upstream => {
       });
     }
     if (route === "/course/v2") {
-      const pages = upstream.sent.filter((call) => call.path === path).length;
-      const courses = pages <= 1 ? (fixture.courses ?? DEFAULT_COURSES) : [];
-      return ok({ courses, limit: 20, page: pages, total: courses.length });
+      return catalogueReply(fixture, path);
     }
     if (LESSONS_PATH.test(route)) {
       return ok({
@@ -741,6 +764,17 @@ test("stops the run when the LMS refuses the session", async () => {
   expect(error.message).toContain("stale");
   expect(doneOf(events).reason).toContain("refused the session");
   expect(upstream.calls).not.toContain(`${LMS}/course/v2`);
+});
+
+test("says what a catalogue the LMS has no learner for means", async () => {
+  upstream = lmsUpstream({ noLearner: true });
+  const events = await collect({ cookie: COOKIE, sleep: NO_SLEEP });
+  const error = errorOf(events);
+  expect(error.status).toBe(404);
+  expect(error.scope).toBe("course");
+  expect(error.fatal).toBe(true);
+  expect(error.message).toContain("no learner");
+  expect(doneOf(events).reason).toContain("list the account's courses");
 });
 
 test("stops at the first failed stamp rather than trying every course", async () => {
