@@ -23,7 +23,6 @@ const PACE_ITEMS: Record<string, string> = Object.fromEntries(
   PACE_STEPS.map((step) => [String(step), `${step}×`])
 );
 
-/** A select can report no value at all; the goal has two states, and one default. */
 const asGoal = (value: string | null): RunGoal =>
   value === "earn" ? "earn" : "target";
 
@@ -32,10 +31,6 @@ export interface Invalid {
   message: string;
 }
 
-/**
- * The message belongs under the control that failed, not in one place at the
- * bottom of a form whose fields are folded away.
- */
 const FieldError = ({
   field,
   invalid,
@@ -55,7 +50,6 @@ export interface RunSettingsProps {
   invalid: Invalid | null;
   options: RunOptions;
   patch: (next: Partial<RunOptions>) => void;
-  /** A run carries the body it was started with, so its fields stop taking edits. */
   running: boolean;
 }
 
@@ -118,9 +112,6 @@ export const RunSettings = ({
           </div>
         </div>
 
-        {/* The goal and its figure are one decision, so they share one
-              line of explanation instead of leaving a gap beside the
-              select. */}
         <p className="text-muted-foreground text-xs" id="run-amount-hint">
           {copy.hint[options.goal]}
         </p>

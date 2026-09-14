@@ -12,10 +12,6 @@ import {
 } from "@/components/ui/table";
 import type { LessonTypeExp } from "@/lib/lms";
 
-/**
- * A handful of rows with exact figures, so a table beats a chart: the reader
- * wants the number, not the shape.
- */
 export const LessonTypeTable = ({
   rows,
 }: {
@@ -23,6 +19,9 @@ export const LessonTypeTable = ({
 }) => {
   const { t } = useI18n();
   const copy = t.learning.breakdown;
+  // SAFETY: the dictionary block is a flat string record, and the lookup below
+  const labels: Record<string, string | undefined> = copy.types;
+  const labelOf = (key: string): string => labels[key] ?? key;
   const total = rows.reduce((sum, row) => sum + (row.exp ?? 0), 0);
 
   return (
@@ -37,7 +36,7 @@ export const LessonTypeTable = ({
         <TableBody>
           {rows.map((row) => (
             <TableRow key={row.lessonType}>
-              <TableCell>{row.lessonType}</TableCell>
+              <TableCell>{labelOf(row.lessonType)}</TableCell>
               <TableCell className="text-right tabular-nums">
                 {row.exp === null ? (
                   <span className="text-muted-foreground">—</span>
