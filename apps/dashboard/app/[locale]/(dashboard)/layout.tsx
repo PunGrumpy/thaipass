@@ -3,18 +3,13 @@
 import { useI18n } from "@thaipass/internationalization";
 import type { ReactNode } from "react";
 
+import { AppBar } from "@/components/layout/app-bar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { MobileBar } from "@/components/layout/mobile-bar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { GatewayProvider } from "@/hooks/use-gateway";
 
 const CONTENT_ID = "content";
 
-/**
- * Sidebar and content sit flush, with no floating panel and no app header:
- * a page begins at its own title, and the chrome that used to live in a top
- * bar is in the sidebar.
- */
 const DashboardLayout = ({ children }: { readonly children: ReactNode }) => {
   const { t } = useI18n();
 
@@ -29,9 +24,9 @@ const DashboardLayout = ({ children }: { readonly children: ReactNode }) => {
         </a>
         <AppSidebar />
         <SidebarInset className="min-w-0">
-          <MobileBar />
+          <AppBar />
           <main
-            className="flex min-w-0 flex-1 flex-col gap-6 px-4 py-6 md:px-8 md:py-10"
+            className="flex min-w-0 flex-1 flex-col gap-6 px-4 py-5 md:px-6 md:py-6"
             id={CONTENT_ID}
           >
             {children}

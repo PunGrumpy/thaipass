@@ -8,7 +8,6 @@ import {
 } from "@thaipass/internationalization";
 import { Languages } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,25 +15,32 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SidebarMenuButton } from "@/components/ui/sidebar";
 
-export const LanguageToggle = () => {
+export const LanguageToggle = ({
+  className,
+}: {
+  readonly className?: string;
+}) => {
   const { locale, setLocale, t } = useI18n();
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button
-            aria-label={t.common.languages.label}
-            className="relative size-8"
-            size="icon"
-            variant="ghost"
+          <SidebarMenuButton
+            className={className}
+            tooltip={t.common.languages.label}
           />
         }
       >
-        <Languages className="size-4" />
+        <Languages />
+        <span>{t.common.languages.label}</span>
+        <span className="text-muted-foreground ml-auto text-xs">
+          {LOCALE_LABELS[locale]}
+        </span>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto min-w-36">
+      <DropdownMenuContent align="start" className="w-auto min-w-36" side="top">
         <DropdownMenuRadioGroup
           onValueChange={(val) => {
             if (isLocale(val)) {
