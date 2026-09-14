@@ -545,6 +545,10 @@ The proxy returns a `502` for both the failed tool and the abandoned turn, namin
 
 The cookie came from the chat page instead of a `/lms` page, or it expired. See [What the learner sends](#what-the-learner-sends).
 
+### `Project learner not found` from the LMS
+
+A `404` with this message on `/course/v2` is the catalogue call, and it is a credential problem wearing a missing-course status: the session signs in, but the LMS carries no learner record for it in the project the request resolves to. Open `/lms/my-courses` in the browser, let the page list the courses, and copy the `Cookie` header from a request made on that page, so the tenant cookie that names the project travels with the session token. A browser that cannot list them either is an account the LMS has not enrolled in a project, which is not something the proxy can fix.
+
 ## Limits
 
 - **Token counts are estimates.** AI Pass reports none, so the proxy counts characters. Credits are the exact figure, see [Usage in credits](#usage-in-credits)
