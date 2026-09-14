@@ -1,10 +1,10 @@
 "use client";
 
 import { useI18n } from "@thaipass/internationalization";
-import { Moon, Sun } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useTheme } from "next-themes";
 
+import { MoonIcon, SunIcon } from "@/components/icons/rune";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +27,7 @@ export const ThemeToggle = ({ className }: { readonly className?: string }) => {
   const still = useReducedMotion();
   const { t } = useI18n();
   const dark = hydrated && resolvedTheme === "dark";
-  const Icon = dark ? Moon : Sun;
+  const Icon = dark ? MoonIcon : SunIcon;
   const active = THEME_OPTIONS.find((option) => option.value === theme);
 
   return (

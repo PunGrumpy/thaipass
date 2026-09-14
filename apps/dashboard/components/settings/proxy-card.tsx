@@ -1,9 +1,10 @@
 "use client";
 
-import { CheckCircle2, Lock, Plug, XCircle } from "lucide-react";
+import { CheckCircle2, Lock, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { TestIcon } from "@/components/icons/rune";
 import { Section } from "@/components/layout/section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -86,7 +87,7 @@ export const ProxyCard = () => {
             onClick={handleTest}
             variant={proxyLocked ? "outline" : "default"}
           >
-            <Plug />
+            <TestIcon />
             {testLabel()}
           </Button>
         </div>

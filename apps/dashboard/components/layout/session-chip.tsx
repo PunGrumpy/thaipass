@@ -1,9 +1,9 @@
 "use client";
 
 import { useI18n } from "@thaipass/internationalization";
-import { KeyRound } from "lucide-react";
 import Link from "next/link";
 
+import { SessionIcon } from "@/components/icons/rune";
 import { Button } from "@/components/ui/button";
 import { useConnection } from "@/hooks/use-connection";
 import { useHydrated } from "@/hooks/use-hydrated";
@@ -25,7 +25,7 @@ export const SessionChip = () => {
         render={<Link href={`/${locale}/settings`} />}
         variant="ghost"
       >
-        <KeyRound className="size-3.5" />
+        <SessionIcon className="size-3.5" />
         {t.navigation.session.connected}
       </Button>
     );
@@ -39,7 +39,7 @@ export const SessionChip = () => {
       size="sm"
       variant="outline"
     >
-      <KeyRound data-icon="inline-start" />
+      <SessionIcon data-icon="inline-start" />
       {t.navigation.session.connect}
     </Button>
   );

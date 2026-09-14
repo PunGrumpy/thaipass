@@ -6,8 +6,8 @@ import {
   LOCALES,
   useI18n,
 } from "@thaipass/internationalization";
-import { Languages } from "lucide-react";
 
+import { LanguageIcon } from "@/components/icons/rune";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,7 +34,7 @@ export const LanguageToggle = ({
           />
         }
       >
-        <Languages />
+        <LanguageIcon />
         <span>{t.common.languages.label}</span>
         <span className="text-muted-foreground ml-auto text-xs">
           {LOCALE_LABELS[locale]}

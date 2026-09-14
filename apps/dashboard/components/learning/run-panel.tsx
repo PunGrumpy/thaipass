@@ -2,9 +2,10 @@
 
 import { useI18n } from "@thaipass/internationalization";
 import type { Dictionary } from "@thaipass/internationalization";
-import { ChevronDown, Eraser, Play, Square } from "lucide-react";
+import { ChevronDown, Eraser } from "lucide-react";
 import { useState } from "react";
 
+import { PlayIcon, StopIcon } from "@/components/icons/rune";
 import { RunSettings } from "@/components/learning/run-settings";
 import type { Invalid } from "@/components/learning/run-settings";
 import { Button } from "@/components/ui/button";
@@ -277,7 +278,7 @@ export const RunPanel = ({
                 type="button"
                 variant="outline"
               >
-                <Square />
+                <StopIcon />
                 {copy.stop}
               </Button>
             ) : (
@@ -287,7 +288,7 @@ export const RunPanel = ({
                 size="lg"
                 type="button"
               >
-                <Play />
+                <PlayIcon />
                 {offer.label}
               </Button>
             )}

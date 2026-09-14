@@ -1,12 +1,13 @@
 "use client";
 
 import { useI18n } from "@thaipass/internationalization";
-import { ArrowUpRight, BookOpen, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { BrandTile } from "@/components/icons/brand";
 import { GithubMark } from "@/components/icons/github-mark";
+import { DocsIcon, ExternalLinkIcon } from "@/components/icons/rune";
 import { CommandMenu, useCommandMenu } from "@/components/layout/command-menu";
 import { LanguageToggle } from "@/components/layout/language-toggle";
 import { SidebarSearch } from "@/components/layout/sidebar-search";
@@ -131,9 +132,9 @@ export const AppSidebar = () => {
                   }
                   tooltip={t.navigation.apiReference}
                 >
-                  <BookOpen />
+                  <DocsIcon />
                   <span>{t.navigation.apiReference}</span>
-                  <ArrowUpRight className="ml-auto size-3.5 opacity-50" />
+                  <ExternalLinkIcon className="ml-auto size-3.5 opacity-50" />
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -151,7 +152,7 @@ export const AppSidebar = () => {
                 >
                   <GithubMark />
                   <span>{t.navigation.github}</span>
-                  <ArrowUpRight className="ml-auto size-3.5 opacity-50" />
+                  <ExternalLinkIcon className="ml-auto size-3.5 opacity-50" />
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

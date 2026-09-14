@@ -1,12 +1,12 @@
 "use client";
 
 import { useI18n } from "@thaipass/internationalization";
-import { ClipboardPaste, KeyRound } from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { PasteIcon, SessionIcon } from "@/components/icons/rune";
 import { SessionWalkthrough } from "@/components/overview/session-walkthrough";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -90,7 +90,7 @@ export const SessionGate = () => {
       <CardContent className="grid gap-6 py-4 md:grid-cols-[1.1fr_1fr] md:items-start">
         <div className="space-y-4">
           <div className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
-            <KeyRound className="size-3.5" />
+            <SessionIcon className="size-3.5" />
             {gate.badge}
           </div>
           <div className="space-y-2">
@@ -103,7 +103,7 @@ export const SessionGate = () => {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Button disabled={pasting} onClick={handlePaste}>
-              <ClipboardPaste />
+              <PasteIcon />
               {pasting ? clipboard.busy : clipboard.action}
             </Button>
             <Link

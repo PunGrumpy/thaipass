@@ -4,19 +4,18 @@ import {
   AlertCircle,
   Check,
   ChevronDown,
-  ClipboardPaste,
   ExternalLink,
   Eye,
   EyeOff,
   HelpCircle,
   Loader2,
   RefreshCw,
-  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { PasteIcon, VerifiedIcon } from "@/components/icons/rune";
 import { Section } from "@/components/layout/section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -130,7 +129,7 @@ export const SessionCard = () => {
       badge={
         hasSession ? (
           <Badge variant="secondary">
-            <ShieldCheck />
+            <VerifiedIcon />
             stored locally
           </Badge>
         ) : null
@@ -173,7 +172,7 @@ export const SessionCard = () => {
             </InputGroupAddon>
           </InputGroup>
           <Button className="shrink-0" disabled={pasting} onClick={handlePaste}>
-            <ClipboardPaste />
+            <PasteIcon />
             {pasting ? "Reading…" : "Paste and connect"}
           </Button>
         </div>

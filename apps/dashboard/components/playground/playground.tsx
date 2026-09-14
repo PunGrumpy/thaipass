@@ -1,10 +1,11 @@
 "use client";
 
 import { useI18n } from "@thaipass/internationalization";
-import { Eraser, Send, Settings2, Square } from "lucide-react";
+import { Eraser, Send, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { StopIcon } from "@/components/icons/rune";
 import { Metric } from "@/components/playground/metric";
 import { ModelCard } from "@/components/playground/model-card";
 import { ModelPicker } from "@/components/playground/model-picker";
@@ -349,7 +350,7 @@ export const Playground = ({
             type="button"
             variant="outline"
           >
-            <Square className="size-4" />
+            <StopIcon className="size-4" />
           </Button>
         ) : (
           <Button
