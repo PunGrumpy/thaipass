@@ -1,11 +1,15 @@
 "use client";
 
 import { useI18n } from "@thaipass/internationalization";
-import { Eraser, Send, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { StopIcon } from "@/components/icons/rune";
+import {
+  ResetIcon,
+  SendIcon,
+  StopIcon,
+  TuneIcon,
+} from "@/components/icons/rune";
 import { Metric } from "@/components/playground/metric";
 import { ModelCard } from "@/components/playground/model-card";
 import { ModelPicker } from "@/components/playground/model-picker";
@@ -248,7 +252,7 @@ export const Playground = ({
                 />
               }
             >
-              <Settings2 className="size-4" />
+              <TuneIcon className="size-4" />
             </PopoverTrigger>
             <PopoverContent align="end" className="w-80 space-y-2">
               <Label htmlFor="playground-system">{copy.settings.system}</Label>
@@ -277,7 +281,7 @@ export const Playground = ({
                 />
               }
             >
-              <Eraser className="size-4" />
+              <ResetIcon className="size-4" />
             </TooltipTrigger>
             <TooltipContent>{copy.reset}</TooltipContent>
           </Tooltip>
@@ -360,7 +364,7 @@ export const Playground = ({
             size="icon"
             type="submit"
           >
-            <Send className="size-4" />
+            <SendIcon className="size-4" />
           </Button>
         )}
       </form>

@@ -1,10 +1,10 @@
 "use client";
 
 import { useI18n } from "@thaipass/internationalization";
-import { GraduationCap, Layers } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import type { ComponentProps, ComponentType } from "react";
 import { useState } from "react";
 
+import { DocsIcon as FileTextIcon, LayersIcon } from "@/components/icons/rune";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Button } from "@/components/ui/button";
 import { MeterRing } from "@/components/ui/meter-ring";
@@ -26,7 +26,7 @@ interface Row {
 }
 
 interface Group {
-  icon: LucideIcon;
+  icon: ComponentType<ComponentProps<"svg">>;
   id: string;
   label: string;
   rows: readonly Row[];
@@ -163,7 +163,7 @@ export const ExpBreakdown = ({
 
   const groups: Group[] = [
     {
-      icon: GraduationCap,
+      icon: FileTextIcon,
       id: "source",
       label: copy.source,
       rows: [
@@ -183,7 +183,7 @@ export const ExpBreakdown = ({
       tally: null,
     },
     {
-      icon: Layers,
+      icon: LayersIcon,
       id: "type",
       label: copy.type,
       rows: perLessonType.map((row) => ({

@@ -2,10 +2,15 @@
 
 import { useI18n } from "@thaipass/internationalization";
 import type { Dictionary } from "@thaipass/internationalization";
-import { ChevronDown, Eraser } from "lucide-react";
 import { useState } from "react";
 
-import { PlayIcon, StopIcon } from "@/components/icons/rune";
+import {
+  ChevronDownIcon,
+  PlayIcon,
+  ResetIcon,
+  ResumeIcon,
+  StopIcon,
+} from "@/components/icons/rune";
 import { RunSettings } from "@/components/learning/run-settings";
 import type { Invalid } from "@/components/learning/run-settings";
 import { Button } from "@/components/ui/button";
@@ -250,7 +255,7 @@ export const RunPanel = ({
           open={settingsOpen || invalid !== null}
         >
           <CollapsibleTrigger className="group text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex items-center gap-1.5 rounded-md py-2 text-sm outline-none focus-visible:ring-3">
-            <ChevronDown className="size-4 transition-transform group-aria-expanded:rotate-180" />
+            <ChevronDownIcon className="size-4 transition-transform group-aria-expanded:rotate-180" />
             {copy.settings}
           </CollapsibleTrigger>
 
@@ -288,7 +293,7 @@ export const RunPanel = ({
                 size="lg"
                 type="button"
               >
-                <PlayIcon />
+                {paused ? <ResumeIcon /> : <PlayIcon />}
                 {offer.label}
               </Button>
             )}
@@ -305,7 +310,7 @@ export const RunPanel = ({
 
             {canClear && !running ? (
               <Button onClick={onClear} type="button" variant="ghost">
-                <Eraser />
+                <ResetIcon />
                 {t.common.actions.clear}
               </Button>
             ) : null}

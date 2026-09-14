@@ -5,7 +5,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { SessionIcon } from "@/components/icons/rune";
+import { SignedInIcon } from "@/components/icons/rune";
 import { ClientGrid } from "@/components/integrations/client-grid";
 import { SetupIllustration } from "@/components/integrations/setup-illustration";
 import { SnippetBlock } from "@/components/integrations/snippet-block";
@@ -136,7 +136,7 @@ export const IntegrationPanel = () => {
                 {minting ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (
-                  <SessionIcon className="size-3.5" />
+                  <SignedInIcon className="size-3.5" />
                 )}
                 {grant === null
                   ? "Making a token for these snippets…"

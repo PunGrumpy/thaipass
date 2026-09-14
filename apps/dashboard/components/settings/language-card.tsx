@@ -1,14 +1,21 @@
 "use client";
 
+import type { Locale } from "@thaipass/internationalization";
 import {
   LOCALE_LABELS,
   LOCALES,
   useI18n,
 } from "@thaipass/internationalization";
-import { Languages } from "lucide-react";
+import type { ComponentProps, ComponentType } from "react";
 
+import { EnFlag, ThFlag } from "@/components/icons/flags";
 import { Section } from "@/components/layout/section";
 import { cn } from "@/lib/utils";
+
+const FLAGS: Record<Locale, ComponentType<ComponentProps<"svg">>> = {
+  en: EnFlag,
+  th: ThFlag,
+};
 
 export const LanguageCard = () => {
   const { locale, setLocale, t } = useI18n();
@@ -22,6 +29,7 @@ export const LanguageCard = () => {
         <legend className="sr-only">{t.settings.language.title}</legend>
         {LOCALES.map((loc) => {
           const selected = locale === loc;
+          const Flag = FLAGS[loc];
           return (
             <label
               className={cn(
@@ -39,7 +47,7 @@ export const LanguageCard = () => {
                 type="radio"
                 value={loc}
               />
-              <Languages className="size-4" />
+              <Flag className="h-4 w-[22px]" />
               <span className="font-medium">{LOCALE_LABELS[loc]}</span>
             </label>
           );

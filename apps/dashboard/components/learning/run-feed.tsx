@@ -2,8 +2,8 @@
 
 import { useI18n } from "@thaipass/internationalization";
 import type { Dictionary } from "@thaipass/internationalization";
-import { TriangleAlert } from "lucide-react";
 
+import { WarningIcon } from "@/components/icons/rune";
 import { EmptyState } from "@/components/layout/empty-state";
 import { StatusDot } from "@/components/layout/status-dot";
 import { LessonRow } from "@/components/learning/lesson-row";
@@ -112,7 +112,7 @@ export const RunFeed = ({
         {idle ? <EmptyState className="py-4">{copy.idle}</EmptyState> : null}
         {error ? (
           <Alert variant="destructive">
-            <TriangleAlert />
+            <WarningIcon />
             <AlertTitle>{copy.failed}</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
@@ -168,7 +168,7 @@ export const RunFeed = ({
             {state.failures.map((failure) => (
               <li key={failure.key}>
                 <Alert variant="destructive">
-                  <TriangleAlert />
+                  <WarningIcon />
                   <AlertTitle>{copy.scope[failure.scope]}</AlertTitle>
                   <AlertDescription>
                     {failure.message}

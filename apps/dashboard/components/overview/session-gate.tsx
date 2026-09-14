@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { PasteIcon, SessionIcon } from "@/components/icons/rune";
+import { PasteIcon, SignedInIcon } from "@/components/icons/rune";
 import { SessionWalkthrough } from "@/components/overview/session-walkthrough";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -90,7 +90,7 @@ export const SessionGate = () => {
       <CardContent className="grid gap-6 py-4 md:grid-cols-[1.1fr_1fr] md:items-start">
         <div className="space-y-4">
           <div className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
-            <SessionIcon className="size-3.5" />
+            <SignedInIcon className="size-3.5" />
             {gate.badge}
           </div>
           <div className="space-y-2">
