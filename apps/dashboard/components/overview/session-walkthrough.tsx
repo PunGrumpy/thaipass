@@ -3,15 +3,6 @@
 import { MockKey, MockWindow } from "@/components/ui/mock-window";
 import { cn } from "@/lib/utils";
 
-/**
- * Copying the session is the one step the browser will not do for a reader:
- * the cookie is `HttpOnly`, so no page can read it and no link can hand it
- * over. What is left is showing someone exactly what their screen will look
- * like at each step, which is what these drawings are — a browser window, the
- * tools panel beside it, and the row to copy, lit in turn.
- */
-
-/** Step 1: the AI Pass sign-in page, as the reader already knows it. */
 const SignInFrame = () => (
   <MockWindow title="de.aipass.net">
     <div className="flex flex-1 flex-col items-center justify-center gap-2">
@@ -26,10 +17,6 @@ const SignInFrame = () => (
 
 const PANEL_TABS = ["Elements", "Console", "Application"] as const;
 
-/**
- * The tools panel, drawn twice: once as the blank thing that appears when the
- * key is pressed, then again with the cookie row a reader is looking for.
- */
 const Panel = ({ detailed }: { readonly detailed: boolean }) => (
   <div
     className={cn(
@@ -85,7 +72,6 @@ const Panel = ({ detailed }: { readonly detailed: boolean }) => (
   </div>
 );
 
-/** Step 2: the panel arriving, with the key that brings it. */
 const OpenFrame = () => (
   <div className="relative">
     <MockWindow title="de.aipass.net">
@@ -100,7 +86,6 @@ const OpenFrame = () => (
   </div>
 );
 
-/** Step 3: the row to copy, lit. */
 const CopyFrame = () => (
   <div className="relative">
     <MockWindow title="de.aipass.net">
@@ -113,7 +98,6 @@ const CopyFrame = () => (
   </div>
 );
 
-/** Step 4: back here, where the paste lands. */
 const PasteFrame = ({ label }: { readonly label: string }) => (
   <div className="relative">
     <MockWindow title="thaipass.vercel.app">
@@ -134,9 +118,7 @@ const PasteFrame = ({ label }: { readonly label: string }) => (
 );
 
 export interface WalkthroughProps {
-  /** Which of the four steps to draw. */
   readonly index: number;
-  /** The paste button's own label, so the drawing matches the page. */
   readonly pasteLabel: string;
 }
 

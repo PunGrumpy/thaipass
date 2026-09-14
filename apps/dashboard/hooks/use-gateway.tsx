@@ -18,7 +18,6 @@ export interface HealthResource extends Resource<ProxyHealth> {
 }
 
 export interface CatalogResource extends Resource<CatalogModel[]> {
-  /** True when the list is the proxy's built-in ids, not the account's. */
   builtin: boolean;
   models: readonly CatalogModel[];
 }
@@ -27,19 +26,11 @@ export interface Gateway {
   catalog: CatalogResource;
   credits: Resource<CreditBalance>;
   health: HealthResource;
-  /** Reloads all three — what the Refresh button on a page calls. */
   refresh: () => void;
 }
 
 const GatewayContext = createContext<Gateway | null>(null);
 
-/**
- * One fetch per endpoint for the whole app. The header, the command menu and
- * the page body all want the same health, quota and catalog, and each is
- * a round trip to someone's local gateway — polled, in health's case. Reading
- * them through a provider is what keeps that at one request instead of one
- * per consumer, and what lets a page's Refresh button update the header too.
- */
 export const GatewayProvider = ({
   children,
 }: {
@@ -59,7 +50,6 @@ export const GatewayProvider = ({
     fetchCatalog(proxyUrl, cookie, signal)
   );
 
-  // Each reload is a stable callback; naming them keeps `refresh` stable too.
   const { reload: reloadHealth } = health;
   const { reload: reloadCredits } = credits;
   const { reload: reloadCatalog } = catalog;

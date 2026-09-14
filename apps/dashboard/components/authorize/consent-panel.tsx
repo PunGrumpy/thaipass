@@ -48,12 +48,6 @@ const hostOf = (url: string): string => {
   }
 };
 
-/**
- * The screen an app sends someone to when it wants to work on their AI Pass
- * account. It is deliberately plain: who is asking, whose account it is, what
- * the app will be able to do, and where the key lands. Nothing here happens
- * until the reader presses Allow.
- */
 export const ConsentPanel = () => {
   const { locale, t } = useI18n();
   const { cookie, hasSession, proxyUrl } = useConnection();

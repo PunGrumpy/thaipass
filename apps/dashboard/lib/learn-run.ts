@@ -13,28 +13,19 @@ import type {
   LessonStatus,
 } from "./lms";
 
-/*
- * The form's own copy of what POST /v1/lms/learn accepts, so a value the proxy
- * would reject is caught in the field rather than as a 400 halfway down the
- * page. These have to track `learnRequestSchema` in apps/proxy.
- */
 export const MAX_PACE = 16;
 export const MAX_LESSONS = 200;
 export const MAX_COURSES = 50;
 export const DEFAULT_MAX_LESSONS = 50;
-/** The proxy's own default answerer; named here so the field can show it. */
 export const DEFAULT_QUIZ_MODEL = "gemini-3.1-pro-preview";
 export const PACE_STEPS = [1, 2, 4, 8, 16] as const;
 
-/** Reach a figure for the period, or earn a figure in this run whatever it holds. */
 export type RunGoal = "earn" | "target";
 
 export interface RunOptions {
-  /** EXP, read as the period total or as this run's earnings by `goal`. */
   amount: number;
   articles: boolean;
   attachments: boolean;
-  /** Course codes picked from the catalogue; empty covers all of it. */
   courses: readonly string[];
   goal: RunGoal;
   maxLessons: number;
@@ -55,10 +46,6 @@ export const DEFAULT_RUN_OPTIONS: RunOptions = {
   quizModel: DEFAULT_QUIZ_MODEL,
 };
 
-/**
- * How long the lessons a preview planned would take to watch. Only videos
- * carry a duration, so this is the watching, not the whole run.
- */
 export const plannedSeconds = (state: RunState): number => {
   let total = 0;
   for (const course of state.courses) {
@@ -80,7 +67,6 @@ export type RunCheck =
 const isWhole = (value: number, least: number, most: number): boolean =>
   Number.isInteger(value) && value >= least && value <= most;
 
-/** The body to send, or the one field to point at; its message is the page's. */
 export const checkRun = (options: RunOptions, dryRun: boolean): RunCheck => {
   if (!isWhole(options.amount, 1, Number.MAX_SAFE_INTEGER)) {
     return { field: "amount", ok: false };
@@ -117,13 +103,6 @@ export const checkRun = (options: RunOptions, dryRun: boolean): RunCheck => {
   return { body, ok: true };
 };
 
-/*
- * The stream is a flat sequence, but what it describes is a tree: courses, the
- * lessons under each, and one lesson in progress. Folding it back into that
- * shape is what lets the feed update a row in place instead of printing a log
- * nobody can read at a glance.
- */
-
 export interface RunQuiz {
   answered: number;
   passed: boolean | null;
@@ -135,7 +114,6 @@ export interface RunQuiz {
 export interface RunLesson {
   duration: number | null;
   exp: number | null;
-  /** `${course code}:${lesson id}`, unique across the run. */
   id: string;
   kind: LessonKind;
   quiz: RunQuiz | null;
@@ -146,14 +124,11 @@ export interface RunLesson {
 }
 
 export interface RunCourse {
-  /** Paid once the course closes, where the LMS names one. */
   bonus: number | null;
   closed: boolean;
   code: string;
-  /** What the course itself pays, apart from its lessons. */
   exp: number | null;
   lessons: readonly RunLesson[];
-  /** Open lessons the run found in the course. */
   planned: number;
   title: string | null;
 }
@@ -167,16 +142,12 @@ export interface RunFailure {
 }
 
 export interface RunState {
-  /** The lesson being learned, so the feed can show it in progress. */
   active: string | null;
-  /** The period's EXP as the run first read it, for the earned figure. */
   before: number | null;
   courses: readonly RunCourse[];
   failures: readonly RunFailure[];
   monthly: number | null;
-  /** The run was a dry run, so every figure below is what would have happened. */
   preview: boolean;
-  /** The reader stopped the run, so it ended with no `done` line of its own. */
   stopped: boolean;
   summary: LearnDoneEvent | null;
 }
@@ -234,10 +205,6 @@ const applyCourse = (state: RunState, event: LearnCourseEvent): RunState => ({
   })),
 });
 
-/**
- * A later event carries only what changed, so `completed` arrives without the
- * duration `started` set. Merging keeps what the row already knows.
- */
 const mergeLesson = (
   previous: RunLesson | undefined,
   event: LearnLessonEvent,
@@ -354,11 +321,6 @@ export type RunAction =
   | { kind: "reset"; preview: boolean }
   | { kind: "stopped" };
 
-/**
- * A stopped run sends no closing line, so the lesson it was on would otherwise
- * sit at "Learning" for good. The proxy picks up from the last stamp, which is
- * what paused already means everywhere else on this page.
- */
 const applyStopped = (state: RunState): RunState => {
   const { active } = state;
   if (active === null) {
@@ -439,6 +401,5 @@ export const isRunEmpty = (state: RunState): boolean =>
   state.failures.length === 0 &&
   state.summary === null;
 
-/** True while the last run has somewhere left to pick up from. */
 export const isResumable = (state: RunState): boolean =>
   state.stopped || state.summary?.paused === true;

@@ -1,16 +1,6 @@
 import { MockWindow } from "@/components/ui/mock-window";
 import type { SnippetPlace } from "@/lib/snippets";
 
-/**
- * Where a snippet ends up, drawn rather than described.
- *
- * The overview shows a reader the screens they will be looking at while they
- * fetch their session; this is the same idea one page along. Most of the
- * confusion in setting a client up is not what to paste but where it goes —
- * a terminal, a file, or a settings dialog with three fields in it — so the
- * drawing answers that before the steps say it in words.
- */
-
 const Line = ({ width }: { readonly width: string }) => (
   <div className={`bg-muted-foreground/20 h-1.5 rounded-full ${width}`} />
 );
@@ -32,7 +22,6 @@ const Terminal = ({ run }: { readonly run: string }) => (
 const File = ({ name }: { readonly name: string }) => (
   <MockWindow chrome="app" className="flex-col gap-1.5 p-2.5" title={name}>
     <Line width="w-3/5" />
-    {/* The line the credential lands on, lit the way the cookie row is on the overview. */}
     <div className="ring-primary bg-primary/10 flex items-center gap-1.5 rounded-sm px-1 py-0.5 ring-1">
       <span className="bg-primary/40 h-1.5 w-1/4 rounded-full" />
       <span className="bg-primary/30 h-1.5 flex-1 rounded-full" />

@@ -23,7 +23,6 @@ import type { LmsCourse } from "@/lib/lms";
 
 type CourseCopy = Dictionary["learning"]["courses"];
 
-/** The three states a course can be in, in the order a run works through them. */
 const GROUPS = [
   {
     key: "started",
@@ -36,7 +35,6 @@ const GROUPS = [
   { key: "finished", match: (course: LmsCourse) => course.done },
 ] as const;
 
-/** What the row says about the course on the right: state first, then price. */
 const stateOf = (course: LmsCourse, copy: CourseCopy): string => {
   if (course.done) {
     return copy.state.done;
@@ -63,15 +61,9 @@ const priceOf = (course: LmsCourse, copy: CourseCopy): string | null => {
 export interface CoursePickerProps {
   disabled: boolean;
   onChange: (codes: readonly string[]) => void;
-  /** Course codes currently chosen; empty means the whole catalogue. */
   value: readonly string[];
 }
 
-/**
- * A catalogue can run to hundreds of courses, so the list lives behind a
- * searchable dialog and the form keeps only what was picked. Choosing nothing
- * is a real answer: the run then covers everything.
- */
 export const CoursePicker = ({
   disabled,
   onChange,
@@ -80,7 +72,6 @@ export const CoursePicker = ({
   const { t } = useI18n();
   const copy = t.learning.courses;
   const [open, setOpen] = useState(false);
-  // Once opened, the catalogue stays loaded; reopening should not re-walk it.
   const [asked, setAsked] = useState(false);
   const { data, error, loading } = useCourses(asked);
 

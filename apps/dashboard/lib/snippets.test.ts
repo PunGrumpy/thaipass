@@ -45,7 +45,6 @@ describe("snippets", () => {
     expect(code).toContain('wire_api = "responses"');
     expect(code).toContain('base_url = "https://gateway.example/v1"');
     expect(code).toContain('env_key = "AIPASS_COOKIE"');
-    // The credential goes in the shell, so the block says that before the file.
     expect(code.indexOf("export AIPASS_COOKIE")).toBeLessThan(
       code.indexOf("model_provider")
     );

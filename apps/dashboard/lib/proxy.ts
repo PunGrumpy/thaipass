@@ -1,15 +1,8 @@
-/**
- * Everything the dashboard knows about the thaipass proxy's HTTP surface.
- * The session cookie never leaves the browser, so every call here runs
- * client-side against whatever origin the user pointed the dashboard at.
- */
-
 export interface ProxyHealth {
   models: number;
   ok: boolean;
   origin: string;
   prices?: boolean;
-  /** True when the gateway can issue thaipass tokens. */
   tokens?: boolean;
 }
 
@@ -118,11 +111,6 @@ const extractSnippetCookie = (text: string): string | null => {
   return null;
 };
 
-/**
- * DevTools → Application → Cookies copies the value on its own, without the
- * name in front of it. That is the shortest manual route to a session, so the
- * name goes back on rather than the paste being rejected.
- */
 const BARE_TOKEN_REGEX = /^[A-Za-z0-9._~%+-]{20,}$/u;
 
 const nameBareToken = (val: string): string =>
@@ -139,21 +127,9 @@ const stripQuotes = (val: string): string => {
   return val;
 };
 
-/** `http://host:3001/` and `http://host:3001` have to build the same URL. */
 export const normalizeProxyUrl = (raw: string): string =>
   raw.trim().replace(TRAILING_SLASHES, "");
 
-/**
- * Normalizes input pasted by users:
- * - A bare cookie or token string
- * - A `Cookie:` header from devtools
- * - An `Authorization: Bearer …` line out of a config
- * - A full cURL command (-H "cookie: ...", --header, -b, --cookie)
- * - Raw multi-line DevTools request headers
- * - Shell env variables (AIPASS_COOKIE=..., COOKIE=...)
- * - JSON / JS snippets
- * - The session token's value alone, as the Application panel copies it
- */
 export const normalizeCookie = (raw: string): string => {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -185,7 +161,6 @@ interface ApiErrorBody {
 const readError = async (response: Response): Promise<string> => {
   const body: unknown = await response.json().catch(() => null);
   // SAFETY: every non-2xx from the proxy is `{ error: { message } }`, and the
-  // optional chain below covers a body that turns out to be anything else.
   const message = (body as ApiErrorBody | null)?.error?.message;
   return message ?? `HTTP ${response.status}: ${response.statusText}`;
 };
@@ -194,12 +169,6 @@ const authHeaders = (cookie: string): HeadersInit => ({
   authorization: `Bearer ${cookie}`,
 });
 
-/**
- * A cross-origin fetch that never arrives fails as a bare "Failed to fetch",
- * which says nothing a reader can act on. Every reason lands in the same
- * place — the gateway is not running, or it is not allowing this origin — so
- * the message names both.
- */
 export const gatewayFetch = async (
   url: string,
   init?: RequestInit
@@ -250,7 +219,6 @@ export const fetchCredits = async (
     throw new Error(await readError(response));
   }
   // SAFETY: GET /v1/usage returns the CreditBalance schema on 200; every other
-  // status was rejected above.
   return (await response.json()) as CreditBalance;
 };
 
@@ -271,7 +239,6 @@ export const fetchCatalog = async (
     throw new Error(await readError(response));
   }
   // SAFETY: GET /v1/models returns the ModelList schema on 200; every other
-  // status was rejected above.
   const body = (await response.json()) as { data: CatalogModel[] };
   return body.data;
 };
@@ -320,7 +287,6 @@ const parseChunk = (payload: string): ChunkBody | undefined => {
   }
 };
 
-/** Reads an OpenAI-shaped SSE body and hands each content delta to the caller. */
 export const streamChatCompletion = async ({
   cookie,
   messages,
