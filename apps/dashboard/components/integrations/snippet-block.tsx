@@ -15,11 +15,6 @@ import { attempt } from "@/lib/attempt";
 import type { SnippetLanguage } from "@/lib/snippets";
 import { cn } from "@/lib/utils";
 
-/**
- * The `core` entry takes a grammar object rather than a language name, so the
- * bundle carries only these four and none of the Editor or FileTree code the
- * root entry pulls in.
- */
 const GRAMMARS: Record<SnippetLanguage, ParseOptions> = {
   bash: shell,
   json,
@@ -27,10 +22,6 @@ const GRAMMARS: Record<SnippetLanguage, ParseOptions> = {
   tsx: typescript,
 };
 
-/**
- * Tokens are painted with the dashboard's own tokens, so the block follows the
- * theme with no second palette to keep in sync.
- */
 const TOKEN_CLASS: Partial<Record<TokenType, string>> = {
   class: "text-chart-3",
   comment: "text-muted-foreground",
@@ -46,10 +37,8 @@ const TOKEN_CLASS: Partial<Record<TokenType, string>> = {
 const COPIED_RESET_MS = 1500;
 
 export interface SnippetBlockProps {
-  /** False when there is no session to substitute in. */
   canReveal: boolean;
   code: string;
-  /** Which secret this snippet would carry, named on the toggle. */
   credential: "cookie" | "token";
   filename: string;
   language: SnippetLanguage;
@@ -86,11 +75,6 @@ export const SnippetBlock = ({
           {filename}
         </span>
         <div className="ml-auto flex items-center gap-1">
-          {/*
-            A toggle, not a reveal. The eye on a password field hides a value
-            you would still copy; this swaps what the snippet contains, so it
-            says so and reports its state through aria-pressed.
-          */}
           <Button
             aria-pressed={revealed}
             className={cn(
@@ -132,8 +116,6 @@ export const SnippetBlock = ({
             lang={GRAMMARS[language]}
             render={({ lines }) =>
               lines.map((line, lineIndex) => (
-                // A source line has no identity but its position, and the list is
-                // regenerated wholesale rather than reordered.
                 <span className="block" key={lineIndex}>
                   {line.tokens.map((token, tokenIndex) => (
                     <span
