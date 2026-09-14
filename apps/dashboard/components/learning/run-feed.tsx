@@ -2,8 +2,9 @@
 
 import { useI18n } from "@thaipass/internationalization";
 import type { Dictionary } from "@thaipass/internationalization";
-import { TriangleAlert } from "lucide-react";
 
+import { WarningIcon } from "@/components/icons/rune";
+import { EmptyState } from "@/components/layout/empty-state";
 import { StatusDot } from "@/components/layout/status-dot";
 import { LessonRow } from "@/components/learning/lesson-row";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -14,7 +15,6 @@ import type { RunState } from "@/lib/learn-run";
 
 type FeedCopy = Dictionary["learning"]["feed"];
 
-/** One sentence for a screen reader and for anyone not watching the list. */
 const statusLine = (
   state: RunState,
   running: boolean,
@@ -85,105 +85,103 @@ export const RunFeed = ({
   const { t } = useI18n();
   const copy = t.learning.feed;
   const line = statusLine(state, running, copy);
+  const idle =
+    line === "" && !error && state.courses.length === 0 && !state.summary;
 
   return (
-    <section aria-labelledby="activity-heading" className="space-y-4">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <h2 className="text-base font-medium" id="activity-heading">
-            {copy.title}
-          </h2>
-          {state.preview ? (
-            <Badge variant="secondary">{copy.preview}</Badge>
-          ) : null}
-          {running ? (
-            <StatusDot
-              label={
-                state.preview ? copy.previewRunningLabel : copy.runningLabel
-              }
-              tone="online"
-            />
-          ) : null}
-        </div>
+    <div className="overflow-hidden rounded-xl border">
+      <div className="bg-muted/40 flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
         <output
           aria-live="polite"
-          className="text-muted-foreground block text-sm"
+          className="text-muted-foreground min-w-0 flex-1 text-sm"
         >
-          {line === "" ? copy.idle : line}
+          {line}
         </output>
+        {state.preview ? (
+          <Badge variant="secondary">{copy.preview}</Badge>
+        ) : null}
+        {running ? (
+          <StatusDot
+            label={state.preview ? copy.previewRunningLabel : copy.runningLabel}
+            tone="online"
+          />
+        ) : null}
       </div>
 
-      {error ? (
-        <Alert variant="destructive">
-          <TriangleAlert />
-          <AlertTitle>{copy.failed}</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
+      <div className="space-y-4 p-4 empty:hidden">
+        {idle ? <EmptyState className="py-4">{copy.idle}</EmptyState> : null}
+        {error ? (
+          <Alert variant="destructive">
+            <WarningIcon />
+            <AlertTitle>{copy.failed}</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
 
-      {isRunEmpty(state) ? null : (
-        <ol className="space-y-3">
-          {state.courses.map((course) => (
-            <li
-              className="ring-foreground/10 overflow-hidden rounded-xl ring-1"
-              key={course.code}
-            >
-              <div className="bg-muted/40 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b px-3 py-2">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="font-mono text-xs">{course.code}</span>
-                  <span className="text-sm font-medium">
-                    {course.title ?? copy.untitled}
+        {isRunEmpty(state) ? null : (
+          <ol className="space-y-3">
+            {state.courses.map((course) => (
+              <li
+                className="ring-foreground/10 overflow-hidden rounded-xl ring-1"
+                key={course.code}
+              >
+                <div className="bg-muted/40 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b px-3 py-2">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className="font-mono text-xs">{course.code}</span>
+                    <span className="text-sm font-medium">
+                      {course.title ?? copy.untitled}
+                    </span>
+                  </div>
+                  <span className="text-muted-foreground text-xs">
+                    {pluralize(course.planned, copy.lessons)}
+                    {course.bonus
+                      ? ` · ${fill(copy.courseBonus, course.bonus.toLocaleString())}`
+                      : ""}
+                    {course.closed ? ` · ${copy.courseClosed}` : ""}
                   </span>
                 </div>
-                <span className="text-muted-foreground text-xs">
-                  {pluralize(course.planned, copy.lessons)}
-                  {course.bonus
-                    ? ` · ${fill(copy.courseBonus, course.bonus.toLocaleString())}`
-                    : ""}
-                  {course.closed ? ` · ${copy.courseClosed}` : ""}
-                </span>
-              </div>
 
-              {course.lessons.length === 0 ? (
-                <p className="text-muted-foreground px-3 py-2.5 text-xs">
-                  {copy.courseEmpty}
-                </p>
-              ) : (
-                <ul className="divide-y">
-                  {course.lessons.map((lesson) => (
-                    <LessonRow
-                      active={lesson.id === state.active}
-                      key={lesson.id}
-                      lesson={lesson}
-                    />
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ol>
-      )}
+                {course.lessons.length === 0 ? (
+                  <p className="text-muted-foreground px-3 py-2.5 text-xs">
+                    {copy.courseEmpty}
+                  </p>
+                ) : (
+                  <ul className="divide-y">
+                    {course.lessons.map((lesson) => (
+                      <LessonRow
+                        active={lesson.id === state.active}
+                        key={lesson.id}
+                        lesson={lesson}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
 
-      <RunSummary copy={copy} state={state} />
+        <RunSummary copy={copy} state={state} />
 
-      {state.failures.length === 0 ? null : (
-        <ul className="space-y-2">
-          {state.failures.map((failure) => (
-            <li key={failure.key}>
-              <Alert variant="destructive">
-                <TriangleAlert />
-                <AlertTitle>{copy.scope[failure.scope]}</AlertTitle>
-                <AlertDescription>
-                  {failure.message}
-                  {failure.detail ? (
-                    <span className="block">{failure.detail}</span>
-                  ) : null}
-                </AlertDescription>
-              </Alert>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+        {state.failures.length === 0 ? null : (
+          <ul className="space-y-2">
+            {state.failures.map((failure) => (
+              <li key={failure.key}>
+                <Alert variant="destructive">
+                  <WarningIcon />
+                  <AlertTitle>{copy.scope[failure.scope]}</AlertTitle>
+                  <AlertDescription>
+                    {failure.message}
+                    {failure.detail ? (
+                      <span className="block">{failure.detail}</span>
+                    ) : null}
+                  </AlertDescription>
+                </Alert>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 };

@@ -1,20 +1,24 @@
 "use client";
 
-import { KeyRound, Loader2, RefreshCw } from "lucide-react";
+import { useI18n } from "@thaipass/internationalization";
+import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { SignedInIcon } from "@/components/icons/rune";
+import { ClientGrid } from "@/components/integrations/client-grid";
 import { SetupIllustration } from "@/components/integrations/setup-illustration";
 import { SnippetBlock } from "@/components/integrations/snippet-block";
 import { SnippetSteps } from "@/components/integrations/snippet-steps";
+import { Section } from "@/components/layout/section";
 import { ModelSelect } from "@/components/playground/model-select";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useConnection } from "@/hooks/use-connection";
 import { useCatalog, useHealth } from "@/hooks/use-gateway";
 import { attempt } from "@/lib/attempt";
 import { DEFAULT_MODEL } from "@/lib/catalog";
+import { fill } from "@/lib/format";
 import { mintToken } from "@/lib/oauth";
 import type { TokenGrant } from "@/lib/oauth";
 import {
@@ -39,8 +43,10 @@ export const IntegrationPanel = () => {
   const { cookie, hasSession, proxyUrl } = useConnection();
   const { models } = useCatalog();
   const health = useHealth();
+  const { t } = useI18n();
 
   const [model, setModel] = useState(DEFAULT_MODEL);
+  const [client, setClient] = useState(SNIPPETS[0]?.id ?? "");
   const [reveal, setReveal] = useState(false);
   const [grant, setGrant] = useState<TokenGrant | null>(null);
   const [minting, setMinting] = useState(false);
@@ -77,12 +83,6 @@ export const IntegrationPanel = () => {
     [cookie, proxyUrl]
   );
 
-  /*
-   * The token is minted on arrival rather than on a button, because a step
-   * before the copy is a step the cookie never asked for. Sealing one costs a
-   * request and stores nothing, so an unused token is worth no more than the
-   * bytes it took to make.
-   */
   const minted = useRef(false);
 
   useEffect(() => {
@@ -93,10 +93,6 @@ export const IntegrationPanel = () => {
     mint();
   }, [hasSession, issuesTokens, mint]);
 
-  /**
-   * A token where the client calls this gateway, the cookie where it calls AI
-   * Pass itself, and a placeholder for either until the reader asks to see it.
-   */
   const viewOf = (snippet: Snippet) => {
     const usesToken = snippet.target === "gateway" && grant !== null;
     const revealed = reveal && (usesToken || hasSession);
@@ -114,11 +110,16 @@ export const IntegrationPanel = () => {
     };
   };
 
+  const selected = SNIPPETS.find((snippet) => snippet.id === client) ?? null;
+  const view = selected ? viewOf(selected) : null;
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-4">
         <div className="max-w-xs flex-1 space-y-1.5">
-          <Label htmlFor="integration-model">Model</Label>
+          <Label htmlFor="integration-model">
+            {t.integrations.clients.model}
+          </Label>
           <ModelSelect
             id="integration-model"
             models={chatModels}
@@ -135,7 +136,7 @@ export const IntegrationPanel = () => {
                 {minting ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (
-                  <KeyRound className="size-3.5" />
+                  <SignedInIcon className="size-3.5" />
                 )}
                 {grant === null
                   ? "Making a token for these snippets…"
@@ -155,56 +156,37 @@ export const IntegrationPanel = () => {
         ) : null}
       </div>
 
-      <Tabs className="min-w-0" defaultValue={SNIPPETS[0]?.id}>
-        <TabsList
-          className="flex-wrap justify-start gap-y-1 group-data-horizontal/tabs:h-auto"
-          variant="line"
-        >
-          {SNIPPETS.map((snippet) => (
-            <TabsTrigger key={snippet.id} value={snippet.id}>
-              {snippet.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+      <ClientGrid onSelect={setClient} selected={client} snippets={SNIPPETS} />
 
-        {SNIPPETS.map((snippet) => {
-          const view = viewOf(snippet);
-          return (
-            <TabsContent
-              className="min-w-0 space-y-3"
-              key={snippet.id}
-              value={snippet.id}
-            >
-              <div className="grid min-w-0 gap-6 md:grid-cols-[minmax(0,1fr)_16rem]">
-                <div className="min-w-0 space-y-3">
-                  <p className="text-muted-foreground max-w-[68ch] text-sm text-pretty">
-                    {snippet.summary}
-                  </p>
-                  <SnippetSteps
-                    block={
-                      <SnippetBlock
-                        canReveal={hasSession}
-                        code={view.code}
-                        credential={view.credential}
-                        filename={snippet.filename}
-                        language={snippet.language}
-                        onToggleReveal={() => setReveal((on) => !on)}
-                        revealed={view.revealed}
-                      />
-                    }
-                    steps={snippet.steps}
+      {selected ? (
+        <Section title={fill(t.integrations.clients.setup, selected.label)}>
+          <div className="grid min-w-0 gap-6 md:grid-cols-[minmax(0,1fr)_16rem]">
+            <div className="min-w-0 space-y-3">
+              <p className="text-muted-foreground max-w-[68ch] text-sm text-pretty">
+                {selected.summary}
+              </p>
+              <SnippetSteps
+                block={
+                  <SnippetBlock
+                    canReveal={hasSession}
+                    code={view?.code ?? ""}
+                    credential={view?.credential ?? "cookie"}
+                    filename={selected.filename}
+                    language={selected.language}
+                    onToggleReveal={() => setReveal((on) => !on)}
+                    revealed={view?.revealed ?? false}
                   />
-                </div>
+                }
+                steps={selected.steps}
+              />
+            </div>
 
-                {/* The drawing answers "where does this go" before the steps say it. */}
-                <div className="hidden md:block">
-                  <SetupIllustration place={snippet.place} />
-                </div>
-              </div>
-            </TabsContent>
-          );
-        })}
-      </Tabs>
+            <div className="hidden md:block">
+              <SetupIllustration place={selected.place} />
+            </div>
+          </div>
+        </Section>
+      ) : null}
     </div>
   );
 };

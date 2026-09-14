@@ -7,7 +7,6 @@ import {
 
 import type { CatalogModel, ModelKind } from "./proxy";
 
-/** The one model AI Pass serves without spending credits. */
 export const FREE_MODEL = "gemini-3.1-flash-lite";
 
 export const DEFAULT_MODEL = "claude-sonnet-5@default";
@@ -26,11 +25,6 @@ export const KIND_LABELS: Record<ModelKind, string> = {
   video: "Video",
 };
 
-/**
- * `ready` and `free` are properties of the *account's* catalog, which needs a
- * session to read. Without one the dashboard falls back to the ids the proxy
- * was built against, so the pages still have something honest to show.
- */
 const entry = (id: string, kind: ModelKind): CatalogModel => ({
   free: id === FREE_MODEL,
   id,
@@ -50,11 +44,9 @@ export const BUILTIN_CATALOG: readonly CatalogModel[] = [
 interface VendorRule {
   label: string;
   match: RegExp;
-  /** Key into VENDOR_MARKS; absent where no official mark is available. */
   slug?: string;
 }
 
-/** Grouping ids by who makes them; the catalog itself carries no vendor field. */
 const VENDOR_RULES: readonly VendorRule[] = [
   { label: "Anthropic", match: /^claude/iu, slug: "anthropic" },
   { label: "OpenAI", match: /^(?:gpt|openai|o\d)/iu, slug: "openai" },

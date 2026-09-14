@@ -18,11 +18,6 @@ export interface LearnRun {
   stop: () => void;
 }
 
-/**
- * One run at a time, followed to its end. `onFinish` is what the page uses to
- * re-read the EXP the run just changed; a run left over from a previous page
- * is aborted rather than written into nothing.
- */
 export const useLearnRun = (onFinish?: () => void): LearnRun => {
   const { cookie, proxyUrl } = useConnection();
   const [state, dispatch] = useReducer(runReducer, EMPTY_RUN);
@@ -61,7 +56,6 @@ export const useLearnRun = (onFinish?: () => void): LearnRun => {
           })
         );
 
-        // A newer run has taken over; this one's ending is not the page's news.
         if (abortRef.current !== controller) {
           return;
         }

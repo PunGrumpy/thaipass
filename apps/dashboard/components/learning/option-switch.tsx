@@ -7,18 +7,12 @@ import { Switch } from "@/components/ui/switch";
 
 export interface OptionSwitchProps {
   checked: boolean;
-  /** What turning this on does to the account, not what the field is called. */
   description: ReactNode;
   disabled?: boolean;
   label: string;
   onChange: (next: boolean) => void;
 }
 
-/**
- * Base UI's switch renders a button, and a `<label for>` cannot name one, so
- * the text is bound with aria-labelledby and the consequence with
- * aria-describedby instead.
- */
 export const OptionSwitch = ({
   checked,
   description,

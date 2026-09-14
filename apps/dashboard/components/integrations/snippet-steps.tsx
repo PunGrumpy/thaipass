@@ -2,18 +2,8 @@ import type { ReactNode } from "react";
 
 import type { SnippetStep } from "@/lib/snippets";
 
-/**
- * A setup read as numbered steps, with the code under the step it belongs to.
- *
- * The page used to be one sentence and one block per client, which says what
- * to copy but not where it goes or what happens after. A reader who has never
- * set up a custom provider needs both, and they are short enough to show
- * rather than link to.
- */
-
 const CODE_RUN = /`(?<code>[^`]+)`/gu;
 
-/** Backticked runs in a step read as code, the way the same sentence would in prose. */
 const paint = (text: string): ReactNode[] => {
   const parts: ReactNode[] = [];
   let last = 0;
@@ -40,7 +30,6 @@ const paint = (text: string): ReactNode[] => {
 };
 
 export interface SnippetStepsProps {
-  /** Rendered under the step marked with `code`. */
   readonly block: ReactNode;
   readonly steps: readonly SnippetStep[];
 }

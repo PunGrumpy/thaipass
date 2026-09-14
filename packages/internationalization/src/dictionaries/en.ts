@@ -39,9 +39,12 @@ export const en = {
     titleTemplate: "%s ✦ AI Passport",
   },
   commandMenu: {
+    copied: "Copied %s",
+    copyFailed: "Could not copy %s. Copy it from the Models page instead.",
     empty: "No results found.",
     groups: {
       gateway: "Gateway",
+      models: "Copy model id",
       navigation: "Navigation",
       theme: "Theme",
     },
@@ -85,6 +88,20 @@ export const en = {
     },
   },
   integrations: {
+    clients: {
+      empty: "No client matches %s.",
+      groups: {
+        file: "In your code",
+        settings: "In an editor's settings",
+        terminal: "In a terminal",
+      },
+      label: "Client",
+      model: "Model",
+      search: "Search clients",
+      setup: "Set up %s",
+      viaGateway: "Through the gateway",
+      viaUpstream: "Straight to AI Pass",
+    },
     description:
       "Drop-in configuration for Claude Code, Cursor, AI SDKs, and cURL.",
     title: "Integrations",
@@ -97,6 +114,8 @@ export const en = {
         footer: "The default target for a month is %s EXP",
         label: "EXP this month",
       },
+      more: "Show %s more",
+      source: "Source",
       standard: {
         footer: "Courses the list below does not break down",
         label: "From standard courses",
@@ -104,6 +123,14 @@ export const en = {
       title: "Where the EXP came from",
       total: "Total",
       type: "Lesson type",
+      types: {
+        article: "Article",
+        attachment: "Attachment",
+        quiz: "Quiz",
+        quiz_post_test: "Post-test",
+        quiz_pre_test: "Pre-test",
+        video: "Video",
+      },
     },
     courses: {
       chosen: "%s chosen",
@@ -195,6 +222,7 @@ export const en = {
         started: "Learning",
       },
     },
+    reload: "Reload progress",
     run: {
       account: "Each lesson is opened and marked done on your account",
       check: "See what it would take first",
@@ -211,7 +239,7 @@ export const en = {
         resume: "Carry on where it stopped",
         start: "Start learning",
       },
-      headline: "%s of %s EXP this month",
+      headline: "%s EXP this month",
       invalid: {
         amount: "Give a whole number of EXP, 1 or more.",
         courses: "Name at most %s courses.",
@@ -229,6 +257,7 @@ export const en = {
       },
       met: "You have reached this month's target.",
       needsSession: "Needs a session cookie",
+      ofTarget: "%s of %s EXP",
       settings: "Run settings",
       stop: "Stop",
       title: "Earn EXP",
@@ -280,9 +309,56 @@ export const en = {
     title: "Learning",
   },
   models: {
+    builtin: {
+      description:
+        "Connect a session in Settings to load the catalog your account can actually reach, with live availability.",
+      title: "Showing the built-in model list",
+    },
+    capabilityFilter: {
+      all: "All capabilities",
+      label: "Capabilities",
+    },
+    capabilityNames: {
+      provider: "Named provider",
+      reasoning: "Reasoning",
+      resolutions: "Resolution choices",
+    },
+    columns: {
+      actions: "Actions",
+      capabilities: "Capabilities",
+      input: "Input / 1M",
+      kind: "Kind",
+      model: "Model",
+      output: "Output / 1M",
+    },
+    copied: "Copied %s",
+    copyFailed: "Could not copy %s. Select the id and copy it by hand.",
+    count: "%s of %s",
     description: "Every model your current AI Pass session can reach.",
-    searchPlaceholder: "Search models...",
+    empty: {
+      filters: "No model matches these filters.",
+      query: "No model matches %s.",
+    },
+    free: "Free ($0)",
+    freeOnly: "Free only",
+    kinds: { all: "All" },
+    providers: {
+      all: "All providers",
+      empty: "No provider found.",
+      label: "Providers",
+      search: "Search providers…",
+    },
+    searchLabel: "Search models",
+    searchPlaceholder: "Search model id…",
+    sort: {
+      input: "Lowest input price",
+      label: "Sort",
+      name: "Name",
+      output: "Lowest output price",
+      provider: "Provider",
+    },
     title: "Models",
+    unavailable: "Unavailable",
   },
   navigation: {
     apiReference: "API reference",
@@ -318,6 +394,12 @@ export const en = {
       configure: "Configure",
       gateway: "Gateway",
     },
+    session: {
+      connect: "Connect session",
+      connected: "Session connected",
+      manage: "Manage session",
+      none: "No session",
+    },
     sidebar: "Sidebar",
     sidebarDescription: "Navigation for the dashboard.",
     skipToContent: "Skip to content",
@@ -349,6 +431,15 @@ export const en = {
         upstream: "Upstream",
       },
       title: "Gateway",
+    },
+    grid: {
+      free: "Free ($0)",
+      more: "Show %s more",
+    },
+    sections: {
+      gateway: "Gateway",
+      models: "Models",
+      usage: "Usage",
     },
     sessionGate: {
       action: "Paste it in Settings",
@@ -413,11 +504,62 @@ export const en = {
       },
     },
     title: "Overview",
+    usage: {
+      credits: "Credits",
+      creditsNote: "Resets %s",
+      free: "Free models",
+      freeNote: "Answer without spending credits",
+      heading: "This session",
+      models: "Models reachable",
+      modelsNoteBuiltin: "Built-in list. Connect a session for yours",
+      modelsNoteLive: "Live from your account catalog",
+      noSession: "No session connected",
+    },
   },
   playground: {
+    card: {
+      capabilities: "Capabilities",
+      input: "Input pricing",
+      kind: "Endpoint",
+      link: "Browse models",
+      none: "No pricing reported",
+      output: "Output pricing",
+      perMillion: "%s / million tokens",
+      unavailable: "This model is not answering right now.",
+    },
+    composer: {
+      needsSession: "Connect a session to send",
+      placeholder: "Type your message…",
+      send: "Send",
+      stop: "Stop",
+    },
     description:
       "Stream a prompt through the proxy and measure response latency.",
+    emptyPrompt: "The message is empty.",
+    metrics: {
+      cost: "Cost (est.)",
+      costHint: "Estimated market value based on OpenRouter pricing",
+      credits: "Credits",
+      firstToken: "First token",
+      throughput: "Throughput",
+      tokens: "Tokens",
+      total: "Total",
+    },
+    needsSession: "Add a session cookie in Settings first.",
+    picker: {
+      empty: "No model found.",
+      label: "Model",
+      preview: "Highlight a model to see what it costs",
+      search: "Search models…",
+    },
+    reset: "Clear the conversation",
+    settings: {
+      label: "Run settings",
+      system: "System prompt",
+      systemHint: "Sent before your message on every run.",
+    },
     title: "Playground",
+    you: "You",
   },
   settings: {
     appearance: {

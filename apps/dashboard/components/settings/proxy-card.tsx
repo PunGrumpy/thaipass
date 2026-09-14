@@ -1,10 +1,11 @@
 "use client";
 
-import { CheckCircle2, Lock, Plug, XCircle } from "lucide-react";
+import { CheckCircle2, Lock, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { SettingsSection } from "@/components/settings/settings-section";
+import { TestIcon } from "@/components/icons/rune";
+import { Section } from "@/components/layout/section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +27,6 @@ export const ProxyCard = () => {
     if (testing) {
       return "Testing…";
     }
-    // A pinned gateway is still worth checking; it just cannot be changed.
     return proxyLocked ? "Test" : "Test & save";
   };
 
@@ -53,8 +53,8 @@ export const ProxyCard = () => {
   };
 
   return (
-    <SettingsSection
-      action={
+    <Section
+      badge={
         proxyLocked ? (
           <Badge variant="secondary">
             <Lock />
@@ -87,7 +87,7 @@ export const ProxyCard = () => {
             onClick={handleTest}
             variant={proxyLocked ? "outline" : "default"}
           >
-            <Plug />
+            <TestIcon />
             {testLabel()}
           </Button>
         </div>
@@ -107,6 +107,6 @@ export const ProxyCard = () => {
           </span>
         </p>
       ) : null}
-    </SettingsSection>
+    </Section>
   );
 };

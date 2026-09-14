@@ -1,15 +1,16 @@
 import type { Dictionary, Locale } from "@thaipass/internationalization";
 import { useI18n } from "@thaipass/internationalization";
-import {
-  Boxes,
-  GraduationCap,
-  LayoutDashboard,
-  Plug,
-  Settings2,
-  TerminalSquare,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import type { ComponentProps, ComponentType } from "react";
 import { useMemo } from "react";
+
+import {
+  IntegrationsIcon,
+  LearningIcon,
+  ModelsIcon,
+  OverviewIcon,
+  PlaygroundIcon,
+  SettingsIcon,
+} from "@/components/icons/rune";
 
 export type NavItemId =
   | "overview"
@@ -22,7 +23,7 @@ export type NavItemId =
 export interface NavItem {
   description: string;
   href: string;
-  icon: LucideIcon;
+  icon: ComponentType<ComponentProps<"svg">>;
   id: NavItemId;
   title: string;
 }
@@ -43,28 +44,28 @@ export const getNavSections = (
       {
         description: dictionary.navigation.items.overview.description,
         href: `/${locale}`,
-        icon: LayoutDashboard,
+        icon: OverviewIcon,
         id: "overview",
         title: dictionary.navigation.items.overview.title,
       },
       {
         description: dictionary.navigation.items.playground.description,
         href: `/${locale}/playground`,
-        icon: TerminalSquare,
+        icon: PlaygroundIcon,
         id: "playground",
         title: dictionary.navigation.items.playground.title,
       },
       {
         description: dictionary.navigation.items.models.description,
         href: `/${locale}/models`,
-        icon: Boxes,
+        icon: ModelsIcon,
         id: "models",
         title: dictionary.navigation.items.models.title,
       },
       {
         description: dictionary.navigation.items.learning.description,
         href: `/${locale}/learning`,
-        icon: GraduationCap,
+        icon: LearningIcon,
         id: "learning",
         title: dictionary.navigation.items.learning.title,
       },
@@ -77,14 +78,14 @@ export const getNavSections = (
       {
         description: dictionary.navigation.items.integrations.description,
         href: `/${locale}/integrations`,
-        icon: Plug,
+        icon: IntegrationsIcon,
         id: "integrations",
         title: dictionary.navigation.items.integrations.title,
       },
       {
         description: dictionary.navigation.items.settings.description,
         href: `/${locale}/settings`,
-        icon: Settings2,
+        icon: SettingsIcon,
         id: "settings",
         title: dictionary.navigation.items.settings.title,
       },

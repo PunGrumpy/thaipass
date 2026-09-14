@@ -1,14 +1,16 @@
-import { Monitor, Moon, Sun } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import type { ComponentProps, ComponentType } from "react";
+
+import { MoonIcon, SunIcon, SystemIcon } from "@/components/icons/rune";
+
+export type ThemeValue = "dark" | "light" | "system";
 
 export interface ThemeOption {
-  icon: LucideIcon;
-  label: string;
-  value: string;
+  icon: ComponentType<ComponentProps<"svg">>;
+  value: ThemeValue;
 }
 
 export const THEME_OPTIONS: readonly ThemeOption[] = [
-  { icon: Sun, label: "Light", value: "light" },
-  { icon: Moon, label: "Dark", value: "dark" },
-  { icon: Monitor, label: "System", value: "system" },
+  { icon: SunIcon, value: "light" },
+  { icon: MoonIcon, value: "dark" },
+  { icon: SystemIcon, value: "system" },
 ];

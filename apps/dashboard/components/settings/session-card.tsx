@@ -4,20 +4,19 @@ import {
   AlertCircle,
   Check,
   ChevronDown,
-  ClipboardPaste,
   ExternalLink,
   Eye,
   EyeOff,
   HelpCircle,
   Loader2,
   RefreshCw,
-  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { SettingsSection } from "@/components/settings/settings-section";
+import { PasteIcon, VerifiedIcon } from "@/components/icons/rune";
+import { Section } from "@/components/layout/section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,7 +41,6 @@ import { cn } from "@/lib/utils";
 
 const AIPASS_URL = "https://de.aipass.net";
 
-/** What the gateway made of the session, without anyone pressing Verify. */
 const SessionStatus = ({
   balance,
   error,
@@ -127,11 +125,11 @@ export const SessionCard = () => {
   };
 
   return (
-    <SettingsSection
-      action={
+    <Section
+      badge={
         hasSession ? (
           <Badge variant="secondary">
-            <ShieldCheck />
+            <VerifiedIcon />
             stored locally
           </Badge>
         ) : null
@@ -174,7 +172,7 @@ export const SessionCard = () => {
             </InputGroupAddon>
           </InputGroup>
           <Button className="shrink-0" disabled={pasting} onClick={handlePaste}>
-            <ClipboardPaste />
+            <PasteIcon />
             {pasting ? "Reading…" : "Paste and connect"}
           </Button>
         </div>
@@ -284,6 +282,6 @@ export const SessionCard = () => {
           No session yet. Nothing here reaches your account until one is pasted.
         </p>
       )}
-    </SettingsSection>
+    </Section>
   );
 };

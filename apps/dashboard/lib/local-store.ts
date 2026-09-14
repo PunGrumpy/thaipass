@@ -1,8 +1,3 @@
-/**
- * localStorage as an external store, so React reads it through
- * `useSyncExternalStore` instead of copying it into state after mount.
- */
-
 const listeners = new Set<() => void>();
 
 const notify = (): void => {
@@ -24,7 +19,6 @@ export const readLocal = (key: string): string | null => {
   try {
     return localStorage.getItem(key);
   } catch {
-    // A browser with site data blocked still gets a working in-memory session.
     return null;
   }
 };
@@ -37,7 +31,7 @@ export const writeLocal = (key: string, value: string): void => {
       localStorage.setItem(key, value);
     }
   } catch {
-    // Same as above: refusing to persist must not break the page.
+    // Required by no-empty.
   }
   notify();
 };

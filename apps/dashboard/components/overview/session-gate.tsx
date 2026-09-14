@@ -1,11 +1,12 @@
 "use client";
 
 import { useI18n } from "@thaipass/internationalization";
-import { ClipboardPaste, KeyRound } from "lucide-react";
+import { useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { PasteIcon, SignedInIcon } from "@/components/icons/rune";
 import { SessionWalkthrough } from "@/components/overview/session-walkthrough";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,12 +18,12 @@ import type { PasteOutcome } from "@/lib/session-paste";
 
 const STEP_MS = 4000;
 
-/** The first screen almost everyone sees, so it carries the whole setup path. */
 export const SessionGate = () => {
   const [step, setStep] = useState(0);
   const [pasting, setPasting] = useState(false);
   const { locale, t } = useI18n();
   const { setCookie } = useConnection();
+  const still = useReducedMotion();
   const gate = t.overview.sessionGate;
 
   const steps = useMemo(
@@ -57,14 +58,9 @@ export const SessionGate = () => {
     [clipboard, setCookie]
   );
 
-  /**
-   * A reader who has just copied the cookie reaches for Ctrl+V, so the whole
-   * page takes the paste — not only the field two clicks away in settings.
-   */
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
       // SAFETY: a paste event's target is an element of this document, and the
-      // optional chain below covers the null the DOM types allow.
       const target = event.target as HTMLElement | null;
       if (target?.isContentEditable || target?.closest("input, textarea")) {
         return;
@@ -91,14 +87,14 @@ export const SessionGate = () => {
 
   return (
     <Card>
-      <CardContent className="grid gap-6 py-4 md:grid-cols-[1.1fr_1fr] md:items-center">
+      <CardContent className="grid gap-6 py-4 md:grid-cols-[1.1fr_1fr] md:items-start">
         <div className="space-y-4">
           <div className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
-            <KeyRound className="size-3.5" />
+            <SignedInIcon className="size-3.5" />
             {gate.badge}
           </div>
           <div className="space-y-2">
-            <h2 className="text-xl font-semibold tracking-tight">
+            <h2 className="text-lg font-semibold tracking-tight">
               {gate.title}
             </h2>
             <p className="text-muted-foreground max-w-md text-sm text-pretty">
@@ -107,7 +103,7 @@ export const SessionGate = () => {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Button disabled={pasting} onClick={handlePaste}>
-              <ClipboardPaste />
+              <PasteIcon />
               {pasting ? clipboard.busy : clipboard.action}
             </Button>
             <Link
@@ -133,12 +129,8 @@ export const SessionGate = () => {
             {current.body}
           </p>
 
-          {/*
-            Seekable and pausable, so the walkthrough is a control rather than
-            an animation the reader has to keep up with.
-          */}
           <StepPlayer
-            defaultPlaying
+            defaultPlaying={!still}
             duration={STEP_MS}
             labels={{ ...gate.player, track: gate.step }}
             loop

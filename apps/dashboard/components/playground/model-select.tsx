@@ -11,7 +11,6 @@ import {
 import type { CatalogModel } from "@/lib/proxy";
 
 export interface ModelSelectProps {
-  /** Bound to the field's own <Label htmlFor>. */
   id: string;
   models: readonly CatalogModel[];
   onChange: (model: string) => void;

@@ -19,12 +19,6 @@ interface State<T> {
 
 const IDLE = { data: null, error: null, loading: false } as const;
 
-/**
- * A load keyed by a string. Passing `null` for the key parks the resource —
- * that is how a page says "there is no session yet, do not call the proxy".
- * Re-running is explicit, because every call here costs a round trip to
- * someone's local gateway.
- */
 export const useResource = <T>(
   key: string | null,
   load: (signal: AbortSignal) => Promise<T>
@@ -68,7 +62,6 @@ export const useResource = <T>(
     };
   }, [key, run]);
 
-  // Parking is derived rather than stored, so no render is spent clearing state.
   return {
     data: parked ? null : state.data,
     error: parked ? null : state.error,
@@ -77,7 +70,6 @@ export const useResource = <T>(
   };
 };
 
-/** Calls `reload` on an interval while the tab is visible. */
 export const usePolling = (reload: () => void, intervalMs: number): void => {
   useEffect(() => {
     const tick = () => {

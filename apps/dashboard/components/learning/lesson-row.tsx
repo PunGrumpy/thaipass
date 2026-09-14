@@ -30,10 +30,6 @@ const KIND_ICONS: Record<LessonKind, LucideIcon> = {
   video: Video,
 };
 
-/*
- * Status is carried by a word and an icon rather than a colour, so a row reads
- * the same to a reader who cannot tell the two greys apart.
- */
 const STATUS_ICONS: Record<LessonStatus, LucideIcon> = {
   completed: Check,
   paused: Minus,
@@ -46,8 +42,6 @@ const PERCENT = 100;
 
 type LessonCopy = Dictionary["learning"]["lesson"];
 
-/* Independent facts joined by a separator rather than a sentence built from
-   fragments, so each one translates on its own. */
 const quizLine = (lesson: RunLesson, copy: LessonCopy): string | null => {
   const { quiz } = lesson;
   if (!quiz) {

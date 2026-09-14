@@ -1,7 +1,6 @@
 import { FREE_MODEL } from "./catalog";
 
 export interface SnippetParams {
-  /** The credential the snippet carries: a thaipass token, or the cookie. */
   cookie: string;
   model: string;
   proxyUrl: string;
@@ -9,26 +8,13 @@ export interface SnippetParams {
 
 export type SnippetLanguage = "bash" | "json" | "toml" | "tsx";
 
-/**
- * Where the credential in a snippet is spent. A client that calls this
- * gateway can carry a thaipass token; one that calls AI Pass itself needs the
- * cookie, because only the gateway holds the key that opens a token.
- */
 export type SnippetTarget = "gateway" | "upstream";
 
-/**
- * One instruction in a setup. Exactly one step carries the code, because a
- * reader following a list wants to know where the block lands before they copy
- * it, and what to do once they have.
- */
 export interface SnippetStep {
-  /** True on the step the code block belongs under. */
   readonly code?: boolean;
-  /** Backticked runs are painted as code where this is rendered. */
   readonly text: string;
 }
 
-/** Where a snippet is spent, which is what the drawing beside the steps shows. */
 export type SnippetPlace =
   | { readonly kind: "file"; readonly name: string }
   | { readonly kind: "settings"; readonly app: string }
@@ -42,7 +28,6 @@ export interface Snippet {
   language: SnippetLanguage;
   place: SnippetPlace;
   steps: readonly SnippetStep[];
-  /** One line, before the steps: what this sets up. */
   summary: string;
   target: SnippetTarget;
 }
@@ -50,7 +35,6 @@ export interface Snippet {
 export const COOKIE_PLACEHOLDER = "<YOUR_AIPASS_COOKIE>";
 export const TOKEN_PLACEHOLDER = "<YOUR_THAIPASS_TOKEN>";
 
-/** What a client actually calls: completions, and the catalogue behind a picker. */
 export const CLIENT_SCOPE = "chat models";
 
 export const SNIPPETS: readonly Snippet[] = [

@@ -4,12 +4,6 @@ import { z } from "zod";
 import { attempt } from "./attempt";
 import { gatewayFetch, normalizeProxyUrl } from "./proxy";
 
-/**
- * The proxy types `session_exp` and `achievement` as `unknown` and hands the
- * LMS reply through untouched, so this is the boundary that gives it a shape.
- * Every branch is `.catch`ed: a field the LMS renames or drops becomes null
- * rather than throwing, because a partial reading beats an error page.
- */
 const numberish = z.coerce.number().finite().nullable().catch(null);
 
 const lessonTypeExpSchema = z
@@ -43,14 +37,11 @@ export interface LessonTypeExp {
 }
 
 export interface LearningExp {
-  /** EXP earned this period, or null when the payload names no such field. */
   monthly: number | null;
-  /** EXP for courses outside the lesson-type breakdown. */
   normalCourseExp: number | null;
   perLessonType: readonly LessonTypeExp[];
 }
 
-/** What `learn` aims at by default, and the only target the LMS surface names. */
 export const MONTHLY_TARGET = 100;
 
 const readLmsError = async (response: Response): Promise<string> => {
@@ -105,27 +96,17 @@ const courseListSchema = z.looseObject({
   courses: z.array(courseSchema).catch([]),
 });
 
-/** A course as the picker reads it; the wire's snake_case stops at this file. */
 export interface LmsCourse {
-  /** Paid once the course closes, where it carries one. */
   bonus: number | null;
   code: string;
   done: boolean;
   duration: number | null;
-  /** What the course itself pays, apart from its lessons. */
   exp: number | null;
-  /** How far through the account already is, 0 to 100. */
   progress: number | null;
   started: boolean;
   title: string | null;
 }
 
-/**
- * Every course the account can reach, in the order a run would take them.
- * Read on demand rather than with the page: the proxy pages the whole
- * catalogue out of the LMS, which is many upstream calls for a list nobody
- * has asked to see yet.
- */
 export const fetchCourses = async (
   proxyUrl: string,
   cookie: string,
@@ -156,14 +137,6 @@ export const fetchCourses = async (
     title: course.title,
   }));
 };
-
-/*
- * A learning run: POST /v1/lms/learn streams one JSON object per line for as
- * long as the lessons take, so the dashboard follows the same events the CLI
- * prints. The union below mirrors the proxy's `LearnEvent`, and each variant is
- * parsed rather than cast: the run is a long stream, and one malformed line
- * should cost that line, not the whole run.
- */
 
 const lessonKindSchema = z.enum(["article", "attachment", "quiz", "video"]);
 
@@ -254,7 +227,6 @@ export type LearnLessonEvent = Extract<LearnEvent, { event: "lesson" }>;
 export type LearnQuizEvent = Extract<LearnEvent, { event: "quiz" }>;
 export type LearnStampEvent = Extract<LearnEvent, { event: "stamp" }>;
 
-/** The request body, in the snake_case the proxy's schema names. */
 export interface LearnRunBody {
   articles?: boolean;
   attachments?: boolean;
@@ -268,7 +240,6 @@ export interface LearnRunBody {
   target?: number;
 }
 
-/** One NDJSON line, or null for a blank line and for one no variant matches. */
 export const parseLearnEvent = (line: string): LearnEvent | null => {
   const trimmed = line.trim();
   if (trimmed === "") {
@@ -290,11 +261,6 @@ export interface StreamLearnParams {
   signal: AbortSignal;
 }
 
-/**
- * Follows a run to its end. Nothing is buffered for the caller: each line is
- * handed over as it lands, because a stamp that arrives ten seconds late is
- * a progress bar that lies.
- */
 export const streamLearnRun = async ({
   cookie,
   onEvent,
@@ -345,7 +311,6 @@ export const streamLearnRun = async ({
     }
   }
 
-  // A body that ends without a trailing newline leaves its last event here.
   const last = parseLearnEvent(buffer);
   if (last) {
     onEvent(last);

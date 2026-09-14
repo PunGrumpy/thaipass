@@ -2,9 +2,15 @@
 
 import { useI18n } from "@thaipass/internationalization";
 import type { Dictionary } from "@thaipass/internationalization";
-import { ChevronDown, Eraser, Play, Square } from "lucide-react";
 import { useState } from "react";
 
+import {
+  ChevronDownIcon,
+  PlayIcon,
+  ResetIcon,
+  ResumeIcon,
+  StopIcon,
+} from "@/components/icons/rune";
 import { RunSettings } from "@/components/learning/run-settings";
 import type { Invalid } from "@/components/learning/run-settings";
 import { Button } from "@/components/ui/button";
@@ -13,7 +19,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Progress, ProgressLabel } from "@/components/ui/progress";
+import {
+  Progress,
+  ProgressLabel,
+  ProgressValue,
+} from "@/components/ui/progress";
 import { useCatalog } from "@/hooks/use-gateway";
 import { fill, formatDuration, formatPercent, pluralize } from "@/lib/format";
 import {
@@ -23,11 +33,11 @@ import {
   MAX_LESSONS,
 } from "@/lib/learn-run";
 import type { RunField, RunOptions } from "@/lib/learn-run";
+import { MONTHLY_TARGET } from "@/lib/lms";
 import type { LearnRunBody } from "@/lib/lms";
 
 const CHAT_KIND = "chat";
 
-/** What the last check found, so the button can say what pressing it costs. */
 export interface RunEstimate {
   lessons: number;
   seconds: number;
@@ -37,17 +47,14 @@ export interface RunPanelProps {
   canClear: boolean;
   estimate: RunEstimate | null;
   hasSession: boolean;
-  /** This period's EXP, which is what the headline and the button count from. */
   monthly: number | null;
   onClear: () => void;
   onStart: (body: LearnRunBody) => void;
   onStop: () => void;
-  /** The last run stopped at its time budget, so the next one picks up from there. */
   paused: boolean;
   running: boolean;
 }
 
-/** The one line under the button that answers "how long will this take". */
 const estimateLine = (
   estimate: RunEstimate,
   pace: number,
@@ -78,20 +85,9 @@ const invalidMessage = (
 
 interface Offer {
   label: string;
-  /** A settings change the press writes as well as runs. */
   over?: Partial<RunOptions>;
 }
 
-const headlineOf = (
-  monthly: number | null,
-  amount: number,
-  copy: Dictionary["learning"]["run"]
-): string =>
-  monthly === null
-    ? copy.title
-    : fill(copy.headline, monthly.toLocaleString(), amount.toLocaleString());
-
-/** The fine print under the button, which says the goal itself. */
 const limitsOf = (
   options: RunOptions,
   copy: Dictionary["learning"]["run"]["limits"]
@@ -115,11 +111,6 @@ const limitsOf = (
   return parts.join(" · ");
 };
 
-/**
- * What the one button offers, in the words of the outcome rather than the
- * form. Reaching a target the period already holds ends after a single read,
- * so that case offers to earn instead of doing nothing convincingly.
- */
 const offerOf = ({
   confirming,
   copy,
@@ -155,14 +146,6 @@ const offerOf = ({
   return { label: fill(copy.remaining, gap.toLocaleString()) };
 };
 
-/**
- * The run is the one thing on this page that changes the account. Its defaults
- * are a working run on their own, so what the settings add up to is stated in a
- * line and the fields themselves fold away — Start is one press from the
- * heading, and reading six controls is a choice rather than a toll. A failed
- * check opens the panel, since a message under a folded field helps nobody.
- * Quizzes are the only irreversible part and the only option that asks twice.
- */
 export const RunPanel = ({
   canClear,
   estimate,
@@ -189,12 +172,6 @@ export const RunPanel = ({
     setConfirming(false);
   };
 
-  /*
-   * `over` is how the one button changes the goal it offers: reaching a target
-   * means nothing once the period already holds it, so the press that says
-   * "Earn another 100" writes that choice into the settings as well as running
-   * it, rather than doing something the panel does not show.
-   */
   const submit = (dryRun: boolean, over?: Partial<RunOptions>) => {
     const wanted = over ? { ...options, ...over } : options;
     if (over) {
@@ -210,8 +187,6 @@ export const RunPanel = ({
     }
     setInvalid(null);
 
-    // Off by default, so turning it on is deliberate; spending an attempt for
-    // good still deserves the second press.
     if (!dryRun && wanted.quiz && !confirming) {
       setConfirming(true);
       return;
@@ -220,12 +195,12 @@ export const RunPanel = ({
     onStart(check.body);
   };
 
-  const gap = monthly === null ? null : options.amount - monthly;
-  const share =
-    monthly === null
-      ? null
-      : formatPercent(monthly, Math.max(1, options.amount));
-  const met = options.goal === "target" && gap !== null && gap <= 0;
+  // The bar measures the month against the month's target, which is what the
+  // headline and the breakdown row both count. `gap` below stays run-scoped,
+  // because the button it labels offers to earn a run's worth.
+  const monthShare = formatPercent(monthly ?? 0, MONTHLY_TARGET);
+  const monthGap = Math.max(0, MONTHLY_TARGET - (monthly ?? 0));
+  const monthMet = monthly !== null && monthly >= MONTHLY_TARGET;
 
   const offer = offerOf({
     confirming,
@@ -236,43 +211,54 @@ export const RunPanel = ({
   });
 
   return (
-    <section aria-labelledby="run-heading" className="max-w-2xl space-y-4">
-      <div className="space-y-2">
-        <h2
-          className="text-2xl font-semibold tracking-tight tabular-nums"
-          id="run-heading"
-        >
-          {headlineOf(monthly, options.amount, copy)}
-        </h2>
+    <div className="min-w-0 overflow-hidden rounded-xl border">
+      <div className="bg-muted/40 space-y-2 border-b px-4 py-3">
+        {monthly === null ? (
+          <p className="text-muted-foreground text-sm tabular-nums">
+            {fill(copy.ofTarget, "—", MONTHLY_TARGET.toLocaleString())}
+          </p>
+        ) : (
+          <>
+            <p className="text-2xl font-semibold tracking-tight tabular-nums">
+              {fill(copy.headline, monthly.toLocaleString())}
+            </p>
 
-        {share === null ? null : (
-          <Progress className="gap-1" value={share}>
-            <ProgressLabel className="text-muted-foreground text-sm font-normal">
-              {met ? copy.met : fill(copy.toGo, (gap ?? 0).toLocaleString())}
-            </ProgressLabel>
-          </Progress>
+            <Progress className="gap-x-4 gap-y-1" value={monthShare}>
+              <ProgressLabel className="text-muted-foreground text-sm font-normal">
+                {monthMet
+                  ? copy.met
+                  : fill(copy.toGo, monthGap.toLocaleString())}
+              </ProgressLabel>
+              <ProgressValue>
+                {() =>
+                  fill(
+                    copy.ofTarget,
+                    monthly.toLocaleString(),
+                    MONTHLY_TARGET.toLocaleString()
+                  )
+                }
+              </ProgressValue>
+            </Progress>
+          </>
         )}
       </div>
 
       <form
-        className="space-y-4"
+        className="space-y-4 p-4"
         onSubmit={(event) => {
           event.preventDefault();
           submit(false);
         }}
       >
         <Collapsible
-          className="border-t"
           onOpenChange={setSettingsOpen}
           open={settingsOpen || invalid !== null}
         >
           <CollapsibleTrigger className="group text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex items-center gap-1.5 rounded-md py-2 text-sm outline-none focus-visible:ring-3">
-            <ChevronDown className="size-4 transition-transform group-aria-expanded:rotate-180" />
+            <ChevronDownIcon className="size-4 transition-transform group-aria-expanded:rotate-180" />
             {copy.settings}
           </CollapsibleTrigger>
 
-          {/* A run carries the body it was started with, so a field changed
-              half way through would look live and do nothing. */}
           <CollapsibleContent>
             <RunSettings
               chatModels={chatModels}
@@ -288,12 +274,6 @@ export const RunPanel = ({
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             {running ? (
-              /*
-               * React reuses this node for the submit button below, so by the
-               * time the browser acts on the click its type has become "submit"
-               * and the form would run again. Cancelling the default is what
-               * keeps Stop from starting a second run.
-               */
               <Button
                 onClick={(event) => {
                   event.preventDefault();
@@ -303,7 +283,7 @@ export const RunPanel = ({
                 type="button"
                 variant="outline"
               >
-                <Square />
+                <StopIcon />
                 {copy.stop}
               </Button>
             ) : (
@@ -313,7 +293,7 @@ export const RunPanel = ({
                 size="lg"
                 type="button"
               >
-                <Play />
+                {paused ? <ResumeIcon /> : <PlayIcon />}
                 {offer.label}
               </Button>
             )}
@@ -330,7 +310,7 @@ export const RunPanel = ({
 
             {canClear && !running ? (
               <Button onClick={onClear} type="button" variant="ghost">
-                <Eraser />
+                <ResetIcon />
                 {t.common.actions.clear}
               </Button>
             ) : null}
@@ -342,8 +322,6 @@ export const RunPanel = ({
             )}
           </div>
 
-          {/* The one unknown worth answering before a press that can run for
-              hours: how many lessons, and how much video. */}
           {estimate === null ? (
             <Button
               className="h-auto p-0"
@@ -376,6 +354,6 @@ export const RunPanel = ({
 
         {confirming ? <p className="text-xs">{copy.confirm}</p> : null}
       </form>
-    </section>
+    </div>
   );
 };

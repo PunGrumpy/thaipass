@@ -3,20 +3,17 @@
 import { useI18n } from "@thaipass/internationalization";
 import { RefreshCw, TriangleAlert } from "lucide-react";
 
-import { PageHeader } from "@/components/layout/page-header";
-import { LessonTypeTable } from "@/components/learning/lesson-type-table";
+import { Section } from "@/components/layout/section";
+import { Toolbar } from "@/components/layout/toolbar";
+import { ExpBreakdown } from "@/components/learning/exp-breakdown";
 import { RunFeed } from "@/components/learning/run-feed";
 import { RunPanel } from "@/components/learning/run-panel";
-import { StatCard } from "@/components/overview/stat-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useConnection } from "@/hooks/use-connection";
 import { useLearnRun } from "@/hooks/use-learn-run";
 import { useLearning } from "@/hooks/use-learning";
-import { fill } from "@/lib/format";
 import { isResumable, isRunEmpty, plannedSeconds } from "@/lib/learn-run";
-import { MONTHLY_TARGET } from "@/lib/lms";
 import { cn } from "@/lib/utils";
 
 const LearningPage = () => {
@@ -34,9 +31,6 @@ const LearningPage = () => {
 
   const monthly = data?.monthly ?? null;
 
-  /* A preview walks the catalogue and changes nothing, so what it found is the
-     honest answer to "how long would this take" — and the only one available
-     before the run itself starts. */
   const estimate =
     runState.preview && runState.summary
       ? {
@@ -47,21 +41,25 @@ const LearningPage = () => {
 
   return (
     <>
-      <PageHeader
-        action={
+      <Toolbar
+        actions={
           <Button
+            className="aria-disabled:opacity-50"
             disabled={loading || !hasSession}
             focusableWhenDisabled
             onClick={() => reload()}
+            size="sm"
             variant="outline"
           >
-            <RefreshCw className={cn(loading && "animate-spin")} />
-            {loading ? t.common.actions.refreshing : t.common.actions.refresh}
+            <RefreshCw
+              className={cn(loading && "animate-spin")}
+              data-icon="inline-start"
+            />
+            {loading ? t.common.actions.refreshing : t.learning.reload}
           </Button>
         }
-        description={t.learning.description}
-        title={t.learning.title}
       />
+
       {hasSession ? null : (
         <Alert>
           <TriangleAlert />
@@ -78,49 +76,36 @@ const LearningPage = () => {
         </Alert>
       ) : null}
 
-      <RunPanel
-        canClear={!isRunEmpty(runState)}
-        estimate={estimate}
-        hasSession={hasSession}
-        monthly={monthly}
-        onClear={handleClear}
-        onStart={handleStart}
-        onStop={handleStop}
-        paused={isResumable(runState)}
-        running={running}
-      />
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[1fr_22rem]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <Section title={t.learning.run.title}>
+            <RunPanel
+              canClear={!isRunEmpty(runState)}
+              estimate={estimate}
+              hasSession={hasSession}
+              monthly={monthly}
+              onClear={handleClear}
+              onStart={handleStart}
+              onStop={handleStop}
+              paused={isResumable(runState)}
+              running={running}
+            />
+          </Section>
 
-      <RunFeed error={runError} running={running} state={runState} />
-
-      <section aria-labelledby="breakdown-heading" className="space-y-4">
-        <h2 className="text-base font-medium" id="breakdown-heading">
-          {t.learning.breakdown.title}
-        </h2>
-
-        <div className="bg-border ring-border grid gap-px overflow-hidden rounded-xl ring-1 sm:grid-cols-2">
-          <StatCard
-            footer={t.learning.breakdown.standard.footer}
-            label={t.learning.breakdown.standard.label}
-            loading={loading && !data}
-            value={data?.normalCourseExp ?? null}
-          />
-          <StatCard
-            footer={fill(
-              t.learning.breakdown.monthly.footer,
-              MONTHLY_TARGET.toLocaleString()
-            )}
-            label={t.learning.breakdown.monthly.label}
-            loading={loading && !data}
-            value={monthly}
-          />
+          <Section title={t.learning.feed.title}>
+            <RunFeed error={runError} running={running} state={runState} />
+          </Section>
         </div>
 
-        {loading && !data ? (
-          <Skeleton className="h-48 w-full" />
-        ) : (
-          <LessonTypeTable rows={data?.perLessonType ?? []} />
-        )}
-      </section>
+        <Section className="min-w-0" title={t.learning.breakdown.title}>
+          <ExpBreakdown
+            loading={loading && !data}
+            monthly={monthly}
+            perLessonType={data?.perLessonType ?? []}
+            standard={data?.normalCourseExp ?? null}
+          />
+        </Section>
+      </div>
     </>
   );
 };

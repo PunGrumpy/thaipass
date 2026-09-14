@@ -110,6 +110,9 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 286);
   --sidebar-border: oklch(0.915 0.004 286);
   --sidebar-ring: oklch(0.21 0.006 286);
+
+  --vendor-anthropic: #c96a4a;
+  --vendor-pathumma: #b23a55;
 }
 
 .dark {
@@ -153,6 +156,10 @@
   --sidebar-accent-foreground: oklch(0.965 0.002 286);
   --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.62 0.012 286);
+
+  /* Lifted for the dark ground; the same hue, enough lightness to stay read. */
+  --vendor-anthropic: #e08b6f;
+  --vendor-pathumma: #d9748f;
 }
 
 /* This layer is by Verno Studio */
@@ -199,6 +206,78 @@
       transition-duration: 150ms !important;
     }
   }
+}
+
+/*
+ * The mascot's idle loop, from the measurements the x.ai bot avatar was
+ * reverse-engineered against: a 0.18s blink and a 0.5% breath, on exponential
+ * ease-outs so nothing overshoots. Opt-in, so a reader who asked for less
+ * motion gets a still character rather than a frozen half-blink.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  [data-slot="mascot-body"],
+  [data-slot="mascot-eye"] {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  [data-slot="mascot-body"] {
+    animation: mascot-breath 5s cubic-bezier(0.33, 1, 0.68, 1) infinite;
+  }
+
+  [data-slot="mascot-eye"] {
+    animation: mascot-blink 6s cubic-bezier(0.33, 1, 0.68, 1) infinite;
+  }
+
+  [data-slot="mascot-gaze"] {
+    animation: mascot-gaze 9s cubic-bezier(0.33, 1, 0.68, 1) infinite;
+  }
+}
+
+@keyframes mascot-breath {
+  0%,
+  100% {
+    scale: 1;
+  }
+  50% {
+    scale: 1.005;
+  }
+}
+
+/* 0.18s of a 6s cycle is 3%, so the lids move for exactly that long. */
+@keyframes mascot-blink {
+  0%,
+  96%,
+  100% {
+    scale: 1 1;
+  }
+  97.5% {
+    scale: 1 0.08;
+  }
+}
+
+@keyframes mascot-gaze {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  30% {
+    translate: 0.7px -0.3px;
+  }
+  65% {
+    translate: -0.6px 0.35px;
+  }
+}
+
+/*
+ * The step player's transport ships no focus indicator, and both its button and
+ * its seek steps are keyboard-reachable. Its file is registry-generated, so the
+ * ring lives here instead, keyed to the slots the registry itself emits.
+ */
+[data-slot="step-player-control"]:focus-visible,
+[data-slot="step-player-step"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .touch-target {

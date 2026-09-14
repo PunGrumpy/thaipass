@@ -13,20 +13,12 @@ export const DEFAULT_PROXY_URL = env.NEXT_PUBLIC_PROXY_URL;
 
 const LOOPBACK = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/u;
 
-/**
- * A deployment pins its gateway. Whoever hosts the dashboard is the one who
- * answers for what it sends and keeps the logs of it, and a reader who repoints
- * it at their own gateway takes both away; the honest fix is to run a copy.
- * Locally the field stays editable, since pointing a dev dashboard at a dev
- * gateway is the whole point of having it.
- */
 export const PROXY_LOCKED =
   env.NEXT_PUBLIC_PROXY_LOCKED === undefined
     ? !LOOPBACK.test(DEFAULT_PROXY_URL)
     : env.NEXT_PUBLIC_PROXY_LOCKED === "1";
 
 export interface Connection {
-  /** True when this deployment pins the gateway and the field is read-only. */
   proxyLocked: boolean;
   clear: () => void;
   cookie: string;

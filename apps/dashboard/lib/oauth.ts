@@ -1,11 +1,3 @@
-/**
- * The consent screen's half of Login with thaipass.
- *
- * An app sends someone here with the parameters below, the reader approves,
- * and this asks the gateway for an authorization code on their own session —
- * which is why it runs in the browser: the cookie lives here and nowhere else.
- */
-
 import { gatewayFetch, normalizeProxyUrl } from "@/lib/proxy";
 
 export interface AuthorizeRequest {
@@ -24,7 +16,6 @@ const KNOWN: ReadonlySet<string> = new Set<string>(SCOPE_NAMES);
 
 const isScopeName = (value: string): value is ScopeName => KNOWN.has(value);
 
-/** The scopes an app asked for, in a fixed order, defaults included. */
 export const scopesOf = (scope: string | null): readonly ScopeName[] => {
   const asked = (scope ?? "chat models usage")
     .split(/\s+/u)
@@ -35,11 +26,6 @@ export const scopesOf = (scope: string | null): readonly ScopeName[] => {
   return SCOPE_NAMES.filter((name) => unique.has(name));
 };
 
-/**
- * A login link is only worth acting on when it carries everything the exchange
- * will need. Anything missing means the app built the link wrongly, which the
- * reader should be told rather than left to a failed redirect.
- */
 export const readAuthorizeRequest = (
   params: URLSearchParams
 ): AuthorizeRequest | null => {
@@ -77,13 +63,11 @@ const authHeaders = (cookie: string): HeadersInit => ({
 const readOAuthError = async (response: Response): Promise<string> => {
   const body: unknown = await response.json().catch(() => null);
   // SAFETY: every non-2xx from /oauth is RFC 6749 shaped; the optional chain
-  // covers a body that turns out to be anything else.
   const described = (body as { error_description?: string } | null)
     ?.error_description;
   return described ?? `HTTP ${response.status}: ${response.statusText}`;
 };
 
-/** Who the stored session belongs to, for the line above the Allow button. */
 export const fetchAccount = async (
   proxyUrl: string,
   cookie: string,
@@ -97,12 +81,10 @@ export const fetchAccount = async (
     throw new Error(await readOAuthError(response));
   }
   // SAFETY: GET /oauth/userinfo returns the Userinfo schema on 200; every
-  // other status was rejected above.
   const body = (await response.json()) as UserinfoBody;
   return body.account;
 };
 
-/** Asks the gateway for the code this app will exchange for a token. */
 export const requestCode = async (
   proxyUrl: string,
   cookie: string,
@@ -133,18 +115,11 @@ export const requestCode = async (
 const VERIFIER_BYTES = 48;
 
 const base64url = (bytes: Uint8Array): string =>
-  // Each byte is its own code point here, so the two spellings agree.
   btoa(String.fromCodePoint(...bytes))
     .replaceAll("+", "-")
     .replaceAll("/", "_")
     .replaceAll("=", "");
 
-/**
- * The dashboard mints for itself, so it plays both halves of the login: it is
- * the app asking and the account holder answering, and the reader is already
- * looking at their own session. The verifier still never leaves this page, and
- * the code is still spent once, because the gateway checks both either way.
- */
 export const mintToken = async (
   proxyUrl: string,
   cookie: string,
@@ -158,8 +133,6 @@ export const mintToken = async (
     new TextEncoder().encode(verifier)
   );
   const challenge = base64url(new Uint8Array(digest));
-  // Never navigated to: it only has to be an allowed redirect, and to match at
-  // the exchange. This page's own address is the honest one to name.
   const redirectUri = `${window.location.origin}/authorize`;
 
   const code = await requestCode(proxyUrl, cookie, {
@@ -198,7 +171,6 @@ export interface TokenGrant {
   scope: string;
 }
 
-/** Where the browser goes next, carrying either the code or the refusal. */
 export const completionUrl = (
   request: AuthorizeRequest,
   outcome: { code: string } | { error: string }

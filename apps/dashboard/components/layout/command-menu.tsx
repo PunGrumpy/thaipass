@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/command";
 import { useCatalog } from "@/hooks/use-gateway";
 import { attempt } from "@/lib/attempt";
+import { fill } from "@/lib/format";
 import { useNavSections } from "@/lib/nav";
 
 const MODEL_LIMIT = 8;
@@ -45,12 +46,10 @@ export const CommandMenu = ({ onOpenChange, open }: CommandMenuProps) => {
 
   return (
     <CommandDialog
-      className="data-closed:animate-none data-open:animate-none"
+      className="data-closed:animate-none data-open:animate-none sm:max-w-2xl"
       onOpenChange={onOpenChange}
       open={open}
     >
-      {/* CommandDialog renders only the dialog shell; cmdk's store comes from
-          Command, and without it CommandInput has nothing to subscribe to. */}
       <Command>
         <CommandInput
           className="text-base sm:text-sm"
@@ -67,8 +66,8 @@ export const CommandMenu = ({ onOpenChange, open }: CommandMenuProps) => {
                   value={`${item.title} ${item.description}`}
                 >
                   <item.icon />
-                  <span>{item.title}</span>
-                  <span className="text-muted-foreground ml-auto truncate text-xs">
+                  <span className="w-36 shrink-0">{item.title}</span>
+                  <span className="text-muted-foreground min-w-0 truncate text-xs">
                     {item.description}
                   </span>
                 </CommandItem>
@@ -78,7 +77,7 @@ export const CommandMenu = ({ onOpenChange, open }: CommandMenuProps) => {
 
           <CommandSeparator />
 
-          <CommandGroup heading="Copy model id">
+          <CommandGroup heading={t.commandMenu.groups.models}>
             {models.slice(0, MODEL_LIMIT).map((model) => (
               <CommandItem
                 key={model.id}
@@ -88,12 +87,10 @@ export const CommandMenu = ({ onOpenChange, open }: CommandMenuProps) => {
                       navigator.clipboard.writeText(model.id)
                     );
                     if (outcome.ok) {
-                      toast.success(`Copied ${model.id}`);
+                      toast.success(fill(t.commandMenu.copied, model.id));
                       return;
                     }
-                    toast.error(
-                      `Could not copy ${model.id}. Copy it from the Models page instead.`
-                    );
+                    toast.error(fill(t.commandMenu.copyFailed, model.id));
                   })
                 }
                 value={model.id}
@@ -125,7 +122,6 @@ export const CommandMenu = ({ onOpenChange, open }: CommandMenuProps) => {
   );
 };
 
-/** Owns the ⌘K binding so the header only has to render a button. */
 export const useCommandMenu = () => {
   const [open, setOpen] = useState(false);
 
