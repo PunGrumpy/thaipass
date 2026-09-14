@@ -1,0 +1,10 @@
+rune.tsx contains icons from Rune Icons
+https://github.com/Nexvyn/runeicons
+
+Copyright the Rune Icons authors
+Licensed under the Apache License, Version 2.0
+https://www.apache.org/licenses/LICENSE-2.0
+
+The duotone sources were inlined rather than installed, because the project's
+React package is unpublished. Their two fixed greys were remapped onto
+currentColor so the icons follow the dashboard's theme.
