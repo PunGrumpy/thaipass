@@ -4,7 +4,10 @@ import { useI18n } from "@thaipass/internationalization";
 import type { ComponentProps, ComponentType } from "react";
 import { useState } from "react";
 
-import { DocsIcon as FileTextIcon, LayersIcon } from "@/components/icons/rune";
+import {
+  BreakdownIcon,
+  DocsIcon as FileTextIcon,
+} from "@/components/icons/rune";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Button } from "@/components/ui/button";
 import { MeterRing } from "@/components/ui/meter-ring";
@@ -183,7 +186,7 @@ export const ExpBreakdown = ({
       tally: null,
     },
     {
-      icon: LayersIcon,
+      icon: BreakdownIcon,
       id: "type",
       label: copy.type,
       rows: perLessonType.map((row) => ({
