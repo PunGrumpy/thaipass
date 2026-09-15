@@ -4,7 +4,8 @@ import { ttlCache } from "../lib/cache";
 import { config } from "../lib/config";
 import { CHAT_MODELS, kindOf, MEDIA_MODELS } from "./models";
 import type { ModelKind } from "./models";
-import { loadJson } from "./request";
+import { loadJsonResult } from "./request";
+import type { LoadFailure } from "./request";
 
 const CATALOG_PATH = "/loaders/list-models";
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -29,6 +30,12 @@ export interface CatalogEntry {
 }
 
 export type Catalog = ReadonlyMap<string, CatalogEntry>;
+
+/** The catalog, or why there is none. */
+export interface CatalogResult {
+  readonly catalog: Catalog | null;
+  readonly failure: LoadFailure | null;
+}
 
 const cache = ttlCache<Catalog>(CACHE_TTL_MS);
 
@@ -82,37 +89,56 @@ const reportDrift = (catalog: Catalog): void => {
 const load = async (
   cookie: string,
   signal: AbortSignal | undefined
-): Promise<Catalog | null> => {
-  const listed = await loadJson(CATALOG_PATH, catalogSchema, cookie, signal);
-  if (!listed) {
-    return null;
-  }
-  return new Map(
-    listed.data.map((entry) => [
-      entry.id,
-      {
-        free: entry.isFreeCredit ?? false,
-        ready: entry.ready ?? true,
-        thinking: entry.thinkingConfig?.supportedLevels ?? null,
-      },
-    ])
+): Promise<CatalogResult> => {
+  const { data: listed, failure } = await loadJsonResult(
+    CATALOG_PATH,
+    catalogSchema,
+    cookie,
+    signal
   );
+  if (!listed) {
+    return { catalog: null, failure };
+  }
+  return {
+    catalog: new Map(
+      listed.data.map((entry) => [
+        entry.id,
+        {
+          free: entry.isFreeCredit ?? false,
+          ready: entry.ready ?? true,
+          thinking: entry.thinkingConfig?.supportedLevels ?? null,
+        },
+      ])
+    ),
+    failure: null,
+  };
 };
 
+/** The catalog with the reason it is missing, for a caller that reports it. */
+export const fetchCatalogResult = async (
+  clientId: string,
+  cookie: string,
+  signal: AbortSignal | undefined
+): Promise<CatalogResult> => {
+  const cached = cache.get(clientId);
+  if (cached) {
+    return { catalog: cached, failure: null };
+  }
+  const loaded = await load(cookie, signal);
+  if (!loaded.catalog) {
+    return loaded;
+  }
+  cache.set(clientId, loaded.catalog);
+  reportDrift(loaded.catalog);
+  return loaded;
+};
+
+/** The catalog alone, for a caller with nowhere to put the reason. */
 export const fetchCatalog = async (
   clientId: string,
   cookie: string,
   signal: AbortSignal | undefined
 ): Promise<Catalog | null> => {
-  const cached = cache.get(clientId);
-  if (cached) {
-    return cached;
-  }
-  const catalog = await load(cookie, signal);
-  if (!catalog) {
-    return null;
-  }
-  cache.set(clientId, catalog);
-  reportDrift(catalog);
-  return catalog;
+  const loaded = await fetchCatalogResult(clientId, cookie, signal);
+  return loaded.catalog;
 };

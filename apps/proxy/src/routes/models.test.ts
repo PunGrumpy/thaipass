@@ -109,3 +109,26 @@ test("answers 502 when the catalog cannot be read", async () => {
     "no model catalog"
   );
 });
+
+const refusedCatalog =
+  (status: number) =>
+  (path: string): Response | undefined =>
+    path === MODELS_PATH ? new Response("", { status }) : undefined;
+
+test("names the upstream status that hid the catalog, and says to re-auth", async () => {
+  upstream = stubUpstream(sseResponse([]), refusedCatalog(401));
+  const response = await list(freshCookie());
+  expect(response.status).toBe(502);
+  const { message } = errorSchema.parse(await response.json()).error;
+  expect(message).toContain("upstream 401");
+  expect(message).toContain("re-auth needed");
+});
+
+test("does not blame the cookie for a status that is not about the session", async () => {
+  upstream = stubUpstream(sseResponse([]), refusedCatalog(500));
+  const response = await list(freshCookie());
+  expect(response.status).toBe(502);
+  const { message } = errorSchema.parse(await response.json()).error;
+  expect(message).toContain("upstream 500");
+  expect(message).not.toContain("re-auth");
+});

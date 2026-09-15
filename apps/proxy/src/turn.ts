@@ -197,10 +197,14 @@ const upstreamError = async (
   if (conversation.created) {
     await deleteConversation(cookie, conversation.id);
   }
+  // A session AI Pass has dropped answers 401 outright; only one that ran out
+  // gets the redirect. Both leave the caller with the same job, and 403 is the
+  // edge refusal below, which is about the prompt rather than the session.
   const staleCookie =
-    response.status >= 300 &&
-    response.status < 400 &&
-    (location ?? "").includes("sign-in");
+    response.status === 401 ||
+    (response.status >= 300 &&
+      response.status < 400 &&
+      (location ?? "").includes("sign-in"));
   const edgeRefused = isEdgeRefusal(response.status);
   const status = edgeRefused ? EDGE_REFUSAL_CLIENT_STATUS : 502;
   const hint = hintFor(staleCookie, edgeRefused, refused);

@@ -34,12 +34,37 @@ export const conversationJsonHeaders = (
     "application/json"
   );
 
-export const loadJson = async <T>(
+/**
+ * Why a loader came back empty. Short enough to put on a wide event, and
+ * specific enough to act on: a status is upstream's own answer, `network`
+ * never reached it, and `schema` means upstream changed a field.
+ */
+export type LoadFailure = "network" | "schema" | `upstream ${number}`;
+
+export interface Loaded<T> {
+  readonly data: T | null;
+  readonly failure: LoadFailure | null;
+}
+
+/**
+ * A cookie upstream will not honour: it answers 401, or sends the browser to
+ * sign-in. 403 is the edge refusal, which is about the prompt, not the session.
+ */
+export const isStaleFailure = (failure: LoadFailure | null): boolean =>
+  failure === "upstream 401" || (failure?.startsWith("upstream 3") ?? false);
+
+/**
+ * The same GET as {@link loadJson}, keeping why it failed. A caller that
+ * answers an HTTP request needs the reason: "no catalog" reads identically
+ * whether the cookie is dead, the network blinked, or upstream renamed a
+ * field, and those want three different fixes.
+ */
+export const loadJsonResult = async <T>(
   path: string,
   schema: z.ZodType<T>,
   cookie: string,
   signal: AbortSignal | undefined
-): Promise<T | null> => {
+): Promise<Loaded<T>> => {
   let payload: unknown;
   try {
     const response = await fetch(`${config.origin}${path}`, {
@@ -48,12 +73,25 @@ export const loadJson = async <T>(
       signal,
     });
     if (!response.ok) {
-      return null;
+      return { data: null, failure: `upstream ${response.status}` };
     }
     payload = await response.json();
   } catch {
-    return null;
+    return { data: null, failure: "network" };
   }
   const decoded = schema.safeParse(payload);
-  return decoded.success ? decoded.data : null;
+  return decoded.success
+    ? { data: decoded.data, failure: null }
+    : { data: null, failure: "schema" };
+};
+
+/** The body alone, for a loader whose caller has nowhere to put the reason. */
+export const loadJson = async <T>(
+  path: string,
+  schema: z.ZodType<T>,
+  cookie: string,
+  signal: AbortSignal | undefined
+): Promise<T | null> => {
+  const loaded = await loadJsonResult(path, schema, cookie, signal);
+  return loaded.data;
 };

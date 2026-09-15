@@ -1,7 +1,9 @@
-import { fetchCatalog } from "@thaipass/core/aipass/catalog";
+import { fetchCatalogResult } from "@thaipass/core/aipass/catalog";
 import { kindOf, VIDEO_MODELS } from "@thaipass/core/aipass/models";
 import type { VideoModel } from "@thaipass/core/aipass/models";
 import { modelPrices, priceFor } from "@thaipass/core/aipass/pricing";
+import { isStaleFailure } from "@thaipass/core/aipass/request";
+import type { LoadFailure } from "@thaipass/core/aipass/request";
 import {
   clientIdFromCookie,
   cookieFromRequest,
@@ -14,8 +16,22 @@ import { requestLogger } from "../lib/logger";
 import { json } from "../lib/openapi";
 import { apiError, apiErrorSchema } from "../openai/errors";
 
-const NO_CATALOG =
-  "AI Pass reported no model catalog; the cookie is likely stale";
+const NO_CATALOG = "AI Pass reported no model catalog";
+
+/**
+ * Why the catalog is missing, said rather than guessed. "The cookie is likely
+ * stale" was the answer to every failure, which is how one dead cookie polled
+ * this route for a day: only upstream's own reason tells a caller whether to
+ * re-authenticate, retry, or report that a field moved.
+ */
+const noCatalogMessage = (failure: LoadFailure | null): string => {
+  if (failure === null) {
+    return NO_CATALOG;
+  }
+  return isStaleFailure(failure)
+    ? `${NO_CATALOG} (${failure}); the cookie is stale, re-auth needed`
+    : `${NO_CATALOG} (${failure})`;
+};
 
 const videoOptionsSchema = z.object({
   aspectRatio: z.boolean(),
@@ -92,13 +108,14 @@ export const modelRoutes = new Elysia()
       const { cookie } = lookup;
       const clientId = clientIdFromCookie(cookie);
       log.set({ clientId });
-      const [catalog, prices] = await Promise.all([
-        fetchCatalog(clientId, cookie, request.signal),
+      const [listed, prices] = await Promise.all([
+        fetchCatalogResult(clientId, cookie, request.signal),
         modelPrices(),
       ]);
+      const { catalog } = listed;
       if (!catalog) {
-        log.set({ status: 502 });
-        return status(502, apiError(NO_CATALOG));
+        log.set({ catalogFailure: listed.failure ?? "unknown", status: 502 });
+        return status(502, apiError(noCatalogMessage(listed.failure)));
       }
       log.set({ modelCount: catalog.size });
       const listing: ModelList = {

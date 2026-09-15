@@ -14,8 +14,8 @@ Two chores this proxy needs on a schedule set by the upstream, not by the code: 
 
 - A log line says `catalog has unserved models` — upstream lists a model the proxy has not met. A chat id still works, because the proxy checks chat requests against the account's catalog. The proxy treats an image, video or music id as chat until `MEDIA_MODELS` names it, so it reaches the wrong route.
 - A request comes back `400 unknown model ... the account's catalog does not list it` for a model the web UI shows — the catalog and the web UI disagree, or the cookie belongs to another account.
-- A request comes back `400 unknown model ..., see GET /v1/models` without the catalog clause, or `GET /v1/models` answers `502 ... no model catalog` — the proxy could not read the catalog and fell back to the built-in list. Check the cookie first.
-- A request comes back `502 upstream 3xx ...; cookie is stale, re-auth needed`, or `401 missing AI Pass session cookie`.
+- A request comes back `400 unknown model ..., see GET /v1/models` without the catalog clause, or `GET /v1/models` answers `502 ... no model catalog (<reason>)` — the proxy could not read the catalog and fell back to the built-in list. The parenthesised reason is upstream's own and also lands on the wide event as `catalogFailure`: `upstream 401` and `upstream 3xx` are the cookie, `network` never reached upstream, `schema` means a field moved.
+- A request comes back `502 upstream 401 ...; cookie is stale, re-auth needed`, the same with a `3xx`, or `401 missing AI Pass session cookie`.
 - The wide event lands with no `modelFree` / `modelReady` / `creditsAvailable` — the loader calls quietly failed, which almost always means the cookie died.
 
 ## 1. Get a working cookie
@@ -87,7 +87,7 @@ Nothing else needs touching: `served` in `src/aipass/catalog.ts` is built from b
 | `/actions/send-message/<id>` | POST json | `src/aipass/client.ts` | answers with the AI SDK v5 SSE stream |
 | `/actions/update-conversation.data` | POST form | `src/aipass/client.ts` | `intent=delete` |
 
-Both loaders go through `loadJson`, which **swallows every failure and returns `null`** (`src/aipass/request.ts:43`). A dead cookie therefore shows up as missing fields on the wide event rather than as an error — check the cookie first when catalog or credit fields go absent.
+Both loaders go through `loadJson`, which **swallows every failure and returns `null`** (`src/aipass/request.ts`). A dead cookie therefore shows up as missing fields on the wide event rather than as an error — check the cookie first when catalog or credit fields go absent. `loadJsonResult` is the same request keeping the reason, and the catalog uses it, so `GET /v1/models` is the one loader that says why it came back empty. Credits and identity still fail silently.
 
 ### LMS endpoints
 
