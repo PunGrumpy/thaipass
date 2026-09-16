@@ -8,8 +8,10 @@ import { useMemo, useState } from "react";
 import {
   ClaudeCodeMark,
   ClineMark,
+  CodexMark,
   CurlMark,
   CursorMark,
+  OpenAiMark,
   VercelMark,
 } from "@/components/icons/clients";
 import { Badge } from "@/components/ui/badge";
@@ -25,16 +27,17 @@ import { cn } from "@/lib/utils";
 type Mark = ComponentType<{ className?: string }>;
 
 /**
- * The brand mark of the tool a snippet sets up. Codex and the OpenAI SDK have
- * no entry on purpose: Simple Icons carries no OpenAI mark, so those two fall
- * back to the icon for where their setup lives.
+ * The brand mark of the tool a snippet sets up. Every snippet has one today; a
+ * new one without a mark falls back to the icon for where its setup lives.
  */
 const CLIENT_MARKS = new Map<string, Mark>([
   ["ai-sdk", VercelMark],
   ["claude-code", ClaudeCodeMark],
   ["cline", ClineMark],
+  ["codex", CodexMark],
   ["curl", CurlMark],
   ["cursor", CursorMark],
+  ["openai-sdk", OpenAiMark],
 ]);
 
 const PLACE_ICONS: Record<SnippetPlace["kind"], Mark> = {
