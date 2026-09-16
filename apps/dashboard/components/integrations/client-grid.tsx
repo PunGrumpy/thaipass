@@ -2,9 +2,18 @@
 
 import { useI18n } from "@thaipass/internationalization";
 import { AppWindow, FileCode, Search, TerminalSquare } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import type { ComponentType } from "react";
 import { useMemo, useState } from "react";
 
+import {
+  ClaudeCodeMark,
+  ClineMark,
+  CodexMark,
+  CurlMark,
+  CursorMark,
+  OpenAiMark,
+  VercelMark,
+} from "@/components/icons/clients";
 import { Badge } from "@/components/ui/badge";
 import {
   InputGroup,
@@ -15,7 +24,23 @@ import { fill } from "@/lib/format";
 import type { Snippet, SnippetPlace } from "@/lib/snippets";
 import { cn } from "@/lib/utils";
 
-const PLACE_ICONS: Record<SnippetPlace["kind"], LucideIcon> = {
+type Mark = ComponentType<{ className?: string }>;
+
+/**
+ * The brand mark of the tool a snippet sets up. Every snippet has one today; a
+ * new one without a mark falls back to the icon for where its setup lives.
+ */
+const CLIENT_MARKS = new Map<string, Mark>([
+  ["ai-sdk", VercelMark],
+  ["claude-code", ClaudeCodeMark],
+  ["cline", ClineMark],
+  ["codex", CodexMark],
+  ["curl", CurlMark],
+  ["cursor", CursorMark],
+  ["openai-sdk", OpenAiMark],
+]);
+
+const PLACE_ICONS: Record<SnippetPlace["kind"], Mark> = {
   file: FileCode,
   settings: AppWindow,
   terminal: TerminalSquare,
@@ -85,7 +110,8 @@ export const ClientGrid = ({
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {group.items.map((snippet) => {
-              const Icon = PLACE_ICONS[snippet.place.kind];
+              const Icon =
+                CLIENT_MARKS.get(snippet.id) ?? PLACE_ICONS[snippet.place.kind];
               const active = snippet.id === selected;
 
               return (

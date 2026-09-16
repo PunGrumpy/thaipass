@@ -8,3 +8,30 @@ https://www.apache.org/licenses/LICENSE-2.0
 The duotone sources were inlined rather than installed, because the project's
 React package is unpublished. Their two fixed greys were remapped onto
 currentColor so the icons follow the dashboard's theme.
+
+clients.tsx contains brand marks from two icon sets.
+
+Claude Code, Cline, Cursor, Vercel and curl come from Simple Icons
+https://github.com/simple-icons/simple-icons
+
+The Simple Icons project is released under CC0 1.0 Universal
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Codex and OpenAI come from Lobe Icons
+https://github.com/lobehub/lobe-icons
+
+Lobe Icons is released under the MIT License
+https://opensource.org/licenses/MIT
+
+Both sets were copied one path at a time, out of simple-icons 16.31.0 and
+@lobehub/icons-static-svg 1.95.0, rather than installing either package for a
+handful of glyphs. Fixed brand colours were dropped for currentColor so the
+marks follow the dashboard's theme.
+
+The marks remain the trademarks of their respective owners. They are used here
+only to name the tool each integration snippet configures, which is neither an
+endorsement by nor an affiliation with those owners. Note that Simple Icons no
+longer carries an OpenAI mark, which is why the two OpenAI ones are sourced
+elsewhere; if OpenAI asks for them to be removed, drop both entries from
+CLIENT_MARKS in components/integrations/client-grid.tsx and the cards fall back
+to their place icons.
