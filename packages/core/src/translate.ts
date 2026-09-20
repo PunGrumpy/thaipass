@@ -57,6 +57,24 @@ const turnText = (turn: ChatTurn): string => {
   return [text, ...calls].filter((part) => part.length > 0).join("\n\n");
 };
 
+/**
+ * Stands in for a caller who sent no system message, so the tool guide below
+ * it reads as instruction rather than as a description of tools that live
+ * somewhere else.
+ *
+ * Measured 2026-09-19 against ten models, one request at a time with the
+ * conditions interleaved, five rounds each: with a single tool attached and
+ * no system message, `gpt-5.6-sol` and `gpt-5.6-terra` never called it,
+ * `gemini-3.1-pro-preview` and `glm-5.3` managed 2/5, `Kimi-K2.7-Code` 3/5
+ * and `grok-4.3` 4/5. `gpt-5.6-sol` said why: "I can't access the
+ * select_choice tool here". It could see the name, so the guide had arrived.
+ * With one line of system ahead of it, all ten called the tool on every
+ * round. Graders in the autoevals shape send one user message and no system
+ * message, which is how this surfaced.
+ */
+const IMPLIED_SYSTEM =
+  "You are an assistant with the tools described below. Call them when they apply.";
+
 export const flattenPrompt = ({ tools, turns }: Conversation): string => {
   const system = turns
     .filter((turn) => turn.role === "system")
@@ -73,6 +91,8 @@ export const flattenPrompt = ({ tools, turns }: Conversation): string => {
   const blocks: string[] = [];
   if (system.length > 0) {
     blocks.push(system.trim());
+  } else if (tools.length > 0) {
+    blocks.push(IMPLIED_SYSTEM);
   }
   if (tools.length > 0) {
     blocks.push(renderToolGuide(tools));

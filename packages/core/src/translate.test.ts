@@ -96,6 +96,34 @@ const WEATHER: ToolDefinition = {
   name: "get_weather",
 };
 
+test("leads with an implied system line when the caller sent none", () => {
+  const text = flatten([{ content: "hi", role: "user" }], [WEATHER]);
+  expect(text.startsWith("You are an assistant with the tools")).toBe(true);
+  expect(text.indexOf("You are an assistant")).toBeLessThan(
+    text.indexOf("You can call tools.")
+  );
+});
+
+test("does not imply a system line when the caller supplied one", () => {
+  const text = flatten(
+    [
+      { content: "be terse", role: "system" },
+      { content: "hi", role: "user" },
+    ],
+    [WEATHER]
+  );
+  expect(text.startsWith("be terse")).toBe(true);
+  expect(text).not.toContain("You are an assistant with the tools");
+});
+
+test("implies nothing when there are no tools to explain", () => {
+  const text = flatten([
+    { content: "hi", role: "user" },
+    { content: "hello", role: "assistant" },
+  ]);
+  expect(text).not.toContain("You are an assistant with the tools");
+});
+
 test("labels a lone user turn once tools are offered", () => {
   const text = flatten([{ content: "hi", role: "user" }], [WEATHER]);
   expect(text).toContain("You can call tools.");
