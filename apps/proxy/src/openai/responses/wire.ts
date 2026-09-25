@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { Reply, StreamWire, Wire } from "../../turn";
 import { openaiFailure } from "../errors";
 import { createdNow } from "../media";
+import { codexLimitHeaders } from "./rate-limits";
 
 const outputTextSchema = z.object({
   annotations: z.array(z.unknown()),
@@ -429,6 +430,7 @@ export const responsesWire = (model: string): Wire => {
   return {
     fail: openaiFailure,
     id,
+    limitHeaders: codexLimitHeaders,
     protocol: PROTOCOL,
     reply: (value) => Response.json(buffered(id, model, created, value)),
     stream: (inputTokens) => streamWire(id, model, created, inputTokens),
