@@ -4,7 +4,7 @@ import { CLIENT_SCOPE, SNIPPETS } from "./snippets";
 
 const PARAMS = {
   cookie: "tp_v1_sealedtokenvalue",
-  model: "claude-sonnet-5@default",
+  model: "claude-sonnet-5@azure",
   proxyUrl: "https://gateway.example",
 };
 

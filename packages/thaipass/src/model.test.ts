@@ -19,7 +19,7 @@ import { createAipass } from "./index";
 
 /** The catalog is cached per cookie across the whole run, so the provider keeps its own. */
 const COOKIE = "__Secure-ai_passport_auth.session_token=provider.def";
-const MODEL = "gemini-3.1-flash-lite";
+const MODEL = "gemini-3.5-flash-lite";
 const MODELS_PATH = "/loaders/list-models";
 
 let upstream: Upstream;
@@ -86,7 +86,7 @@ test("refuses a media model before any call is made", () => {
 
 test("falls back to the free default when no model is named", () => {
   upstream = stubUpstream(sseResponse([]));
-  expect(aipass().modelId).toBe("gemini-3.1-flash-lite");
+  expect(aipass().modelId).toBe("gemini-3.5-flash-lite");
 });
 
 test("frames text deltas between a start and an end", async () => {

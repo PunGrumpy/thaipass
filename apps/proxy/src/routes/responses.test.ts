@@ -70,7 +70,7 @@ const catalogWith =
       ? Response.json({
           data: [
             {
-              id: "gemini-3.1-flash-lite",
+              id: "gemini-3.5-flash-lite",
               thinkingConfig: { supportedLevels: levels },
             },
           ],

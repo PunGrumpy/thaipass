@@ -5,7 +5,7 @@ import type { ToolDefinition } from "./tools";
 import { flattenPrompt, toAipassMessages } from "./translate";
 import type { ChatTurn } from "./translate";
 
-const MODEL = "gemini-3.1-flash-lite";
+const MODEL = "gemini-3.5-flash-lite";
 
 const flatten = (turns: ChatTurn[], tools: ToolDefinition[] = []): string =>
   flattenPrompt({ tools, turns });

@@ -11,11 +11,11 @@ export const CHAT_MODELS = [
   "gpt-5.6-terra",
   "gpt-5.6-sol",
   "claude-opus-5@azure",
-  "claude-sonnet-5@default",
+  "claude-sonnet-5@azure",
   "gemini-3.1-pro-preview",
-  "gemini-3.7-flash",
-  "gemini-3.1-flash-lite",
-  "glm-5.2",
+  "gemini-3.8-flash",
+  "gemini-3.5-flash-lite",
+  "glm-5.3",
   "grok-4.3",
   "DeepSeek-V3.2",
   "minimax-m2-maas",
@@ -27,6 +27,7 @@ export const CHAT_MODELS = [
   "Llama-4-Maverick-17B-128E-Instruct-FP8-1",
   "pathumma-thaillm-8b",
   "openai-deep-research",
+  "openthai2.0-legal",
   "openthai2.0-legal@jts",
   "sonar",
   "sonar-reasoning-pro",
@@ -41,6 +42,7 @@ export const CHAT_MODELS = [
 export const IMAGE_MODELS = [
   "gpt-image-2",
   "gemini-3-pro-image",
+  "gemini-3.1-flash-image",
   "gemini-2.5-flash-image",
   "seedream-4.0",
   "seedream-5.0-lite",
@@ -107,7 +109,7 @@ export const chatModelSchema = z
     examples: [...CHAT_MODELS],
   });
 
-export const DEFAULT_MODEL: KnownChatModel = "gemini-3.1-flash-lite";
+export const DEFAULT_MODEL: KnownChatModel = "gemini-3.5-flash-lite";
 
 export const ANY_MODELS = [...CHAT_MODELS, ...MEDIA_MODELS] as const;
 

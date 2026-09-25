@@ -130,7 +130,7 @@ test("reports the credits the image spent", async () => {
 test("refuses a chat model, since it answers with no file", async () => {
   upstream = stubUpstream(sseResponse([fileFrame]), servesImage);
   const response = await app.fetch(
-    imageRequest({ model: "gemini-3.1-flash-lite", prompt: "a cat" })
+    imageRequest({ model: "gemini-3.5-flash-lite", prompt: "a cat" })
   );
   expect(response.status).toBe(400);
 });
