@@ -3,7 +3,11 @@ import { z } from "zod";
 import type { Failure } from "../turn";
 
 export const apiErrorSchema = z.object({
-  error: z.object({ message: z.string() }),
+  error: z.object({
+    message: z.string(),
+    resets_at: z.number().int().optional(),
+    type: z.string().optional(),
+  }),
 });
 
 export const upstreamErrorSchema = z.object({
@@ -27,7 +31,13 @@ export const apiError = (message: string): ApiError => ({ error: { message } });
 
 const openaiError = (failure: Failure): ApiError | UpstreamError =>
   failure.detail === undefined
-    ? apiError(failure.message)
+    ? {
+        error: {
+          message: failure.message,
+          resets_at: failure.resetsAt,
+          type: failure.type,
+        },
+      }
     : {
         error: {
           detail: failure.detail,

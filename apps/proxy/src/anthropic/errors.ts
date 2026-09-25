@@ -18,6 +18,7 @@ const ERROR_TYPES = new Map([
   [400, "invalid_request_error"],
   [401, "authentication_error"],
   [404, "not_found_error"],
+  [429, "rate_limit_error"],
   [502, "api_error"],
 ]);
 

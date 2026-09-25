@@ -6,6 +6,7 @@ import { fetchIdentity } from "@thaipass/core/aipass/identity";
 import type { Identity } from "@thaipass/core/aipass/identity";
 import { InlineError } from "@thaipass/core/aipass/inline";
 import { renderAsset } from "@thaipass/core/aipass/media";
+import { DEFAULT_MODEL } from "@thaipass/core/aipass/models";
 import { costOf, modelPrices } from "@thaipass/core/aipass/pricing";
 import type { PriceTable } from "@thaipass/core/aipass/pricing";
 import { fetchCredits, settleCredits } from "@thaipass/core/aipass/quotas";
@@ -56,6 +57,10 @@ export interface Failure {
   readonly message: string;
   readonly detail?: string;
   readonly location?: string;
+  /** The OpenAI error type, for a failure a client branches on. */
+  readonly type?: string;
+  /** When a usage limit lifts, in Unix seconds. */
+  readonly resetsAt?: number;
 }
 
 export interface Reply {
@@ -105,6 +110,12 @@ export interface TurnRequest {
 const encoder = new TextEncoder();
 const DETAIL_LIMIT = 300;
 const CLIENT_CLOSED_STATUS = 499;
+const RATE_LIMITED_STATUS = 429;
+const MS_PER_SECOND = 1000;
+/** Codex turns this error type into its usage-limit message, with resets_at beside it. */
+const USAGE_LIMIT_TYPE = "usage_limit_reached";
+/** The one RateLimitReachedType Codex knows that is not about a workspace. */
+const LIMIT_REACHED_TYPE = "rate_limit_reached";
 const ABANDONED = "upstream ended on tool-calls with no call to make";
 
 /**
@@ -171,6 +182,49 @@ const recordUpstream = async (
   if (entry) {
     log.set({ modelFree: entry.free, modelReady: entry.ready });
   }
+};
+
+const freeModels = (catalog: Catalog | null): string[] =>
+  catalog
+    ? [...catalog].filter(([, entry]) => entry.free).map(([id]) => id)
+    : [DEFAULT_MODEL];
+
+/**
+ * With no credits left AI Pass still answers a paid model, from a free one the
+ * caller did not ask for. The proxy refuses the paid model instead, so the
+ * caller learns the balance ran out rather than reading another model's reply.
+ * A free model still goes through.
+ */
+const creditsExhausted = (
+  wire: Wire,
+  model: string,
+  catalog: Catalog | null,
+  credits: Credits | null
+): Response | null => {
+  if (!credits || credits.creditsAvailable > 0) {
+    return null;
+  }
+  const free = freeModels(catalog);
+  if (free.includes(model)) {
+    return null;
+  }
+  const resetAt = Date.parse(credits.creditsResetAt);
+  const knownReset = Number.isFinite(resetAt);
+  const resets = knownReset ? `; they reset at ${credits.creditsResetAt}` : "";
+  const fallback =
+    free.length > 0 ? ` ${free.join(", ")} costs none and still answers.` : "";
+  const response = wire.fail({
+    message: `AI Pass credits are used up${resets}. AI Pass would answer ${model} from a free model instead, so the proxy refuses it.${fallback}`,
+    resetsAt: knownReset ? Math.floor(resetAt / MS_PER_SECOND) : undefined,
+    status: RATE_LIMITED_STATUS,
+    type: USAGE_LIMIT_TYPE,
+  });
+  response.headers.set("x-codex-rate-limit-reached-type", LIMIT_REACHED_TYPE);
+  if (knownReset) {
+    const wait = Math.ceil((resetAt - Date.now()) / MS_PER_SECOND);
+    response.headers.set("retry-after", String(Math.max(0, wait)));
+  }
+  return response;
 };
 
 const hintFor = (
@@ -513,6 +567,17 @@ const playTurn = async (
   if (problem) {
     log.set({ status: 400 });
     return wire.fail({ message: problem, status: 400 });
+  }
+
+  const refused = creditsExhausted(
+    wire,
+    model,
+    await facts.catalog,
+    await facts.credits
+  );
+  if (refused) {
+    log.set({ creditsExhausted: true, status: RATE_LIMITED_STATUS });
+    return refused;
   }
 
   /** A file the proxy cannot read fails the request rather than being dropped. */

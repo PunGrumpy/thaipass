@@ -51,6 +51,10 @@ export const responsesRoutes = new Elysia()
             "Malformed body, previous_response_id, a model the account's catalog does not list, or a prompt the AI Pass edge refused before the model ran"
           ),
           "401": json("ApiError", "Missing or malformed session cookie"),
+          "429": json(
+            "ApiError",
+            "The account has no credits left and the model is not free. AI Pass would answer from a free model instead. retry-after counts the seconds to the reset"
+          ),
           "502": json(
             "UpstreamError",
             "AI Pass failed the request, often a stale cookie"

@@ -493,3 +493,20 @@ test("accepts a system message from the middle of the conversation", async () =>
   );
   expect(response.status).toBe(200);
 });
+
+test("answers a paid model with rate_limit_error once the credits are spent", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)), (path) =>
+    path === "/loaders/list-models"
+      ? Response.json({ data: [{ id: "glm-5.3" }] })
+      : quotaResponse([100], 100)(path)
+  );
+  const response = await app.fetch(
+    messagesRequest(
+      { model: "glm-5.3" },
+      { "x-api-key": "__Secure-ai_passport_auth.session_token=spent.def" }
+    )
+  );
+  expect(response.status).toBe(429);
+  const body = errorSchema.parse(await response.json());
+  expect(body.error.type).toBe("rate_limit_error");
+});

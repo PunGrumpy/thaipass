@@ -340,6 +340,10 @@ AI Pass meters in credits per period, not tokens, and reports no token counts. E
 - **Anthropic stream**: the `message_delta` event
 - **AI SDK provider**: `providerMetadata.aipass.credits`
 
+### When the credits run out
+
+With no credits left, AI Pass still answers a paid model, but it answers from a free one and says nothing. The proxy refuses the paid model with a `429` rather than pass on a reply from a model nobody asked for. The error says when the credits reset and which models are free. `retry-after` counts the seconds to the reset. On `/v1/responses` the body carries `type: "usage_limit_reached"` and `resets_at`, which Codex reads. A free model, such as `gemini-3.5-flash-lite`, still goes through. The AI SDK provider does not make this check.
+
 ### Cost in dollars
 
 Credits are the exact figure and they are the one to watch, but a client that reports money has nothing upstream to read: AI Pass publishes no per-token price. `usage.cost` fills that gap. The proxy reads [OpenRouter's model list](https://openrouter.ai/api/v1/models), matches the model to the same weights priced elsewhere, and multiplies by the tokens it estimated. It is an estimate twice over and no invoice, but it is a number a dashboard built for dollars can chart.
