@@ -14,6 +14,7 @@ import { docsRoutes } from "./routes/docs";
 import { healthRoutes } from "./routes/health";
 import { imageRoutes } from "./routes/images";
 import { lmsRoutes } from "./routes/lms";
+import { managementRoutes } from "./routes/management";
 import { messageRoutes } from "./routes/messages";
 import { modelRoutes } from "./routes/models";
 import { oauthRoutes } from "./routes/oauth";
@@ -98,6 +99,7 @@ export const app = new Elysia()
   .use(modelRoutes)
   .use(healthRoutes)
   .use(usageRoutes)
+  .use(managementRoutes)
   .use(lmsRoutes)
   .use(oauthRoutes)
   .use(docsRoutes);
