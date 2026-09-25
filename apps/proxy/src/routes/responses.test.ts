@@ -441,6 +441,59 @@ test("leaves the rate-limit headers off when AI Pass reports no balance", async 
   expect(response.headers.get("x-codex-credits-balance")).toBeNull();
 });
 
+const PAID_MODEL = "glm-5.3";
+const FREE_MODEL = "gemini-3.5-flash-lite";
+
+/** An account with its credits spent, listing one paid model and one free. */
+const spentAccount = (path: string): Response | undefined =>
+  path === MODELS_PATH
+    ? Response.json({
+        data: [{ id: PAID_MODEL }, { id: FREE_MODEL, isFreeCredit: true }],
+      })
+    : quotaResponse([CREDIT_LIMIT], CREDIT_LIMIT)(path);
+
+const usageLimitSchema = z.object({
+  error: z.object({
+    message: z.string(),
+    resets_at: z.number().int(),
+    type: z.literal("usage_limit_reached"),
+  }),
+});
+
+test("refuses a paid model with 429 once the credits are spent", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)), spentAccount);
+  const response = await app.fetch(ask({ model: PAID_MODEL }, freshCookie()));
+  expect(response.status).toBe(429);
+  const { error } = usageLimitSchema.parse(await response.json());
+  expect(error.message).toContain(FREE_MODEL);
+  expect(error.resets_at).toBeGreaterThan(0);
+  expect(upstream.calls.some((path) => path.startsWith(SEND_PREFIX))).toBe(
+    false
+  );
+});
+
+test("tells Codex the limit was reached when it refuses a paid model", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)), spentAccount);
+  const response = await app.fetch(
+    ask({ model: PAID_MODEL, stream: true }, freshCookie())
+  );
+  const { headers } = response;
+  expect(headers.get("x-codex-rate-limit-reached-type")).toBe(
+    "rate_limit_reached"
+  );
+  expect(headers.get("x-codex-credits-has-credits")).toBe("false");
+  expect(Number(headers.get("retry-after"))).toBeGreaterThanOrEqual(0);
+});
+
+test("still sends a free model once the credits are spent", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)), spentAccount);
+  const response = await app.fetch(ask({ model: FREE_MODEL }, freshCookie()));
+  expect(response.status).toBe(200);
+  expect(upstream.calls.some((path) => path.startsWith(SEND_PREFIX))).toBe(
+    true
+  );
+});
+
 test("returns 502 and deletes the conversation when upstream is not a stream", async () => {
   upstream = stubUpstream(
     () =>
