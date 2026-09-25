@@ -86,6 +86,7 @@ export interface Wire {
   readonly id: string;
   readonly protocol: string;
   readonly fail: (failure: Failure) => Response;
+  readonly limitHeaders?: (credits: Credits) => Record<string, string>;
   readonly stream: (inputTokens: number) => StreamWire;
   readonly reply: (reply: Reply) => Response;
 }
@@ -490,20 +491,14 @@ const bufferedTurn = async (send: Send): Promise<Response> => {
   // oxlint-enable no-await-in-loop
 };
 
-const runTurn = async (
-  clientId: string,
+const playTurn = async (
   cookie: string,
+  facts: UpstreamFacts,
   turn: TurnRequest
 ): Promise<Response> => {
   const { conversation, deferEmit, log, model, request, stream, wire } = turn;
   const { signal } = request;
   const startedAt = Date.now();
-  const facts: UpstreamFacts = {
-    catalog: fetchCatalog(clientId, cookie, signal),
-    credits: fetchCredits(cookie, signal),
-    identity: fetchIdentity(clientId, cookie, signal),
-    prices: modelPrices(),
-  };
   log.set({
     completionId: wire.id,
     messageCount: conversation.turns.length,
@@ -574,6 +569,38 @@ const runTurn = async (
       : streamCompletion(opened, deferEmit);
   }
   return await bufferedTurn(send);
+};
+
+/** Headers go out before the body, so they carry the balance from before the turn. */
+const withLimitHeaders = async (
+  response: Response,
+  wire: Wire,
+  credits: Promise<Credits | null>
+): Promise<Response> => {
+  const balance = wire.limitHeaders ? await credits : null;
+  if (!(wire.limitHeaders && balance)) {
+    return response;
+  }
+  for (const [name, value] of Object.entries(wire.limitHeaders(balance))) {
+    response.headers.set(name, value);
+  }
+  return response;
+};
+
+const runTurn = async (
+  clientId: string,
+  cookie: string,
+  turn: TurnRequest
+): Promise<Response> => {
+  const { signal } = turn.request;
+  const facts: UpstreamFacts = {
+    catalog: fetchCatalog(clientId, cookie, signal),
+    credits: fetchCredits(cookie, signal),
+    identity: fetchIdentity(clientId, cookie, signal),
+    prices: modelPrices(),
+  };
+  const response = await playTurn(cookie, facts, turn);
+  return await withLimitHeaders(response, turn.wire, facts.credits);
 };
 
 export const serveTurn = (turn: TurnRequest): Promise<Response> | Response => {

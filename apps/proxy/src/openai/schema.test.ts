@@ -5,7 +5,7 @@ import { chatRequestSchema } from "./schema";
 test("accepts a minimal streaming request", () => {
   const result = chatRequestSchema.safeParse({
     messages: [{ content: "hi", role: "user" }],
-    model: "gemini-3.1-flash-lite",
+    model: "gemini-3.5-flash-lite",
     stream: true,
   });
   expect(result.success).toBe(true);

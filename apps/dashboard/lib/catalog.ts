@@ -1,5 +1,6 @@
 import {
   CHAT_MODELS,
+  DEFAULT_MODEL as FREE_DEFAULT_MODEL,
   IMAGE_MODELS,
   MUSIC_MODELS,
   VIDEO_MODELS,
@@ -7,9 +8,9 @@ import {
 
 import type { CatalogModel, ModelKind } from "./proxy";
 
-export const FREE_MODEL = "gemini-3.1-flash-lite";
+export const FREE_MODEL = FREE_DEFAULT_MODEL;
 
-export const DEFAULT_MODEL = "claude-sonnet-5@default";
+export const DEFAULT_MODEL = "claude-sonnet-5@azure";
 
 export const MODEL_KINDS: readonly ModelKind[] = [
   "chat",

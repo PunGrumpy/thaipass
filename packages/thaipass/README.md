@@ -13,7 +13,7 @@ import { createAipass } from "thaipass";
 const aipass = createAipass({ cookie: process.env.AIPASS_COOKIE ?? "" });
 
 const result = streamText({
-  model: aipass("claude-sonnet-5@default"),
+  model: aipass("claude-sonnet-5@azure"),
   prompt: "hi",
 });
 ```

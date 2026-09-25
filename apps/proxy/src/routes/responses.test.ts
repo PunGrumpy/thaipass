@@ -70,7 +70,7 @@ const catalogWith =
       ? Response.json({
           data: [
             {
-              id: "gemini-3.1-flash-lite",
+              id: "gemini-3.5-flash-lite",
               thinkingConfig: { supportedLevels: levels },
             },
           ],
@@ -403,6 +403,42 @@ test("reports the credits on the response.completed event of a stream", async ()
   const events = eventsOf(await response.text());
   const completed = modelResponseSchema.parse(events.at(-1)?.response);
   expect(completed.usage.credits?.spent).toBe(USED_AFTER - USED_BEFORE);
+});
+
+test("sends the balance as the rate-limit headers Codex reads, before the stream", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(1)),
+    quotaResponse([USED_BEFORE, USED_AFTER], CREDIT_LIMIT)
+  );
+  const response = await app.fetch(ask({ stream: true }));
+  const { headers } = response;
+  expect(Number(headers.get("x-codex-primary-used-percent"))).toBeCloseTo(
+    (USED_BEFORE / CREDIT_LIMIT) * 100
+  );
+  expect(headers.get("x-codex-primary-window-minutes")).toBe("1440");
+  expect(Number(headers.get("x-codex-primary-reset-at"))).toBeGreaterThan(0);
+  expect(headers.get("x-codex-credits-has-credits")).toBe("true");
+  expect(Number(headers.get("x-codex-credits-balance"))).toBe(
+    CREDIT_LIMIT - USED_BEFORE
+  );
+  expect(headers.get("x-codex-credits-unlimited")).toBe("false");
+  await response.text();
+});
+
+test("sends the rate-limit headers on a buffered reply too", async () => {
+  upstream = stubUpstream(
+    sseResponse(textDeltas(1)),
+    quotaResponse([USED_BEFORE, USED_AFTER], CREDIT_LIMIT)
+  );
+  const response = await app.fetch(ask());
+  expect(response.headers.get("x-codex-credits-has-credits")).toBe("true");
+});
+
+test("leaves the rate-limit headers off when AI Pass reports no balance", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)));
+  const response = await app.fetch(ask());
+  expect(response.status).toBe(200);
+  expect(response.headers.get("x-codex-credits-balance")).toBeNull();
 });
 
 test("returns 502 and deletes the conversation when upstream is not a stream", async () => {

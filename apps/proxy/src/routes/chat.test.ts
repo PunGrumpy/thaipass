@@ -97,7 +97,7 @@ const pricesResponse = (path: string): Response | undefined =>
     ? Response.json({
         data: [
           {
-            id: "google/gemini-3.1-flash-lite",
+            id: "google/gemini-3.5-flash-lite",
             pricing: { completion: "0.002", prompt: "0.001" },
           },
         ],
@@ -238,7 +238,7 @@ const catalogResponse =
   (path: string): Response | undefined =>
     path === MODELS_PATH
       ? Response.json({
-          data: [catalogEntry(thinking), { id: "gemini-3.1-flash-lite" }],
+          data: [catalogEntry(thinking), { id: "gemini-3.5-flash-lite" }],
         })
       : undefined;
 

@@ -63,7 +63,7 @@ test("lists what the account's catalog lists, in its order", async () => {
         thinkingConfig: { supportedLevels: ["low", "high", "max"] },
       },
       { id: "brand-new-model", ready: false },
-      { id: "gemini-3.1-flash-lite", isFreeCredit: true },
+      { id: "gemini-3.5-flash-lite", isFreeCredit: true },
       { id: "seedance-2.0-fast" },
       { id: "gpt-image-2" },
     ])
@@ -74,7 +74,7 @@ test("lists what the account's catalog lists, in its order", async () => {
   expect(listing.data.map((model) => model.id)).toEqual([
     "claude-opus-5@azure",
     "brand-new-model",
-    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
     "seedance-2.0-fast",
     "gpt-image-2",
   ]);
@@ -92,12 +92,12 @@ test("lists what the account's catalog lists, in its order", async () => {
 test("leaves out a model the proxy knows but the catalog no longer lists", async () => {
   upstream = stubUpstream(
     sseResponse([]),
-    catalogOf([{ id: "gemini-3.1-flash-lite" }])
+    catalogOf([{ id: "gemini-3.5-flash-lite" }])
   );
   const response = await list(freshCookie());
   const listing = modelListSchema.parse(await response.json());
   expect(listing.data.map((model) => model.id)).toEqual([
-    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
   ]);
 });
 
