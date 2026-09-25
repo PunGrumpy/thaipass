@@ -35,10 +35,10 @@ That string is your API key. Send it as a bearer token, or as `x-api-key` from a
 curl -sN localhost:3001/v1/chat/completions \
   -H 'content-type: application/json' \
   -H "authorization: Bearer $AIPASS_COOKIE" \
-  -d '{"model":"claude-sonnet-5@default","messages":[{"role":"user","content":"hi"}]}'
+  -d '{"model":"claude-sonnet-5@azure","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-`gemini-3.1-flash-lite` is the free default model. `GET /v1/models` lists the rest. See [Models](#models).
+`gemini-3.5-flash-lite` is the free default model. `GET /v1/models` lists the rest. See [Models](#models).
 
 ## Login with thaipass
 
@@ -98,7 +98,7 @@ Set the environment of any app that speaks the Anthropic protocol, such as a [ba
 ```bash
 ANTHROPIC_BASE_URL=https://your_deployment_here/v1
 ANTHROPIC_API_KEY=your_cookie_header_here
-MODEL=claude-sonnet-5@default
+MODEL=claude-sonnet-5@azure
 ```
 
 The proxy passes text, `tool_use`, `tool_result`, `image` and `document` blocks through. A `thinking` block picks a reasoning level. The proxy drops `max_tokens` and the sampling settings.
@@ -110,8 +110,8 @@ Claude Code appends `/v1/messages` to the base URL itself, so leave off the `/v1
 ```bash
 ANTHROPIC_BASE_URL=https://your_deployment_here
 ANTHROPIC_AUTH_TOKEN=your_cookie_header_here
-ANTHROPIC_MODEL=claude-sonnet-5@default
-ANTHROPIC_SMALL_FAST_MODEL=gemini-3.1-flash-lite
+ANTHROPIC_MODEL=claude-sonnet-5@azure
+ANTHROPIC_SMALL_FAST_MODEL=gemini-3.5-flash-lite
 ```
 
 Two warnings before you start a session. The first request is about 100 KB of system prompt and tool definitions, and every turn resends the whole conversation, so one session can spend the daily allowance. That system prompt is also the shape the AI Pass edge refuses most, so the first request may come back as a `400`. See [400: the edge refused the prompt](#400-the-edge-refused-the-prompt).
@@ -134,7 +134,7 @@ const client = new OpenAI({
 Codex removed `wire_api = "chat"` in February 2026, so it speaks only the Responses protocol. Point a custom provider at `/v1` in `~/.codex/config.toml` and put the credential in the environment variable it names:
 
 ```toml
-model = "claude-sonnet-5@default"
+model = "claude-sonnet-5@azure"
 model_provider = "thaipass"
 
 [model_providers.thaipass]
@@ -146,7 +146,7 @@ env_key = "AIPASS_COOKIE"
 
 Codex sends a large `instructions` block and resends the whole conversation every turn, so one session can spend the daily allowance. That prompt is also the shape the AI Pass edge refuses most, so the first request may come back as a `400`. See [400: the edge refused the prompt](#400-the-edge-refused-the-prompt).
 
-Tool calls are the part to watch. AI Pass carries text only, so the proxy offers `shell` and the rest through the prompt and parses the calls back out of the reply. A session runs as far as the model keeps to that format, so start on `claude-sonnet-5@default` and expect a small model to describe a tool instead of calling it. A hosted tool such as `web_search` is dropped rather than offered to Codex.
+Tool calls are the part to watch. AI Pass carries text only, so the proxy offers `shell` and the rest through the prompt and parses the calls back out of the reply. A session runs as far as the model keeps to that format, so start on `claude-sonnet-5@azure` and expect a small model to describe a tool instead of calling it. A hosted tool such as `web_search` is dropped rather than offered to Codex.
 
 ### AI SDK provider
 
@@ -163,7 +163,7 @@ import { createAipass } from "thaipass";
 const aipass = createAipass({ cookie: process.env.AIPASS_COOKIE ?? "" });
 
 const result = streamText({
-  model: aipass("claude-sonnet-5@default"),
+  model: aipass("claude-sonnet-5@azure"),
   prompt: "hi",
 });
 ```
@@ -217,7 +217,7 @@ Every setting has a default, so the proxy runs with no `.env`:
 
 `GET /v1/models` reads the account's catalog live from AI Pass. Each entry carries a `kind` naming the endpoint that takes it, and the proxy checks every request against the same catalog. A model AI Pass adds works the day it appears. A model AI Pass retires returns `400`. Neither needs a proxy release.
 
-Ids are case-sensitive, and Claude ids carry a `@provider` suffix, as in `claude-sonnet-5@default`.
+Ids are case-sensitive, and Claude ids carry a `@provider` suffix, as in `claude-sonnet-5@azure`.
 
 ### Reasoning effort
 
@@ -242,7 +242,7 @@ curl -s localhost:3001/v1/chat/completions \
   -H 'content-type: application/json' \
   -H "authorization: Bearer $AIPASS_COOKIE" \
   -d '{
-    "model": "gemini-3.1-flash-lite",
+    "model": "gemini-3.5-flash-lite",
     "messages": [{"role": "user", "content": [
       {"type": "text", "text": "what is in this?"},
       {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KG..."}}

@@ -24,4 +24,4 @@ assignees: ""
 
 - OS: [e.g. macOS, Linux, Windows]
 - Runtime: [e.g. Bun v1.3.14, Node.js]
-- Model: [e.g. claude-sonnet-5@default, gemini-3.1-flash-lite]
+- Model: [e.g. claude-sonnet-5@azure, gemini-3.5-flash-lite]
