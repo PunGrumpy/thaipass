@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 
+import { CHAT_MODELS } from "@thaipass/core/aipass/models";
 import { z } from "zod";
 
 import { app } from "../app";
 
 const REF_PATTERN = /"\$ref":"(?<target>[^"]+)"/gu;
-const CATALOG_SIZE = 23;
 
 const documentSchema = z.object({
   components: z.object({
@@ -108,9 +108,9 @@ test("offers every known model as an example in every request schema, without cl
     const request = requestSchema.parse(components.schemas[name]);
     expect(request.properties.model.type).toBe("string");
     expect(request.properties.model.examples).toContain(
-      "gemini-3.1-flash-lite"
+      "gemini-3.5-flash-lite"
     );
-    expect(request.properties.model.examples).toHaveLength(CATALOG_SIZE);
+    expect(request.properties.model.examples).toHaveLength(CHAT_MODELS.length);
   }
 });
 
