@@ -72,7 +72,7 @@ export const scopeForPath = (path: string): Scope | null => {
   if (path.startsWith("/v1/models")) {
     return SCOPES.models;
   }
-  if (path.startsWith("/v1/usage")) {
+  if (path.startsWith("/v1/usage") || path.startsWith("/v0/management")) {
     return SCOPES.usage;
   }
   return null;
