@@ -20,8 +20,8 @@ import { cn } from "@/lib/utils";
 type Mark = ComponentType<{ className?: string }>;
 
 /**
- * The brand mark of the tool a snippet sets up. Every snippet has one today; a
- * new one without a mark falls back to the icon for where its setup lives.
+ * The brand mark of the tool a snippet sets up. A snippet without one, such as
+ * T3 Code, falls back to the icon for where its setup lives.
  */
 const CLIENT_MARKS = new Map<string, Mark>([
   ["ai-sdk", VercelMark],

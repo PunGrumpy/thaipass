@@ -2,7 +2,7 @@
 
 Use your AI Pass account from any OpenAI or Anthropic client.
 
-thaipass is a proxy with OpenAI-compatible and Anthropic-compatible endpoints in front of [AI Pass](https://de.aipass.net). The models your account sees in the web UI then work in Claude Code, Codex, Cursor, and the software development kits (SDKs). Each request sends your own session cookie, and the proxy stores no credential.
+thaipass is a proxy with OpenAI-compatible and Anthropic-compatible endpoints in front of [AI Pass](https://de.aipass.net). The models your account sees in the web UI then work in Claude Code, Codex, T3 Code, Cursor, and the software development kits (SDKs). Each request sends your own session cookie, and the proxy stores no credential.
 
 ## Highlights
 
@@ -48,12 +48,15 @@ curl -sN localhost:3001/v1/chat/completions \
 
 Every client takes a base URL, the cookie as its key, and a model ID. The dashboard’s **Integrations** page writes each setup out with your values filled in:
 
-| Client        | Base URL                   | Key                        |
-| ------------- | -------------------------- | -------------------------- |
-| Claude Code   | `http://127.0.0.1:3001`    | `ANTHROPIC_AUTH_TOKEN`     |
-| Anthropic SDK | `http://127.0.0.1:3001/v1` | `ANTHROPIC_API_KEY`        |
-| OpenAI SDK    | `http://127.0.0.1:3001/v1` | `apiKey`                   |
-| Codex         | `http://127.0.0.1:3001/v1` | `env_key` in `config.toml` |
+| Client        | Base URL                   | Key                          |
+| ------------- | -------------------------- | ---------------------------- |
+| Claude Code   | `http://127.0.0.1:3001`    | `ANTHROPIC_AUTH_TOKEN`       |
+| Anthropic SDK | `http://127.0.0.1:3001/v1` | `ANTHROPIC_API_KEY`          |
+| OpenAI SDK    | `http://127.0.0.1:3001/v1` | `apiKey`                     |
+| Codex         | `http://127.0.0.1:3001/v1` | `env_key` in `config.toml`   |
+| T3 Code       | `http://127.0.0.1:3001/v1` | `codex login --with-api-key` |
+
+T3 Code needs a Codex home of its own and can show your credits in its Limits view. See [T3 Code](docs/guide.md#t3-code).
 
 A deployment with `THAIPASS_TOKEN_KEY` also issues scoped `tp_v1_…` tokens, so an app never holds the raw cookie. Run `bun run login` to get one.
 

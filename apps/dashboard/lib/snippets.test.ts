@@ -51,6 +51,18 @@ describe("snippets", () => {
     expect(byId("codex").filename).toBe("~/.codex/config.toml");
   });
 
+  it("gives T3 Code an API-key Codex home apart from ~/.codex", () => {
+    const code = byId("t3-code").code(PARAMS);
+
+    expect(code).toContain("requires_openai_auth = true");
+    expect(code).toContain('base_url = "https://gateway.example/v1"');
+    expect(code).toContain(
+      "CODEX_HOME=~/.codex-thaipass codex login --with-api-key"
+    );
+    expect(code).not.toContain("env_key");
+    expect(code).not.toMatch(/(?<!-)\/\.codex\//u);
+  });
+
   it("reads as steps, with exactly one carrying the code", () => {
     for (const snippet of SNIPPETS) {
       expect(snippet.steps.length).toBeGreaterThan(0);

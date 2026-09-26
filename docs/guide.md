@@ -146,6 +146,39 @@ Codex sends a large `instructions` block and resends the whole conversation ever
 
 Tool calls are the part to watch. AI Pass carries text only, so the proxy offers `shell` and the rest through the prompt and parses the calls back out of the reply. A session runs as far as the model keeps to that format, so start on `claude-sonnet-5@azure` and expect a small model to describe a tool instead of calling it. A hosted tool such as `web_search` is dropped rather than offered to Codex.
 
+### T3 Code
+
+T3 Code runs Codex, so thaipass reaches it as a Codex provider, and it can show the credit balance in its Limits view. The setup needs its own `CODEX_HOME`, because it logs Codex in with an API key and that would replace a ChatGPT login in `~/.codex`.
+
+Create the home, point it at the gateway, and save the credential as its API key:
+
+```bash
+mkdir -p ~/.codex-thaipass
+cat > ~/.codex-thaipass/config.toml <<'TOML'
+model = "claude-sonnet-5@azure"
+model_provider = "thaipass"
+
+[model_providers.thaipass]
+name = "thaipass"
+base_url = "http://127.0.0.1:3001/v1"
+wire_api = "responses"
+requires_openai_auth = true
+TOML
+
+printf '%s' "$AIPASS_COOKIE" |
+  CODEX_HOME=~/.codex-thaipass codex login --with-api-key
+```
+
+Then, in T3 Code:
+
+1. Open Settings → Providers, add a Codex provider, and set its Home path to `~/.codex-thaipass`
+2. Add the model id as a custom model on that provider, because Codex lists only OpenAI's own models
+3. Open Settings → Usage limit sources and add the gateway URL, with the cookie as the management key. A thaipass token also works if it has the `usage` scope
+
+The Limits view then shows the period's credits as one daily window. T3 Code reads them from `/v0/management/auth-files` and `/v0/management/api-call`, the shape of the CLIProxyAPI management API it already speaks.
+
+The API-key login is what keeps the Limits view clean. For a provider with no account, T3 Code still asks Codex for its rate limits, and Codex refuses with `Codex could not read usage (JSON-RPC -32600)`. With an API-key account, T3 Code skips that request. The same setup through `env_key` or `experimental_bearer_token` works for chat but leaves that warning showing.
+
 ### AI SDK provider
 
 The provider ships as the `thaipass` package. `createAipass` returns models that `streamText` and `generateText` accept, with no HTTP hop:
