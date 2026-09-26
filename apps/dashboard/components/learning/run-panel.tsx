@@ -283,7 +283,7 @@ export const RunPanel = ({
                 type="button"
                 variant="outline"
               >
-                <StopIcon />
+                <StopIcon data-icon="inline-start" />
                 {copy.stop}
               </Button>
             ) : (
@@ -293,7 +293,11 @@ export const RunPanel = ({
                 size="lg"
                 type="button"
               >
-                {paused ? <ResumeIcon /> : <PlayIcon />}
+                {paused ? (
+                  <ResumeIcon data-icon="inline-start" />
+                ) : (
+                  <PlayIcon data-icon="inline-start" />
+                )}
                 {offer.label}
               </Button>
             )}
@@ -310,7 +314,7 @@ export const RunPanel = ({
 
             {canClear && !running ? (
               <Button onClick={onClear} type="button" variant="ghost">
-                <ResetIcon />
+                <ResetIcon data-icon="inline-start" />
                 {t.common.actions.clear}
               </Button>
             ) : null}

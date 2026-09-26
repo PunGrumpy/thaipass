@@ -172,7 +172,7 @@ export const SessionCard = () => {
             </InputGroupAddon>
           </InputGroup>
           <Button className="shrink-0" disabled={pasting} onClick={handlePaste}>
-            <PasteIcon />
+            <PasteIcon data-icon="inline-start" />
             {pasting ? "Reading…" : "Paste and connect"}
           </Button>
         </div>
@@ -244,14 +244,14 @@ export const SessionCard = () => {
             onClick={handleRecheck}
             variant="outline"
           >
-            <RefreshCw />
+            <RefreshCw data-icon="inline-start" />
             Check again
           </Button>
 
           {confirming ? (
             <>
               <Button onClick={handleClear} variant="destructive">
-                <Trash2 />
+                <Trash2 data-icon="inline-start" />
                 Confirm removal
               </Button>
               <Button onClick={() => setConfirming(false)} variant="ghost">
@@ -263,7 +263,7 @@ export const SessionCard = () => {
             </>
           ) : (
             <Button onClick={() => setConfirming(true)} variant="ghost">
-              <Trash2 />
+              <Trash2 data-icon="inline-start" />
               Remove session
             </Button>
           )}

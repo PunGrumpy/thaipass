@@ -105,7 +105,7 @@ export const CoursePicker = ({
           type="button"
           variant="outline"
         >
-          <ListPlus />
+          <ListPlus data-icon="inline-start" />
           {copy.open}
         </Button>
         <span className="text-muted-foreground text-xs">

@@ -187,7 +187,7 @@ export const ConsentPanel = () => {
 
         <div className="flex flex-wrap items-center gap-2">
           <Button disabled={!hasSession || working} onClick={handleApprove}>
-            <Check />
+            <Check data-icon="inline-start" />
             {working
               ? copy.action.working
               : fill(copy.action.approve, request.clientId)}
