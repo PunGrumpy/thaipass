@@ -191,7 +191,7 @@ export const SessionCard = () => {
         onOpenChange={setGuideOpen}
         open={guideOpen ?? !hasSession}
       >
-        <CollapsibleTrigger className="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1.5 text-xs transition-colors">
+        <CollapsibleTrigger className="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1.5 text-xs">
           <HelpCircle className="size-3.5" />
           <span>Where to find it</span>
           <ChevronDown

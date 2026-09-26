@@ -25,7 +25,7 @@ export const AppearanceCard = () => {
           return (
             <label
               className={cn(
-                "hover:bg-accent flex cursor-pointer flex-col items-center gap-2 rounded-lg border p-3 text-xs transition-colors",
+                "hover:bg-accent flex cursor-pointer flex-col items-center gap-2 rounded-lg border p-3 text-xs",
                 "has-[:focus-visible]:border-ring has-[:focus-visible]:ring-ring/50 has-[:focus-visible]:ring-3",
                 selected && "border-foreground/40 bg-accent"
               )}

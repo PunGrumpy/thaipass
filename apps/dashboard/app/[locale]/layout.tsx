@@ -67,7 +67,7 @@ const RootLayout = async ({ children, params }: RootLayoutProps) => {
         <ThemeProvider>
           <I18nProvider dictionary={dictionary} locale={locale}>
             <LucideProvider strokeWidth={1.5}>
-              <TooltipProvider delay={250}>{children}</TooltipProvider>
+              <TooltipProvider delay={500}>{children}</TooltipProvider>
             </LucideProvider>
             <Toaster position="bottom-right" />
           </I18nProvider>

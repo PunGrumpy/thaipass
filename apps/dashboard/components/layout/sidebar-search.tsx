@@ -11,7 +11,7 @@ export const SidebarSearch = ({ onOpen }: { readonly onOpen: () => void }) => {
 
   return (
     <button
-      className="border-sidebar-border bg-background text-muted-foreground hover:border-sidebar-accent hover:text-foreground flex h-8 w-full items-center gap-2 rounded-md border px-2 text-left text-[13px] transition-colors group-data-[collapsible=icon]:hidden"
+      className="border-sidebar-border bg-background text-muted-foreground hover:border-sidebar-accent hover:text-foreground flex h-8 w-full items-center gap-2 rounded-md border px-2 text-left text-[13px] group-data-[collapsible=icon]:hidden"
       onClick={onOpen}
       type="button"
     >
