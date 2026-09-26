@@ -151,6 +151,46 @@ env_key = "AIPASS_COOKIE"`,
     target: "gateway",
   },
   {
+    // T3 Code asks Codex for rate limits unless the account is an API key, and
+    // Codex refuses that for a provider with no account (JSON-RPC -32600). An
+    // API-key login in a home of its own answers "apiKey" without touching the
+    // ChatGPT login in ~/.codex.
+    code: ({ cookie, model, proxyUrl }) => `mkdir -p ~/.codex-thaipass
+cat > ~/.codex-thaipass/config.toml <<'TOML'
+model = "${model}"
+model_provider = "thaipass"
+
+[model_providers.thaipass]
+name = "thaipass"
+base_url = "${proxyUrl}/v1"
+wire_api = "responses"
+requires_openai_auth = true
+TOML
+
+printf '%s' "${cookie}" |
+  CODEX_HOME=~/.codex-thaipass codex login --with-api-key`,
+    filename: "setup-codex-home.sh",
+    id: "t3-code",
+    label: "T3 Code",
+    language: "bash",
+    place: { app: "T3 Code", kind: "settings" },
+    steps: [
+      {
+        code: true,
+        text: "Give Codex a home of its own for thaipass, with the credential saved as its API key. Your ChatGPT login in `~/.codex` stays as it is.",
+      },
+      {
+        text: "In T3 Code, open Settings → Providers and add a Codex provider with Home path `~/.codex-thaipass`. Add the model id as a custom model, because Codex lists only OpenAI's own.",
+      },
+      {
+        text: "Under Settings → Usage limit sources, add the gateway URL with your cookie as the management key. A thaipass token works there too if it has the `usage` scope. The Limits view then shows your AI Pass credits as a daily window.",
+      },
+    ],
+    summary:
+      "T3 Code, running Codex through the gateway and showing your credits in its Limits view.",
+    target: "gateway",
+  },
+  {
     code: ({ cookie, model }) => `import { streamText } from "ai";
 import { createAipass } from "thaipass";
 
