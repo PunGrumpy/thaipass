@@ -89,7 +89,7 @@ export const en = {
   },
   integrations: {
     clients: {
-      empty: "No client matches %s.",
+      credential: "Credential",
       groups: {
         file: "In your code",
         settings: "In an editor's settings",
@@ -97,7 +97,8 @@ export const en = {
       },
       label: "Client",
       model: "Model",
-      search: "Search clients",
+      newToken: "New token",
+      route: "Route",
       setup: "Set up %s",
       viaGateway: "Through the gateway",
       viaUpstream: "Straight to AI Pass",
