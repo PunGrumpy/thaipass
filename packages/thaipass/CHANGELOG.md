@@ -1,5 +1,11 @@
 # thaipass
 
+## 0.1.7
+
+### Patch Changes
+
+- [#52](https://github.com/PunGrumpy/thaipass/pull/52) [`fbbbd18`](https://github.com/PunGrumpy/thaipass/commit/fbbbd184e8718ac72e324f3cbabae773e7bdf3d3) Thanks [@PunGrumpy](https://github.com/PunGrumpy)! - Lead the prompt with an implied system line when a caller attaches tools but sends no system message, so the tool guide reads as instruction rather than as a description of tools that live elsewhere. Measured across ten models: without it, two never called an attached tool and four more were unreliable; with it, all ten called it on every round.
+
 ## 0.1.6
 
 ### Patch Changes

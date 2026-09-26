@@ -109,7 +109,7 @@
     },
     "packages/thaipass": {
       "name": "thaipass",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "dependencies": {
         "@ai-sdk/provider": "2.0.3",
         "@ai-sdk/provider-utils": "3.0.36",
