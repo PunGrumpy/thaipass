@@ -177,6 +177,7 @@
     @apply border-border outline-ring/50;
   }
   html {
+    @apply bg-background;
     font-feature-settings: "ss01";
     text-rendering: optimizeLegibility;
     scroll-behavior: smooth;
