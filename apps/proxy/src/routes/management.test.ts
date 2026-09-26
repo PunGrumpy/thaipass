@@ -43,6 +43,7 @@ const authFilesSchema = z.object({
 const apiCallSchema = z.object({ body: z.string(), status_code: z.number() });
 
 const usageSchema = z.object({
+  plan_type: z.string(),
   rate_limit: z.object({
     primary_window: z.object({
       limit_window_seconds: z.number(),
@@ -76,8 +77,9 @@ test("answers the Codex usage call with the credit balance as a daily window", a
   const call = apiCallSchema.parse(await response.json());
   expect(response.status).toBe(200);
   expect(call.status_code).toBe(200);
-  const window = usageSchema.parse(JSON.parse(call.body)).rate_limit
-    .primary_window;
+  const usage = usageSchema.parse(JSON.parse(call.body));
+  expect(usage.plan_type).toBe("unknown");
+  const window = usage.rate_limit.primary_window;
   expect(window.used_percent).toBe((USED / LIMIT) * 100);
   expect(window.limit_window_seconds).toBe(86_400);
   expect(window.reset_at).toBeGreaterThan(0);

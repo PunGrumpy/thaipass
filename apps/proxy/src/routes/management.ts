@@ -21,6 +21,10 @@ import { creditWindow, PERIOD_MINUTES } from "../openai/responses/rate-limits";
 
 const AUTH_INDEX = "0";
 const USAGE_PATH = "/backend-api/wham/usage";
+// T3 Code labels the account from plan_type and publishes a snapshot that
+// fails to decode when the label is missing, so name the one plan it maps
+// without claiming a ChatGPT tier.
+const PLAN_TYPE = "unknown";
 const SECONDS_PER_MINUTE = 60;
 const NOT_SERVED = 404;
 const NO_BALANCE_STATUS = 502;
@@ -148,6 +152,7 @@ export const managementRoutes = new Elysia()
       log.set({ ...credits });
       return {
         body: JSON.stringify({
+          plan_type: PLAN_TYPE,
           rate_limit: {
             primary_window: {
               limit_window_seconds: PERIOD_MINUTES * SECONDS_PER_MINUTE,
