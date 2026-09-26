@@ -91,7 +91,7 @@ export const th: Dictionary = {
   },
   integrations: {
     clients: {
-      empty: "ไม่พบไคลเอนต์ที่ตรงกับ %s",
+      credential: "ข้อมูลรับรอง",
       groups: {
         file: "ในโค้ดของคุณ",
         settings: "ในการตั้งค่าของเอดิเตอร์",
@@ -99,7 +99,8 @@ export const th: Dictionary = {
       },
       label: "ไคลเอนต์",
       model: "โมเดล",
-      search: "ค้นหาไคลเอนต์",
+      newToken: "สร้างโทเคนใหม่",
+      route: "เส้นทาง",
       setup: "ตั้งค่า %s",
       viaGateway: "ผ่านเกตเวย์",
       viaUpstream: "ตรงไปยัง AI Pass",

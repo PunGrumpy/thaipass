@@ -103,7 +103,7 @@ export const SessionGate = () => {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Button disabled={pasting} onClick={handlePaste}>
-              <PasteIcon />
+              <PasteIcon data-icon="inline-start" />
               {pasting ? clipboard.busy : clipboard.action}
             </Button>
             <Link

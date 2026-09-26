@@ -35,8 +35,8 @@ export const generateMetadata = async ({
 
 export const viewport: Viewport = {
   themeColor: [
-    { color: "#fdfdfd", media: "(prefers-color-scheme: light)" },
-    { color: "#1c1c1f", media: "(prefers-color-scheme: dark)" },
+    { color: "#fdfdfe", media: "(prefers-color-scheme: light)" },
+    { color: "#0c0c0e", media: "(prefers-color-scheme: dark)" },
   ],
 };
 
@@ -67,7 +67,7 @@ const RootLayout = async ({ children, params }: RootLayoutProps) => {
         <ThemeProvider>
           <I18nProvider dictionary={dictionary} locale={locale}>
             <LucideProvider strokeWidth={1.5}>
-              <TooltipProvider delay={250}>{children}</TooltipProvider>
+              <TooltipProvider delay={500}>{children}</TooltipProvider>
             </LucideProvider>
             <Toaster position="bottom-right" />
           </I18nProvider>

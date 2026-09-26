@@ -8,7 +8,7 @@ metadata:
 
 # AI Pass upstream sync
 
-Two chores this proxy needs on a schedule set by the upstream, not by the code: the model catalog moves, and the session cookie expires. Everything else about the adapter is in `README.md`; read that for the wire format and the request lifecycle.
+Two chores this proxy needs on a schedule set by the upstream, not by the code: the model catalog moves, and the session cookie expires. Everything else about the adapter is in `docs/guide.md`; read that for the wire format and the request lifecycle.
 
 ## When to use
 

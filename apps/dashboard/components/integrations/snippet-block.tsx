@@ -91,7 +91,11 @@ export const SnippetBlock = ({
             }
             variant="ghost"
           >
-            {revealed ? <Eye /> : <EyeOff />}
+            {revealed ? (
+              <Eye data-icon="inline-start" />
+            ) : (
+              <EyeOff data-icon="inline-start" />
+            )}
             <span className="hidden sm:inline">
               {credential === "token" ? "My token" : "My cookie"}
             </span>

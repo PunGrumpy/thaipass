@@ -1,587 +1,81 @@
 # thaipass
 
-[![runtime](https://img.shields.io/badge/runtime-bun-000000?style=flat&colorA=000000&colorB=000000)](https://bun.sh) [![framework](https://img.shields.io/badge/framework-elysia-000000?style=flat&colorA=000000&colorB=000000)](https://elysiajs.com) [![deploy](https://img.shields.io/badge/deploy-vercel-000000?style=flat&colorA=000000&colorB=000000)](https://vercel.com)
+Use your AI Pass account from any OpenAI or Anthropic client.
 
-Point your OpenAI or Anthropic client at [AI Pass](https://de.aipass.net) and use the models your account already sees in the web UI.
+thaipass is a proxy with OpenAI-compatible and Anthropic-compatible endpoints in front of [AI Pass](https://de.aipass.net). The models your account sees in the web UI then work in Claude Code, Codex, Cursor, and the software development kits (SDKs). Each request sends your own session cookie, and the proxy stores no credential.
 
-thaipass is two things. The proxy in `apps/proxy` serves an OpenAI-compatible `/v1/chat/completions`, a Responses-compatible `/v1/responses`, and an Anthropic-compatible `/v1/messages` in front of the AI Pass chat backend. It also generates images, video and music, reports the account's credit balance, and can earn the monthly learning points for you. The `thaipass` package in `packages/thaipass` is an AI SDK provider that does the same without HTTP.
+## Highlights
 
-Every request carries your own session cookie. The proxy stores no credential and drives no account but yours. See [Personal use only](#personal-use-only).
+- **Three protocols**: `/v1/chat/completions`, `/v1/responses`, and `/v1/messages`
+- **Live catalog**: every model your account can reach, checked on each request
+- **Credits in every reply**: the balance before and after, plus a dollar estimate
+- **Media**: image, video, and music generation
+- **Learning points**: earns the monthly learning management system (LMS) points from the dashboard, a command, or a scheduler
+- **AI SDK provider**: the `thaipass` package calls AI Pass with no HTTP hop
 
-## Quick start
+<p>
+  <a href="https://bun.sh"><img alt="Runtime: Bun" src="https://img.shields.io/badge/runtime-bun-0a0a0a.svg?style=for-the-badge&amp;labelColor=000000" height="28"></a>
+  <a href="https://www.npmjs.com/package/thaipass"><img alt="thaipass on npm" src="https://img.shields.io/npm/v/thaipass.svg?style=for-the-badge&amp;labelColor=000000" height="28"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/PunGrumpy/thaipass.svg?style=for-the-badge&amp;labelColor=000000" height="28"></a>
+</p>
 
-Three steps get a reply: run the server, copy your cookie, send a request.
+## Install
 
-### 1. Run the proxy
+Clone the repo and start the proxy on `http://127.0.0.1:3001`:
 
 ```bash
 bun install
 bun run start
 ```
 
-The server listens on `http://127.0.0.1:3001`. No `.env` is needed. See [Settings](#settings) to change the port or turn on PostHog.
+## Get started
 
-### 2. Copy your session cookie
+Log in to AI Pass and copy the `Cookie` header from any request to `de.aipass.net`. It must contain `__Secure-ai_passport_auth.session_token`. The [dashboard](apps/dashboard) shows each click and accepts the header, the token alone, or a **Copy as cURL**.
 
-Log in to AI Pass and copy the full `Cookie` header from any request to `de.aipass.net`. It must contain `__Secure-ai_passport_auth.session_token`. Keep the percent-encoding as the browser sends it.
-
-The cookie is `HttpOnly`, so no page can read it for you and there is no shortcut around this step. The [dashboard](apps/dashboard) is the gentler route: it walks through the four clicks with a picture of each one, and its field takes whatever you ended up copying — the token's value on its own, the whole `Cookie` header, or a **Copy as cURL**. Pasting works anywhere on the page.
-
-That string is your API key. Send it as a bearer token, or as `x-api-key` from an Anthropic client. A client that insists keys start with `sk-` will not work.
-
-### 3. Send a request
+Send the cookie as the API key:
 
 ```bash
 curl -sN localhost:3001/v1/chat/completions \
   -H 'content-type: application/json' \
   -H "authorization: Bearer $AIPASS_COOKIE" \
-  -d '{"model":"claude-sonnet-5@azure","messages":[{"role":"user","content":"hi"}]}'
+  -d '{"model":"claude-sonnet-5@azure",
+       "messages":[{"role":"user","content":"hi"}]}'
 ```
 
-`gemini-3.5-flash-lite` is the free default model. `GET /v1/models` lists the rest. See [Models](#models).
-
-## Login with thaipass
-
-A cookie is a poor key. It is the whole account, it cannot be taken back, and every machine and app that wants one needs its own copy — pasted again each time AI Pass rotates the session.
-
-A deployment that carries `THAIPASS_TOKEN_KEY` can hand out its own keys instead. Someone signs in once, on the dashboard where their session already is, and an app leaves with a `tp_v1_…` token: scoped to what they approved, expiring with the session it stands for, and worth nothing on any other deployment. Nothing is stored — the token _is_ the cookie, sealed under that key, so the gateway keeps no credential and needs no database.
-
-```bash
-bun run login keygen           # THAIPASS_TOKEN_KEY=…, into the gateway's environment
-```
-
-### Sign a machine in
-
-```bash
-bun run login                  # opens the consent screen, saves the token
-bun run login whoami           # whose account it opens, and for how long
-export ANTHROPIC_AUTH_TOKEN=$(bun run login token)
-```
-
-The token goes wherever the cookie went: `Authorization: Bearer`, or `x-api-key` from an Anthropic client. Nothing else about a client changes.
-
-### Sign an app in
-
-The flow is authorization code with PKCE. The consent screen is a page on the dashboard, because that is where the account holder's session lives; the gateway only issues and exchanges.
-
-1. Send them to `<dashboard>/authorize` with `client_id`, `redirect_uri`, `code_challenge` (S256), `state`, and the `scope` you want. A redirect must be `https`, or `http` on loopback for a command line app.
-2. They approve, and land on your `redirect_uri` with `code` and `state`.
-3. `POST /oauth/token` with `grant_type=authorization_code`, the code, your `code_verifier`, `client_id` and the same `redirect_uri`. You get the token, the account it belongs to, and the scopes granted.
-4. `GET /oauth/userinfo` with the token says who it belongs to, and what it may do.
-
-`GET /oauth/metadata` names all three endpoints for a client that would rather discover them.
-
-### Scopes
-
-| Scope    | What it opens                                                   |
-| -------- | --------------------------------------------------------------- |
-| `chat`   | `/v1/chat/completions`, `/v1/messages`, `/v1/responses`         |
-| `media`  | `/v1/images/generations`, `/v1/videos`, `/v1/audio/generations` |
-| `models` | `/v1/models`                                                    |
-| `usage`  | `/v1/usage`                                                     |
-| `lms`    | `/v1/lms/*`, which can spend a quiz attempt                     |
-
-An app that asks for nothing gets `chat models usage`. A raw cookie stays unscoped: whoever sends one is the account holder.
-
-### What it will not do
-
-There is no refresh token. A thaipass token cannot outlive the AI Pass session sealed inside it, and no proxy can renew someone's browser session for them. Signing out of AI Pass ends every token at once; rotating `THAIPASS_TOKEN_KEY` does the same. A gateway started without the key issues nothing and keeps taking cookies, which is what a personal setup wants.
+`gemini-3.5-flash-lite` is free. `GET /v1/models` lists the rest.
 
 ## Connect a client
 
-Each client needs a base URL, a credential as its key, and a model id from the catalog. The credential is the cookie, or a thaipass token from [`bun run login`](#login-with-thaipass) where the gateway issues them — every client below takes either, in the same place. The dashboard's Integrations page writes these out with your own values filled in.
+Every client takes a base URL, the cookie as its key, and a model ID. The dashboard’s **Integrations** page writes each setup out with your values filled in:
 
-### Anthropic SDK and agents
+| Client        | Base URL                   | Key                        |
+| ------------- | -------------------------- | -------------------------- |
+| Claude Code   | `http://127.0.0.1:3001`    | `ANTHROPIC_AUTH_TOKEN`     |
+| Anthropic SDK | `http://127.0.0.1:3001/v1` | `ANTHROPIC_API_KEY`        |
+| OpenAI SDK    | `http://127.0.0.1:3001/v1` | `apiKey`                   |
+| Codex         | `http://127.0.0.1:3001/v1` | `env_key` in `config.toml` |
 
-Set the environment of any app that speaks the Anthropic protocol, such as a [baymi](https://github.com/PunGrumpy/baymi) agent:
+A deployment with `THAIPASS_TOKEN_KEY` also issues scoped `tp_v1_…` tokens, so an app never holds the raw cookie. Run `bun run login` to get one.
 
-```bash
-ANTHROPIC_BASE_URL=https://your_deployment_here/v1
-ANTHROPIC_API_KEY=your_cookie_header_here
-MODEL=claude-sonnet-5@azure
-```
+## Documentation
 
-The proxy passes text, `tool_use`, `tool_result`, `image` and `document` blocks through. A `thinking` block picks a reasoning level. The proxy drops `max_tokens` and the sampling settings.
-
-### Claude Code
-
-Claude Code appends `/v1/messages` to the base URL itself, so leave off the `/v1`. Name both models, because the ids Claude Code sends by default are not in the catalog:
-
-```bash
-ANTHROPIC_BASE_URL=https://your_deployment_here
-ANTHROPIC_AUTH_TOKEN=your_cookie_header_here
-ANTHROPIC_MODEL=claude-sonnet-5@azure
-ANTHROPIC_SMALL_FAST_MODEL=gemini-3.5-flash-lite
-```
-
-Two warnings before you start a session. The first request is about 100 KB of system prompt and tool definitions, and every turn resends the whole conversation, so one session can spend the daily allowance. That system prompt is also the shape the AI Pass edge refuses most, so the first request may come back as a `400`. See [400: the edge refused the prompt](#400-the-edge-refused-the-prompt).
-
-### OpenAI SDK
-
-Point any OpenAI client at `/v1` with the cookie as the API key:
-
-```ts
-import OpenAI from "openai";
-
-const client = new OpenAI({
-  baseURL: "http://127.0.0.1:3001/v1",
-  apiKey: process.env.AIPASS_COOKIE,
-});
-```
-
-### Codex
-
-Codex removed `wire_api = "chat"` in February 2026, so it speaks only the Responses protocol. Point a custom provider at `/v1` in `~/.codex/config.toml` and put the credential in the environment variable it names:
-
-```toml
-model = "claude-sonnet-5@azure"
-model_provider = "thaipass"
-
-[model_providers.thaipass]
-name = "thaipass"
-base_url = "http://127.0.0.1:3001/v1"
-wire_api = "responses"
-env_key = "AIPASS_COOKIE"
-```
-
-Codex sends a large `instructions` block and resends the whole conversation every turn, so one session can spend the daily allowance. That prompt is also the shape the AI Pass edge refuses most, so the first request may come back as a `400`. See [400: the edge refused the prompt](#400-the-edge-refused-the-prompt).
-
-Tool calls are the part to watch. AI Pass carries text only, so the proxy offers `shell` and the rest through the prompt and parses the calls back out of the reply. A session runs as far as the model keeps to that format, so start on `claude-sonnet-5@azure` and expect a small model to describe a tool instead of calling it. A hosted tool such as `web_search` is dropped rather than offered to Codex.
-
-### AI SDK provider
-
-The provider ships as the `thaipass` package. `createAipass` returns models that `streamText` and `generateText` accept, with no HTTP hop:
-
-```bash
-bun add thaipass
-```
-
-```ts
-import { streamText } from "ai";
-import { createAipass } from "thaipass";
-
-const aipass = createAipass({ cookie: process.env.AIPASS_COOKIE ?? "" });
-
-const result = streamText({
-  model: aipass("claude-sonnet-5@azure"),
-  prompt: "hi",
-});
-```
-
-The provider implements `LanguageModelV2` for `ai` v5. On `ai` v7 use `/v1/messages` over HTTP instead. Until the first npm release, build it from this repo: `bun run build` writes `packages/thaipass/dist`, and `bun link` in that directory makes `thaipass` resolvable.
-
-`createAipass` also takes `origin` for a different AI Pass host and `logger` for the warnings the proxy has no reply to attach to. Both apply to the whole process, and both have defaults.
-
-File parts upload as attachments, and a generated file comes back as the SDK's own file part. `providerOptions.aipass.thinkingLevel` picks a reasoning level, and sampling settings come back as `unsupported-setting` warnings. `usage` holds token estimates, and `providerMetadata.aipass.credits` holds the credit balance.
-
-## Endpoints
-
-Every route the proxy serves:
-
-| Route | What it does | Credential |
-| --- | --- | --- |
-| `POST /v1/chat/completions` | OpenAI protocol, streams by default | yes |
-| `POST /v1/responses` | OpenAI Responses protocol, buffered unless `stream: true` | yes |
-| `POST /v1/messages` | Anthropic protocol, buffered unless `stream: true` | yes |
-| `POST /v1/messages/count_tokens` | Estimated size of a prompt | no |
-| `POST /v1/images/generations` | One image, buffered | yes |
-| `POST /v1/videos` | One video, blocks for the whole render | yes |
-| `POST /v1/audio/generations` | One music clip, buffered | yes |
-| `GET /v1/models` | The account's model catalog | yes |
-| `GET /v1/usage` | The account's credit balance | yes |
-| `GET /v1/lms/exp` | The account's learning EXP | yes |
-| `GET /v1/lms/courses` | The account's course catalogue | yes |
-| `POST /v1/lms/learn` | Learns lessons until a target EXP | yes |
-| `POST /oauth/code` | Issues an authorization code, from the dashboard | yes |
-| `POST /oauth/token` | Exchanges a code for a thaipass token | no |
-| `GET /oauth/userinfo` | The account behind a credential | yes |
-| `GET /oauth/metadata` | Where the login endpoints are | no |
-| `GET /health` | Liveness | no |
-| `GET /` | OpenAPI docs rendered by Scalar, JSON at `/openapi.json` | no |
-
-## Settings
-
-Every setting has a default, so the proxy runs with no `.env`:
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `AIPASS_ORIGIN` | `https://de.aipass.net` | Upstream origin |
-| `AIPASS_HOST` | `127.0.0.1` | Bind address, local only |
-| `AIPASS_PORT` | `3001` | Port, local only |
-| `AIPASS_PRICES` | OpenRouter's model list | Where per-token prices come from, `off` for none |
-| `THAIPASS_TOKEN_KEY` | none | 32 bytes of base64, from `bun run login keygen`. Without it the gateway issues no tokens and takes only cookies. See [Login with thaipass](#login-with-thaipass) |
-| `POSTHOG_API_KEY` | none | Project token (`phc_…`), enables PostHog |
-| `POSTHOG_HOST` | `https://us.i.posthog.com` | PostHog ingestion host |
-
-## Models
-
-`GET /v1/models` reads the account's catalog live from AI Pass. Each entry carries a `kind` naming the endpoint that takes it, and the proxy checks every request against the same catalog. A model AI Pass adds works the day it appears. A model AI Pass retires returns `400`. Neither needs a proxy release.
-
-Ids are case-sensitive, and Claude ids carry a `@provider` suffix, as in `claude-sonnet-5@azure`.
-
-### Reasoning effort
-
-AI Pass takes a reasoning level, not a token budget, and each model advertises the levels it accepts. Each protocol has a field for it:
-
-| Protocol | Field |
-| --- | --- |
-| OpenAI | `thinking_level`, or `reasoning_effort` with OpenAI's own values |
-| Anthropic | `thinking_level`, `output_config.effort`, or a `thinking` block whose `budget_tokens` picks a level |
-| AI SDK | `providerOptions.aipass.thinkingLevel` |
-
-The levels are `low`, `medium` and `high`, plus `max` on Claude Opus. Asking for a level the model does not offer is not an error. The proxy drops it, records that in the wide event, and the reply still comes. `GET /v1/models` lists each model's levels.
-
-An Anthropic `thinking` block of type `adaptive` or `enabled` turns thinking on. With it, `output_config.effort` names the level, and `xhigh` rounds down to `high`. Without an effort, `budget_tokens` picks the level by thresholds the proxy chose, because AI Pass publishes no token figure per level: under 4096 is `low`, under 16384 is `medium`, and above that is `high`. A block that names neither gets `medium`.
-
-## Attachments
-
-Send a file inline and the proxy uploads it with the turn. OpenAI `image_url` and `file` parts, Anthropic `image` and `document` blocks, and AI SDK file parts all work:
-
-```bash
-curl -s localhost:3001/v1/chat/completions \
-  -H 'content-type: application/json' \
-  -H "authorization: Bearer $AIPASS_COOKIE" \
-  -d '{
-    "model": "gemini-3.5-flash-lite",
-    "messages": [{"role": "user", "content": [
-      {"type": "text", "text": "what is in this?"},
-      {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KG..."}}
-    ]}]
-  }'
-```
-
-The bytes must arrive inline, as a data URI or as base64 in the block that names them. The proxy refuses a remote URL with a `400` instead of fetching it, because a deployment that fetches any URL a caller names is a request forger pointed at whatever network it sits in. Fetch the file yourself and send the bytes.
-
-Files go up to 20 MB. An upload takes three calls before the turn is sent: reserve a slot, put the bytes at a signed storage URL, confirm the object. A file the proxy cannot read fails the request instead of being dropped. A model answering about a document it never received is worse than an error naming the document.
-
-## Images, video and music
-
-Each kind has its own endpoint. The same models also work through `/v1/chat/completions`, where the file comes back as a markdown image or link in the reply.
-
-```bash
-curl -s localhost:3001/v1/images/generations \
-  -H 'content-type: application/json' \
-  -H "authorization: Bearer $AIPASS_COOKIE" \
-  -d '{"model":"gpt-image-2","prompt":"a cat in Chiang Mai","size":"1024x768"}'
-```
-
-AI Pass describes an image by its shape, not its pixel size, so the proxy rounds `size` to the nearest ratio it offers: `1:1`, `3:4` or `4:3`. Send `aspect_ratio` to name the shape outright. Each request makes one file, so the proxy refuses `n` above one instead of quietly making a single image.
-
-### Video
-
-Video blocks for the whole render. AI Pass submits a job and polls it, with no streaming variant, so `POST /v1/videos` holds the connection until the render is done, which takes minutes. The proxy cancels a job that fails or loses its caller, because a job left running keeps spending the video quota. On Vercel the function limit cuts this off long before a render finishes. Run the proxy locally for video.
-
-Each video model accepts a different set of options, and AI Pass rejects the whole body without naming the field, so the proxy drops an option the model does not take. `GET /v1/models` lists each model's options under `options`:
-
-| Option | Models |
-| --- | --- |
-| `aspect_ratio`, `style_preprompt` | every video model |
-| `duration`, `camera_fixed`, `generate_audio` | seedance only |
-| `resolution` (`480p`, `720p`) | `seedance-2.0-fast`, `seedance-2.0-mini` |
-
-### How the file comes back
-
-The generated file sits behind the session cookie on the AI Pass origin, so the proxy fetches it and returns the bytes: `b64_json` by default, or `url` as a data URI on request. Past a per-kind cap the file stays a link, with a note that the link needs a logged-in browser, instead of a URL that answers 401. On the AI SDK provider a generated file is the SDK's own file part.
-
-| Kind  | Inline cap |
-| ----- | ---------- |
-| Image | 5 MB       |
-| Audio | 25 MB      |
-| Video | 50 MB      |
-
-## Tool calling
-
-AI Pass answers with plain text, so the proxy emulates tools. It describes each offered tool in the prompt and asks the model to call one with a fenced block:
-
-````markdown
-```tool_call
-{"name": "get_weather", "input": {"city": "Bangkok"}}
-```
-````
-
-Each such block becomes a `tool_calls` entry (OpenAI), a `tool_use` block (Anthropic), or a `tool-call` part (AI SDK). Larger models follow the format. A small model may narrate the call instead, and that narration reaches the client as text.
-
-## How a request reaches AI Pass
-
-Each proxied request does four things:
-
-1. Creates a throwaway conversation with `POST /chat.data`
-2. Sends one flattened turn. The backend ignores multi-message bodies, so the whole conversation becomes a single role-labelled user message
-3. Streams the reply. `text-delta` events become OpenAI chunks or Anthropic events
-4. Deletes the conversation, so the account's chat list stays clean
-
-Every agent round is one more conversation upstream, so tool-heavy loops spend the daily credit allowance fast.
-
-## Usage in credits
-
-AI Pass meters in credits per period, not tokens, and reports no token counts. Every reply carries the credit balance instead, next to token counts the proxy estimates from the text. Each completion reads the balance as it starts and again as it ends, and puts the result under `usage.credits`:
-
-```json
-{
-  "usage": {
-    "prompt_tokens": 25001,
-    "completion_tokens": 12,
-    "total_tokens": 25013,
-    "cost": 0.014354,
-    "credits": {
-      "spent": 30.25,
-      "used": 130.25,
-      "limit": 10000,
-      "available": 9869.75,
-      "reset_at": "2026-09-04T00:00:00.000Z"
-    }
-  }
-}
-```
-
-`spent` is what this reply cost, as the difference between the two reads. It is absent when either read failed, and the whole `credits` object is absent when both did. Where to find it depends on the protocol:
-
-- **OpenAI stream**: the final chunk, the one with `finish_reason`
-- **Anthropic stream**: the `message_delta` event
-- **AI SDK provider**: `providerMetadata.aipass.credits`
-
-### When the credits run out
-
-With no credits left, AI Pass still answers a paid model, but it answers from a free one and says nothing. The proxy refuses the paid model with a `429` rather than pass on a reply from a model nobody asked for. The error says when the credits reset and which models are free. `retry-after` counts the seconds to the reset. On `/v1/responses` the body carries `type: "usage_limit_reached"` and `resets_at`, which Codex reads. A free model, such as `gemini-3.5-flash-lite`, still goes through. The AI SDK provider does not make this check.
-
-### Cost in dollars
-
-Credits are the exact figure and they are the one to watch, but a client that reports money has nothing upstream to read: AI Pass publishes no per-token price. `usage.cost` fills that gap. The proxy reads [OpenRouter's model list](https://openrouter.ai/api/v1/models), matches the model to the same weights priced elsewhere, and multiplies by the tokens it estimated. It is an estimate twice over and no invoice, but it is a number a dashboard built for dollars can chart.
-
-The list is read once per turn from a table cached for twelve hours, and the read starts with the turn, so a cold table costs the reply nothing. A model OpenRouter does not list, a list that is down, or `AIPASS_PRICES=off` all mean the same thing: no `cost` in `usage`, everything else unchanged. Each request also logs the figure as `costUsd` next to `creditsSpent`.
-
-Token counts are an estimate, not a tokeniser's output. The proxy counts about four characters per token for ASCII and one and a half for Thai and other non-Latin scripts. It counts the flattened prompt it sends, which includes the tool guide and the role labels. `POST /v1/messages/count_tokens` returns the same estimate without sending the prompt, so a client that manages its own context window has something to read.
-
-`GET /v1/usage` returns the balance without spending anything:
-
-```bash
-curl -s localhost:3001/v1/usage -H "authorization: Bearer $AIPASS_COOKIE"
-```
-
-## Earn LMS points
-
-AI Pass runs a learning site at `/lms` that pays EXP per completed lesson, and the membership tier wants a monthly minimum. The proxy can do the learning for you, from the dashboard, from a command on your machine, or from a scheduler through the API.
-
-A course mixes four kinds of lesson, and the proxy replays what the lesson page does for each: it watches a **video** by stamping the seconds watched, reads an **attachment** or an **article** by opening it and marking it read, and answers a **quiz** — the pre-test and the post-test — by asking an AI Pass model the questions and submitting the attempt. Videos and the two readings run by default. Quizzes do not: the LMS usually allows one attempt per test and does not give it back, so they wait for `--quiz`.
-
-A run walks the courses the account is enrolled in, and the ones already started come first: a course pays for finishing the course as well as for its lessons, so a half-done course is the cheapest EXP left and finishing it leaves less behind. `--course` narrows the run to the codes you name.
-
-The tier prices each type separately, and the proxy reports what it would earn from that price list: 100 EXP a video, 50 an attachment, 30 an article, 25 a pre-test and 50 a post-test on the account I read it from. What a completed lesson actually paid is the period's own figure before and after.
-
-### From the dashboard
-
-The dashboard's Learning page sets up a run and follows it: pick the courses from the catalogue, set the goal and the playback speed, and watch each lesson complete as it happens. Quizzes are off there too, and turning them on asks for a confirmation before the run starts.
-
-### On your machine
-
-`bun run lms` runs the learner in-process, with no function limit and no loop to write:
-
-```bash
-AIPASS_COOKIE='your_cookie_header_here' bun run lms             # reach 100 this period
-AIPASS_COOKIE='your_cookie_header_here' bun run lms --earn 200  # earn 200 more
-AIPASS_COOKIE='your_cookie_header_here' bun run lms --quiz      # answer the tests too
-AIPASS_COOKIE='your_cookie_header_here' bun run lms -C 31,25    # only these two courses
-bun run lms --cookie-file ~/.aipass-cookie --dry-run            # see what it would learn
-```
-
-Run `--dry-run` first. It reads the catalogue and reports each lesson it would learn, with the tier's EXP for that kind of lesson, and changes nothing.
-
-`--quiz` turns the tests on and `--quiz-model` names the model that answers them, `gemini-3.1-pro-preview` by default. `--no-attachments` and `--no-articles` leave the reading to you.
-
-The command prints one line per course and lesson, redraws the stamp progress in place, and exits 0 when the goal is reached, 1 when it is not, and 2 on a usage error. `--json` prints the same lines the route streams. This command is the one place in the repo that reads a cookie from the environment. The server never does.
-
-### Through the API
-
-`POST /v1/lms/learn` learns every open lesson until the account has earned a target, 100 EXP by default:
-
-```bash
-curl -sN localhost:3001/v1/lms/learn \
-  -H 'content-type: application/json' \
-  -H "authorization: Bearer $AIPASS_COOKIE" \
-  -d '{"target":100,"pace":1}'
-```
-
-The reply is one JSON object per line as the run goes: the period's EXP before, a `course` line per course it enters, a `lesson` line when a lesson starts and when it completes, a `stamp` line per ten seconds of video, a `quiz` line with the score when a test is submitted, the EXP after, and a `done` line saying how much was earned and why it stopped. Every `lesson` line carries the `kind` it is: `video`, `attachment`, `article` or `quiz`. Pass `-N` to curl so the lines show as they arrive. A lesson type the proxy has not met is left alone.
-
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `target` | 100 | The period's EXP to reach, as the LMS reports it. A run whose period already has it touches nothing |
-| `earn` | none | Earn this much EXP in this run, whatever the period already has. Overrides `target` |
-| `pace` | 1 | Playback speed, up to 16. At 1 a ten minute video takes ten minutes |
-| `max_lessons` | 50 | Stop after this many lessons regardless |
-| `courses` | none | Course codes to learn. The whole catalogue when this names none; a code the catalogue does not carry is reported as an `error` line and the rest of the run goes on |
-| `attachments` | true | Open attachment lessons and mark them read |
-| `articles` | true | Open article lessons and mark them read |
-| `quiz` | false | Answer the pre-test and the post-test and submit the attempt |
-| `quiz_model` | `gemini-3.1-pro-preview` | The AI Pass model that answers the questions, on the same cookie |
-| `dry_run` | false | List what would be learned and change nothing |
-| `budget_seconds` | none, 270 on Vercel | End the run before this much wall-clock has passed. The `done` line then has `paused: true`, and the next call resumes from the last stamp |
-
-`GET /v1/lms/exp` returns the session's EXP payload, the tier and the achievement summary as the LMS reports them, with the period's figure as `monthly`.
-
-`GET /v1/lms/courses` returns the catalogue a run can be held to, read in full:
-
-```bash
-curl -s localhost:3001/v1/lms/courses \
-  -H "authorization: Bearer $AIPASS_COOKIE"
-```
-
-Each course carries its `code`, the `title`, `progress`, `started` and `done`, `duration_seconds`, and what it pays: `exp` for the course itself and `bonus_exp` for closing it, both `null` where the LMS names no figure. Courses come back in the order a run works through them, the started first, then the untouched, then the finished.
-
-### On a schedule
-
-Every call stops on its own: at the target, at the end of the videos, or at `budget_seconds` with `paused: true`, from where the next call resumes. So the whole automation from any scheduler is one call, repeated:
-
-- **Monthly minimum**: call with `{"target": 100}` every ten minutes or once an hour. A call whose period already has the target reads one figure and ends, so the idle calls cost nothing
-- **Keep accumulating**: call with `{"earn": 100}` on the same schedule. Each call earns that much more, whatever the period has, until the videos run out
-
-On Vercel each call stops itself at 270 seconds, under the function limit, so a lesson longer than that spans two calls. This loop calls again until the `done` line says `paused: false`:
-
-```bash
-for attempt in $(seq 1 12); do
-  curl -sN https://your_deployment_here/v1/lms/learn \
-    -H 'content-type: application/json' \
-    -H "authorization: Bearer $AIPASS_COOKIE" \
-    -d '{"target":100}' | tee /dev/stderr | grep -Eq '"paused": ?false' && break
-  sleep 10
-done
-```
-
-The sleep keeps a refused request from becoming a tight loop, and the cap bounds a bad day to an hour. Pipe the output through nothing else, because a pretty-printer changes the line the loop greps for.
-
-### What the learner sends
-
-Three things to know before relying on it:
-
-- **The stamp is the player's own.** I read it off the lesson page and confirmed it against a live session. Each stamp carries the video content id, the enrolment, the progress record and the whole seconds watched, never more than ten past the last one. A stamp the LMS answers with `COMPLETED` is what earns the EXP. The proxy then asks the course to close, as the page does, and prices the lesson by how much the period's EXP moved.
-- **An article is read, not answered.** The lesson page marks an article read with the same call it uses for an attachment, and it never waits for the exercise blocks inside the article to be answered, so neither does the proxy. The questions in the body of an article are left untouched; they gate neither the lesson nor its EXP.
-- **A quiz spends an attempt.** The LMS hides which choice is right until the attempt is submitted, so the answers come from a model, not from the page. The proxy sends one answer per question the way a click does, then submits, and the `quiz` line reports the score the LMS gave back. A quiz the model answers only in part is left untouched rather than submitted half filled, and a quiz whose attempts are already spent is skipped. What the model scores is what the account scores.
-- **The LMS needs its own cookies.** Copy the `Cookie` header from a request made while the browser is on a `/lms` page, not from the chat, so the tenant cookie the LMS sets travels with the session token. A `401` from the LMS means the cookie is stale or came from the wrong page.
-- **Keep the pace at 1.** The player blocks seeking on a first watch and never lets a stamp advance more than ten seconds, so a run takes as long as the videos do.
-
-The proxy stops at the first failed call instead of trying the next course. An undocumented backend that refused once will refuse again, and the programme awards these points for learning a person is meant to do. This is your account and your call. The proxy sends nothing a browser watching the video would not.
-
-## Deploy to Vercel
-
-Set the Vercel project's Root Directory to `apps/proxy` and turn on the option to include source files outside it, so the build can read `packages/core`. There, `vercel.json` sets `bunVersion`, runs `bun run build`, and names `dist` as the output directory. The build inlines `packages/core` and leaves the real dependencies as imports, so Vercel traces them into the function's `node_modules`.
-
-The dashboard is a second Vercel project with Root Directory `apps/dashboard`. Give it `NEXT_PUBLIC_PROXY_URL` (the gateway it talks to) and `NEXT_PUBLIC_WEB_URL` (its own address, which the gateway names as the login screen). A dashboard whose gateway is not on loopback pins it: the origin field in Settings is read-only, so a reader cannot point your deployment at a gateway you do not run and take its traffic, and its logs, with them. `NEXT_PUBLIC_PROXY_LOCKED=0` unpins it, `1` pins a local one.
-
-Two settings keep that tracing honest. The root `bunfig.toml` installs hoisted, so the traced files are real directories rather than links into a store outside the Root Directory. The install command deletes every `node_modules` first, because Vercel's build cache keeps the old isolated layout's links beside the hoisted one and the tracer follows them into a store the function does not carry. Keep Deployment Protection on. The deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
-
-On Vercel the function duration bounds a stream, not the proxy's 240s idle timeout, so a slow model can be cut off mid-reply. Video will not survive there at all, and the LMS learner pauses itself at 270 seconds. See [Video](#video) and [On a schedule](#on-a-schedule).
-
-## Logging
-
-Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, the credit balance, the credits the reply spent, and its cost in dollars. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
-
-### Cost per caller
-
-Every app pointed at one deployment sends the same account's cookie, so by default the credits they spend arrive under one identity. A caller that names itself in `x-thaipass-app` gets that name on each of its events instead:
-
-```ts
-const anthropic = createAnthropic({
-  authToken: process.env.AIPASS_COOKIE,
-  baseURL: "https://your_deployment_here/v1",
-  headers: { "x-thaipass-app": "baymi" },
-});
-```
-
-With PostHog on, `sum(creditsSpent)` broken down by `app` is what each caller costs, and `model` splits it further. The header is optional and the proxy keeps the first 64 characters of it.
-
-## Troubleshooting
-
-Find the status the proxy returned:
-
-### 400: the edge refused the prompt
-
-AI Pass sits behind an edge that answers some requests itself with a `403`, before the chat backend runs. The edge scores what a request contains rather than how long it is, so it passes prose of one length and refuses an agent-style prompt of the same length. A shell path or an environment variable in the prompt can be enough on its own.
-
-The proxy reports that as a `400`, not a `502`, because a bad gateway invites a retry and the same body gets the same verdict:
-
-```json
-{
-  "error": {
-    "message": "upstream 403 (text/html); the AI Pass edge refused this before the model ran, on what the prompt contains rather than how long it is — resending the same text will be refused again",
-    "detail": "<the edge's own body, truncated>"
-  }
-}
-```
-
-An Anthropic client sees the same thing as `invalid_request_error`. The wide event carries `edgeRefused`, so a run of them shows in the logs.
-
-The trigger set is undocumented, so the proxy names the shape of the problem and returns the edge's own body instead of guessing which string tripped it. If you hit it, change the prompt. A literal path or variable in a system prompt is the usual cause. It is also why a heavy agent client can fail on its first request while plain chat of the same size works.
-
-### 400: unknown model
-
-The proxy checks every model id against the live catalog and does not forward an id it cannot find. Ids are case-sensitive, and Claude ids need the `@provider` suffix. `GET /v1/models` lists what the account has.
-
-### 502: the cookie is stale
-
-Cookies expire. A `502` whose message says the cookie is stale means you need a fresh one. Copy it again as in [step 2](#2-copy-your-session-cookie).
-
-### 502: upstream abandoned a tool call
-
-A tool call can fail upstream. The stream reports it in `tool-input-error` or `tool-output-error`, and the turn still ends on `tool-calls` with no call made.
-
-The tool named is one of yours. The proxy describes your tools in the prompt, and the model behind AI Pass sometimes calls one natively instead of writing the fenced block. AI Pass has nothing registered under that name, so the attempt errors:
-
-```json
-{
-  "error": "AI provider error",
-  "fallbackMessage": {
-    "role": "assistant",
-    "parts": [
-      {
-        "type": "text",
-        "text": "การเชื่อมต่อกับโมเดลขัดข้อง กรุณาลองใหม่อีกครั้ง"
-      }
-    ]
-  }
-}
-```
-
-`fallbackMessage` is the part to watch. AI Pass writes an apology of its own, in Thai and English. On some paths it arrives as ordinary reply text on a 200, where nothing marks it as broken. A client reads it as an answer, and an agent posts it wherever it posts answers.
-
-The proxy returns a `502` for both the failed tool and the abandoned turn, naming the tool. The AI SDK retries a `5xx`, so this usually costs you a retry rather than the turn. It gets likelier the more tools you offer.
-
-### 401 from the LMS
-
-The cookie came from the chat page instead of a `/lms` page, or it expired. See [What the learner sends](#what-the-learner-sends).
-
-### `Project learner not found` from the LMS
-
-A `404` with this message on `/course/v2` is the catalogue call, and it is a credential problem wearing a missing-course status: the session signs in, but the LMS carries no learner record for it in the project the request resolves to. Open `/lms/my-courses` in the browser, let the page list the courses, and copy the `Cookie` header from a request made on that page, so the tenant cookie that names the project travels with the session token. A browser that cannot list them either is an account the LMS has not enrolled in a project, which is not something the proxy can fix.
-
-## Limits
-
-- **Token counts are estimates.** AI Pass reports none, so the proxy counts characters. Credits are the exact figure, see [Usage in credits](#usage-in-credits)
-- **Attachments must be inline.** The proxy refuses a URL rather than fetching it, see [Attachments](#attachments)
-- **Video holds the connection open** for the whole render, so it cannot run behind a function timeout
-- **Media and attachments have not met a live account.** I built them from the upstream protocol and tested them against a stubbed upstream. Nothing there has run against de.aipass.net, so expect to fix something the first time you use them for real
+The [guide](docs/guide.md) covers each client, login with thaipass, attachments, media, tool calling, credits, the LMS learner, deployment to Vercel, and troubleshooting by status code. A running proxy serves its OpenAPI reference at `/`.
 
 ## Development
 
-The repo is a Bun workspace run by Turborepo, with one package per job:
+The repo is a Bun workspace run by Turborepo:
 
-- `apps/proxy`: the server, the LMS command and everything HTTP
-- `packages/core`: the AI Pass protocol the server and the provider share
-- `packages/thaipass`: the AI SDK provider, built to `dist` for npm
-- `packages/typescript-config`: the `tsconfig` base every package extends
+- `apps/proxy`: the server and the LMS command
+- `apps/dashboard`: the Next.js dashboard
+- `packages/core`: the AI Pass protocol shared by the server and the provider
+- `packages/thaipass`: the AI SDK provider published to npm
 
-Scripts from the root run in every package that has them:
-
-- `bun run dev`: watch mode for the server
-- `bun run test`: the Bun test suites
-- `bun run typecheck`: `tsc --noEmit`
-- `bun run build`: builds `thaipass` and the proxy's Vercel bundle into each package's `dist`
-- `bun run check`: Ultracite check
-- `bun run fix`: format and autofix
-
-Releases of `thaipass` go through [Changesets](https://github.com/changesets/changesets). A change that should reach npm gets a changeset from `bun run changeset`, the release workflow turns pending changesets into a version pull request, and merging that pull request publishes. npm authenticates the publish job through OIDC as a trusted publisher, so the repo holds no npm token.
+Run `bun run dev` for watch mode, `bun run test` for the suites, and `bun run check` before you commit.
 
 ## Personal use only
 
-This is a reverse-engineered adapter over an undocumented private API. Keep it to a single account you own. Don't publish it as a service, point it at accounts that aren't yours, or run it at a scale that would burden the shared programme.
+thaipass is a reverse-engineered adapter over an undocumented private API. Keep it to one account you own, and don’t run it as a service for other people. That’s a request, not a licence term.
 
-That is a request, not a licence term. The code is [MIT](LICENSE), and the paragraph above asks you to be a good guest of a free public programme rather than restricting what you may do with the software.
+## License
+
+[MIT](LICENSE)

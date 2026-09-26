@@ -23,7 +23,7 @@ const ModelCard = ({
   readonly model: CatalogModel;
 }) => (
   <Link
-    className="hover:border-muted-foreground/30 focus-visible:ring-ring flex flex-col gap-3 rounded-xl border p-4 transition-colors focus-visible:ring-2 focus-visible:outline-none"
+    className="hover:border-muted-foreground/30 focus-visible:ring-ring flex flex-col gap-3 rounded-xl border p-4 focus-visible:ring-2 focus-visible:outline-none"
     href={`/${locale}/playground?model=${encodeURIComponent(model.id)}`}
   >
     <div className="flex min-w-0 items-start gap-2.5">

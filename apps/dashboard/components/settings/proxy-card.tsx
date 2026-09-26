@@ -87,7 +87,7 @@ export const ProxyCard = () => {
             onClick={handleTest}
             variant={proxyLocked ? "outline" : "default"}
           >
-            <TestIcon />
+            <TestIcon data-icon="inline-start" />
             {testLabel()}
           </Button>
         </div>
