@@ -197,3 +197,48 @@ test("a switch frame is decoded, so it is no longer counted as skipped", async (
   expect(skips.count).toBe(0);
   expect([...skips.types]).toEqual([]);
 });
+
+test("reads the model the auto router picked", async () => {
+  const events = await collect([
+    '{"type":"data-router_decision","data":{"modelId":"gemini-3.5-flash-lite","effectiveModelId":"gemini-3.5-flash-lite","modelType":"Conversation","confidence":"high"}}',
+  ]);
+  expect(events).toEqual([{ kind: "model", model: "gemini-3.5-flash-lite" }]);
+});
+
+test("prefers the router's effective model over the one it first named", async () => {
+  const events = await collect([
+    '{"type":"data-router_decision","data":{"modelId":"a","effectiveModelId":"b"}}',
+  ]);
+  expect(events).toEqual([{ kind: "model", model: "b" }]);
+});
+
+test("reads the answering model from start and finish", async () => {
+  const events = await collect([
+    '{"type":"start","messageMetadata":{"modelId":"glm-5.3"},"messageId":"m1"}',
+    '{"type":"finish","finishReason":"stop","messageMetadata":{"modelId":"glm-5.3"}}',
+  ]);
+  expect(events).toEqual([
+    { kind: "model", model: "glm-5.3" },
+    { kind: "model", model: "glm-5.3" },
+    { kind: "finish", reason: "stop" },
+  ]);
+});
+
+test("a start frame that names no model yields nothing and is not skipped", async () => {
+  const skips = newSkips();
+  const events = await collect(['{"type":"start","messageId":"m1"}'], skips);
+  expect(events).toEqual([]);
+  expect(skips.count).toBe(0);
+});
+
+test("keeps the finish when its metadata names no model", async () => {
+  const events = await collect([
+    '{"type":"finish","finishReason":"length","messageMetadata":"none"}',
+    '{"type":"finish","finishReason":"length","messageMetadata":{"modelId":""}}',
+    '{"type":"data-router_decision","data":{"reason":"capacity"}}',
+  ]);
+  expect(events).toEqual([
+    { kind: "finish", reason: "length" },
+    { kind: "finish", reason: "length" },
+  ]);
+});

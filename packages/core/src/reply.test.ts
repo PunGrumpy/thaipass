@@ -120,3 +120,20 @@ test("leaves the switched model unset when upstream sends no switch", async () =
   const { tally } = await readAll([delta("hello")]);
   expect(tally.switchedModel).toBeUndefined();
 });
+
+test("records the model upstream said answered without yielding an event", async () => {
+  const { events, tally } = await readAll([
+    '{"type":"data-router_decision","data":{"modelId":"a","effectiveModelId":"a"}}',
+    '{"type":"start","messageMetadata":{"modelId":"a"}}',
+    delta("hello"),
+    '{"type":"finish","finishReason":"stop","messageMetadata":{"modelId":"b"}}',
+  ]);
+  expect(events.map((event) => event.kind)).toEqual(["text"]);
+  expect(tally.resolvedModel).toBe("b");
+  expect(tally.finishReason).toBe("stop");
+});
+
+test("leaves the resolved model unset when upstream names none", async () => {
+  const { tally } = await readAll([delta("hello")]);
+  expect(tally.resolvedModel).toBeUndefined();
+});

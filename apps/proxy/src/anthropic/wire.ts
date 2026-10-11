@@ -20,12 +20,14 @@ const usageSchema = z.object({
   credits: creditUsageSchema.optional(),
   input_tokens: z.number().int(),
   output_tokens: z.number().int(),
+  resolved_model: z.string().optional(),
 });
 
 const deltaUsageSchema = z.object({
   cost: z.number().optional(),
   credits: creditUsageSchema.optional(),
   output_tokens: z.number().int(),
+  resolved_model: z.string().optional(),
 });
 
 export const messageSchema = z.object({
@@ -156,12 +158,20 @@ const streamWire = (
         frame({ index, type: "content_block_stop" })
       );
     },
-    close: (finishReason, outputTokens, credits, cost) =>
+    close: (closing) =>
       closeText() +
       frame({
-        delta: { stop_reason: toStopReason(finishReason), stop_sequence: null },
+        delta: {
+          stop_reason: toStopReason(closing.finishReason),
+          stop_sequence: null,
+        },
         type: "message_delta",
-        usage: { cost, credits, output_tokens: outputTokens },
+        usage: {
+          cost: closing.cost,
+          credits: closing.credits,
+          output_tokens: closing.outputTokens,
+          resolved_model: closing.resolvedModel,
+        },
       }) +
       frame({ type: "message_stop" }),
     open: () =>
@@ -206,6 +216,7 @@ const reply = (id: string, model: string, value: Reply): Message => {
     credits: value.credits,
     input_tokens: value.inputTokens,
     output_tokens: value.outputTokens,
+    resolved_model: value.resolvedModel,
   });
 };
 

@@ -26,6 +26,7 @@ export type StreamEvent =
   | { readonly kind: "delta"; readonly text: string }
   | { readonly kind: "reasoning"; readonly text: string }
   | { readonly kind: "switch"; readonly detail: string }
+  | { readonly kind: "model"; readonly model: string }
   | { readonly kind: "file"; readonly file: FileEvent }
   | { readonly kind: "finish"; readonly reason: string }
   | {
@@ -75,15 +76,47 @@ const switchDetailSchema = z.unknown().transform((data): string => {
   return JSON.stringify(data ?? null).slice(0, SWITCH_DETAIL_LIMIT);
 });
 
+const statedModelFieldsSchema = z.object({
+  effectiveModelId: optionalText,
+  modelId: optionalText,
+});
+
+/**
+ * The model upstream says is answering. Every stream names it on `start` and
+ * `finish`, and one sent to the `auto` router names it once more ahead of
+ * both, where `effectiveModelId` is the pick after the router's own fallbacks.
+ * Anything else in the field reads as no statement, so the frame still counts.
+ */
+const statedModelSchema = z
+  .unknown()
+  .transform((data): string | undefined => {
+    const fields = statedModelFieldsSchema.safeParse(data);
+    if (!fields.success) {
+      return;
+    }
+    const found = fields.data.effectiveModelId ?? fields.data.modelId;
+    return found !== undefined && found.length > 0 ? found : undefined;
+  })
+  .optional();
+
 const upstreamEventSchema = z.discriminatedUnion("type", [
   z.object({ delta: z.string(), type: z.literal("text-delta") }),
   z.object({ delta: z.string(), type: z.literal("reasoning-delta") }),
+  z.object({
+    data: statedModelSchema,
+    type: z.literal("data-router_decision"),
+  }),
+  z.object({ messageMetadata: statedModelSchema, type: z.literal("start") }),
   z.object({
     data: switchDetailSchema,
     type: z.literal("data-model_switched"),
   }),
   fileFrameSchema,
-  z.object({ finishReason: optionalText, type: z.literal("finish") }),
+  z.object({
+    finishReason: optionalText,
+    messageMetadata: statedModelSchema,
+    type: z.literal("finish"),
+  }),
   toolErrorSchema("tool-input-error"),
   toolErrorSchema("tool-output-error"),
   z.object({
@@ -102,6 +135,9 @@ const toFileEvent = (frame: z.infer<typeof fileFrameSchema>): FileEvent => {
     url: frame.url ?? data?.url,
   };
 };
+
+const statedModel = (model: string | undefined): StreamEvent[] =>
+  model === undefined ? [] : [{ kind: "model", model }];
 
 const skippedTypeSchema = z.object({ type: z.string() });
 
@@ -143,11 +179,20 @@ export const parseAipassSSE = async function* parseAipassSSE(
         yield { detail: event.data, kind: "switch" };
         break;
       }
+      case "data-router_decision": {
+        yield* statedModel(event.data);
+        break;
+      }
+      case "start": {
+        yield* statedModel(event.messageMetadata);
+        break;
+      }
       case "file": {
         yield { file: toFileEvent(event), kind: "file" };
         break;
       }
       case "finish": {
+        yield* statedModel(event.messageMetadata);
         yield { kind: "finish", reason: event.finishReason ?? "stop" };
         break;
       }

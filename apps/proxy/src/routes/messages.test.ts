@@ -4,6 +4,7 @@ import {
   DELETE_PATH,
   SEND_PREFIX,
   quotaResponse,
+  routedReply,
   sseResponse,
   stubUpstream,
   textDeltas,
@@ -413,6 +414,7 @@ const usageSchema = z.object({
       .optional(),
     input_tokens: z.number(),
     output_tokens: z.number(),
+    resolved_model: z.string().optional(),
   }),
 });
 
@@ -420,6 +422,7 @@ const deltaUsageSchema = z.object({
   usage: z.object({
     credits: z.object({ spent: z.number().optional() }).optional(),
     output_tokens: z.number(),
+    resolved_model: z.string().optional(),
   }),
 });
 
@@ -452,6 +455,33 @@ test("reports the credits on message_delta when streaming", async () => {
   const { usage } = deltaUsageSchema.parse(JSON.parse(delta?.slice(6) ?? "{}"));
   expect(usage.output_tokens).toBeGreaterThan(0);
   expect(usage.credits?.spent).toBe(USED_AFTER - USED_BEFORE);
+});
+
+const RESOLVED_MODEL = "glm-5.3";
+
+test("reports the model that answered a buffered message in its usage", async () => {
+  upstream = stubUpstream(sseResponse(routedReply(RESOLVED_MODEL)));
+  const response = await app.fetch(messagesRequest({}));
+  const { usage } = usageSchema.parse(await response.json());
+  expect(usage.resolved_model).toBe(RESOLVED_MODEL);
+});
+
+test("reports the model that answered on message_delta when streaming", async () => {
+  upstream = stubUpstream(sseResponse(routedReply(RESOLVED_MODEL)));
+  const response = await app.fetch(messagesRequest({ stream: true }));
+  const text = await response.text();
+  const delta = text
+    .split("\n")
+    .find((line) => line.startsWith('data: {"delta":{"stop_reason"'));
+  const { usage } = deltaUsageSchema.parse(JSON.parse(delta?.slice(6) ?? "{}"));
+  expect(usage.resolved_model).toBe(RESOLVED_MODEL);
+});
+
+test("leaves the resolved model out when AI Pass names none", async () => {
+  upstream = stubUpstream(sseResponse(textDeltas(1)));
+  const response = await app.fetch(messagesRequest({}));
+  const { usage } = usageSchema.parse(await response.json());
+  expect(usage.resolved_model).toBeUndefined();
 });
 
 const countRequest = (body: MessagesBody): Request =>
