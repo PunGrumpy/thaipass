@@ -371,6 +371,19 @@ AI Pass meters in credits per period, not tokens, and reports no token counts. E
 - **Anthropic stream**: the `message_delta` event
 - **AI SDK provider**: `providerMetadata.aipass.credits`
 
+### Which model answered
+
+`usage.resolved_model` names the model AI Pass reported for the reply. Read it to learn what `auto` picked. It sits where `usage.credits` does on each protocol.
+
+```json
+{
+  "model": "auto",
+  "usage": { "resolved_model": "gemini-3.5-flash-lite" }
+}
+```
+
+The top-level `model` still echoes the id you sent, so clients that match on it keep working. AI Pass names the model on every stream, so you can also confirm that a named model ran. The proxy omits the field when AI Pass names no model, logs it as `resolvedModel`, and prices `usage.cost` at it.
+
 ### When the credits run out
 
 With no credits left, AI Pass still answers a paid model, but it answers from a free one and says nothing. The proxy refuses the paid model with a `429` rather than pass on a reply from a model nobody asked for. The error says when the credits reset and which models are free. `retry-after` counts the seconds to the reset. On `/v1/responses` the body carries `type: "usage_limit_reached"` and `resets_at`, which Codex reads. A free model, such as `gemini-3.5-flash-lite`, still goes through. The AI SDK provider does not make this check.
