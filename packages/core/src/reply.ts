@@ -77,6 +77,8 @@ export interface ReplyTally {
   msToFirstChunk: number | undefined;
   reasoningChars: number;
   readonly reply: CharCount;
+  /** The model upstream named for the reply, and the only sign of what `auto` picked. */
+  resolvedModel: string | undefined;
   readonly skips: SSESkips;
   switchedModel: string | undefined;
 }
@@ -127,6 +129,7 @@ export const readReply = (options: ReadReplyOptions): ReplyReader => {
     msToFirstChunk: undefined,
     reasoningChars: 0,
     reply: newCharCount(),
+    resolvedModel: undefined,
     skips: { count: 0, types: new Set() },
     switchedModel: undefined,
   };
@@ -159,6 +162,8 @@ export const readReply = (options: ReadReplyOptions): ReplyReader => {
         yield { kind: "reasoning", text: event.text };
       } else if (event.kind === "switch") {
         tally.switchedModel = event.detail;
+      } else if (event.kind === "model") {
+        tally.resolvedModel = event.model;
       } else if (event.kind === "file") {
         const asset = await resolveAsset(cookie, event.file, signal);
         if (asset) {
