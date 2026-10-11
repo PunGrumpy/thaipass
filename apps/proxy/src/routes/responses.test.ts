@@ -6,6 +6,7 @@ import {
   DELETE_PATH,
   INITIATE_PATH,
   quotaResponse,
+  routedReply,
   SEND_PREFIX,
   sseResponse,
   stubUpstream,
@@ -99,6 +100,7 @@ const modelResponseSchema = z.object({
     credits: z.object({ spent: z.number().optional() }).optional(),
     input_tokens: z.number(),
     output_tokens: z.number(),
+    resolved_model: z.string().optional(),
     total_tokens: z.number(),
   }),
 });
@@ -403,6 +405,23 @@ test("reports the credits on the response.completed event of a stream", async ()
   const events = eventsOf(await response.text());
   const completed = modelResponseSchema.parse(events.at(-1)?.response);
   expect(completed.usage.credits?.spent).toBe(USED_AFTER - USED_BEFORE);
+});
+
+const RESOLVED_MODEL = "glm-5.3";
+
+test("reports the model that answered in usage", async () => {
+  upstream = stubUpstream(sseResponse(routedReply(RESOLVED_MODEL)));
+  const response = await app.fetch(ask());
+  const body = modelResponseSchema.parse(await response.json());
+  expect(body.usage.resolved_model).toBe(RESOLVED_MODEL);
+});
+
+test("reports the model that answered on the response.completed event of a stream", async () => {
+  upstream = stubUpstream(sseResponse(routedReply(RESOLVED_MODEL)));
+  const response = await app.fetch(ask({ stream: true }));
+  const events = eventsOf(await response.text());
+  const completed = modelResponseSchema.parse(events.at(-1)?.response);
+  expect(completed.usage.resolved_model).toBe(RESOLVED_MODEL);
 });
 
 test("sends the balance as the rate-limit headers Codex reads, before the stream", async () => {

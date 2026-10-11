@@ -126,6 +126,33 @@ export const textDeltas = (count: number): string[] =>
     (_, index) => `{"type":"text-delta","delta":"chunk${index}"}`
   );
 
+/**
+ * A reply as AI Pass frames one sent to `auto`, captured 2026-10-11: the
+ * router's decision, then `start` and `finish` each naming the model again.
+ */
+export const routedReply = (model: string): string[] => [
+  JSON.stringify({
+    data: {
+      candidatesConsidered: [model],
+      classifierUsed: "llm",
+      confidence: "high",
+      effectiveModelId: model,
+      modelId: model,
+      modelType: "Conversation",
+    },
+    type: "data-router_decision",
+  }),
+  JSON.stringify({ messageMetadata: { modelId: model }, type: "start" }),
+  '{"type":"start-step"}',
+  ...textDeltas(1),
+  '{"type":"finish-step"}',
+  JSON.stringify({
+    finishReason: "stop",
+    messageMetadata: { modelId: model },
+    type: "finish",
+  }),
+];
+
 export const sseResponse =
   (frames: readonly string[], options: SseStreamOptions = {}) =>
   (): Response =>

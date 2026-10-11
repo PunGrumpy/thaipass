@@ -7,6 +7,7 @@ import {
   DELETE_PATH,
   INITIATE_PATH,
   quotaResponse,
+  routedReply,
   SEND_PREFIX,
   sseResponse,
   stubUpstream,
@@ -85,6 +86,7 @@ const usageSchema = z.object({
   usage: z.object({
     cost: z.number().optional(),
     credits: creditsSchema.optional(),
+    resolved_model: z.string().optional(),
     total_tokens: z.number(),
   }),
 });
@@ -768,6 +770,57 @@ test("leaves the cost out for a model the price list does not carry", async () =
     );
     const { usage } = usageSchema.parse(await response.json());
     expect(usage.cost).toBeUndefined();
+  } finally {
+    configure({ pricesUrl: DEFAULT_PRICES_URL });
+  }
+});
+
+const AUTO_MODEL = "auto";
+const ROUTED_MODEL = "gemini-3.5-flash-lite";
+
+test("reports the model auto resolved to in a buffered completion's usage", async () => {
+  upstream = stubUpstream(
+    sseResponse(routedReply(ROUTED_MODEL)),
+    catalogOf(AUTO_MODEL)
+  );
+  const response = await app.fetch(
+    chatRequest(false, { model: AUTO_MODEL }, freshCookie())
+  );
+  const body = await response.json();
+  const { usage } = usageSchema.parse(body);
+  expect(usage.resolved_model).toBe(ROUTED_MODEL);
+  expect(z.object({ model: z.string() }).parse(body).model).toBe(AUTO_MODEL);
+});
+
+test("reports the resolved model on the final chunk of a stream", async () => {
+  upstream = stubUpstream(
+    sseResponse(routedReply(ROUTED_MODEL)),
+    catalogOf(AUTO_MODEL)
+  );
+  const response = await app.fetch(
+    chatRequest(true, { model: AUTO_MODEL }, freshCookie())
+  );
+  const text = await response.text();
+  const frames = text
+    .split("\n")
+    .filter((line) => line.startsWith("data: {"))
+    .map((line) => usageSchema.partial().parse(JSON.parse(line.slice(6))));
+  expect(frames.at(-1)?.usage?.resolved_model).toBe(ROUTED_MODEL);
+});
+
+test("prices auto at the model that answered", async () => {
+  const routed = catalogOf(AUTO_MODEL);
+  upstream = stubUpstream(
+    sseResponse(routedReply(ROUTED_MODEL)),
+    (path) => routed(path) ?? pricesResponse(path)
+  );
+  configure({ pricesUrl: PRICES_URL });
+  try {
+    const response = await app.fetch(
+      chatRequest(false, { model: AUTO_MODEL }, freshCookie())
+    );
+    const { usage } = usageSchema.parse(await response.json());
+    expect(usage.cost).toBeGreaterThan(0);
   } finally {
     configure({ pricesUrl: DEFAULT_PRICES_URL });
   }
