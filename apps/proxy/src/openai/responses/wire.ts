@@ -1,5 +1,4 @@
 import { creditUsageSchema } from "@thaipass/core/aipass/quotas";
-import type { CreditUsage } from "@thaipass/core/aipass/quotas";
 import { randomHex } from "@thaipass/core/lib/id";
 import type { ToolCall } from "@thaipass/core/tools";
 import { z } from "zod";
@@ -39,6 +38,7 @@ const usageSchema = z.object({
   credits: creditUsageSchema.optional(),
   input_tokens: z.number().int(),
   output_tokens: z.number().int(),
+  resolved_model: z.string().optional(),
   total_tokens: z.number().int(),
 });
 
@@ -152,17 +152,18 @@ const finishOf = (finishReason: string): Finish => {
   return { reason, status: reason === undefined ? "completed" : "incomplete" };
 };
 
-const usage = (
-  inputTokens: number,
-  outputTokens: number,
-  credits: CreditUsage | undefined,
-  cost: number | undefined
-): Usage => ({
-  cost,
-  credits,
-  input_tokens: inputTokens,
-  output_tokens: outputTokens,
-  total_tokens: inputTokens + outputTokens,
+type Spend = Pick<
+  Reply,
+  "cost" | "credits" | "inputTokens" | "outputTokens" | "resolvedModel"
+>;
+
+const usage = (spend: Spend): Usage => ({
+  cost: spend.cost,
+  credits: spend.credits,
+  input_tokens: spend.inputTokens,
+  output_tokens: spend.outputTokens,
+  resolved_model: spend.resolvedModel,
+  total_tokens: spend.inputTokens + spend.outputTokens,
 });
 
 const messageId = (): string => `msg_${randomHex(ITEM_ID_LENGTH)}`;
@@ -360,16 +361,16 @@ const streamWire = (
         })
       );
     },
-    close: (finishReason, outputTokens, credits, cost) => {
+    close: (closing) => {
       const closed = closeText();
-      const { reason, status } = finishOf(finishReason);
+      const { reason, status } = finishOf(closing.finishReason);
       return (
         closed +
         response(
           "response.completed",
           status,
           reason,
-          usage(inputTokens, outputTokens, credits, cost)
+          usage({ ...closing, inputTokens })
         )
       );
     },
@@ -415,12 +416,7 @@ const buffered = (
     output,
     reason,
     status,
-    usage: usage(
-      reply.inputTokens,
-      reply.outputTokens,
-      reply.credits,
-      reply.cost
-    ),
+    usage: usage(reply),
   });
 };
 

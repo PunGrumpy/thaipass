@@ -1,5 +1,4 @@
 import { creditUsageSchema } from "@thaipass/core/aipass/quotas";
-import type { CreditUsage } from "@thaipass/core/aipass/quotas";
 import { randomHex } from "@thaipass/core/lib/id";
 import type { ToolCall } from "@thaipass/core/tools";
 import { z } from "zod";
@@ -19,6 +18,7 @@ const usageSchema = z.object({
   cost: z.number().optional(),
   credits: creditUsageSchema.optional(),
   prompt_tokens: z.number().int(),
+  resolved_model: z.string().optional(),
   total_tokens: z.number().int(),
 });
 
@@ -84,17 +84,18 @@ const FINISH_REASONS = new Map([
 const toFinishReason = (reason: string): string =>
   FINISH_REASONS.get(reason) ?? reason;
 
-const usage = (
-  inputTokens: number,
-  outputTokens: number,
-  credits: CreditUsage | undefined,
-  cost: number | undefined
-): Usage => ({
-  completion_tokens: outputTokens,
-  cost,
-  credits,
-  prompt_tokens: inputTokens,
-  total_tokens: inputTokens + outputTokens,
+type Spend = Pick<
+  Reply,
+  "cost" | "credits" | "inputTokens" | "outputTokens" | "resolvedModel"
+>;
+
+const usage = (spend: Spend): Usage => ({
+  completion_tokens: spend.outputTokens,
+  cost: spend.cost,
+  credits: spend.credits,
+  prompt_tokens: spend.inputTokens,
+  resolved_model: spend.resolvedModel,
+  total_tokens: spend.inputTokens + spend.outputTokens,
 });
 
 const toolCall = (call: ToolCall): WireToolCall => ({
@@ -150,12 +151,7 @@ const chatCompletion = (
   id,
   model,
   object: "chat.completion",
-  usage: usage(
-    reply.inputTokens,
-    reply.outputTokens,
-    reply.credits,
-    reply.cost
-  ),
+  usage: usage(reply),
 });
 
 /** Every chunk of one stream carries the same id and `created` second. */
@@ -180,8 +176,8 @@ export const openaiWire = (model: string): Wire => {
         index += 1;
         return frame;
       },
-      close: (finishReason, outputTokens, credits, cost) =>
-        `${chunk({}, toFinishReason(finishReason), usage(inputTokens, outputTokens, credits, cost))}${DONE_FRAME}`,
+      close: (closing) =>
+        `${chunk({}, toFinishReason(closing.finishReason), usage({ ...closing, inputTokens }))}${DONE_FRAME}`,
       open: () => chunk({ role: "assistant" }, null),
       text: (delta) => chunk({ content: delta }, null),
     };

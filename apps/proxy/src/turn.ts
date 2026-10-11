@@ -71,20 +71,23 @@ export interface Reply {
   readonly finishReason: string;
   readonly inputTokens: number;
   readonly outputTokens: number;
+  /** The model AI Pass said answered, when it said. */
+  readonly resolvedModel?: string;
   readonly text: string;
 }
+
+/** What is only known once the reply has ended, for the frame that closes a stream. */
+export type StreamClose = Pick<
+  Reply,
+  "cost" | "credits" | "finishReason" | "outputTokens" | "resolvedModel"
+>;
 
 /** Renders one streamed reply; a fresh one per response so it can hold state. */
 export interface StreamWire {
   readonly open: () => string;
   readonly text: (delta: string) => string;
   readonly call: (call: ToolCall) => string;
-  readonly close: (
-    finishReason: string,
-    outputTokens: number,
-    credits?: CreditUsage,
-    cost?: number
-  ) => string;
+  readonly close: (closing: StreamClose) => string;
 }
 
 export interface Wire {
@@ -141,8 +144,10 @@ const failUpstream = (
 
 /**
  * The turn in dollars, for a client that reports money and cannot read
- * credits. Nothing waits on it: a price table that is cold or a model
- * OpenRouter does not list simply leaves the figure out.
+ * credits. The caller prices it at the model that answered when upstream
+ * named one, since `auto` has no price of its own. Nothing waits on it: a
+ * price table that is cold or a model OpenRouter does not list simply leaves
+ * the figure out.
  */
 const costFor = async (
   facts: UpstreamFacts,
@@ -298,6 +303,7 @@ const tallyFields = (tally: ReplyTally) => ({
   reasoningChars: tally.reasoningChars,
   replyChars: tally.chars,
   replyTokens: replyTokens(tally),
+  resolvedModel: tally.resolvedModel,
   switchedModel: tally.switchedModel,
   toolCalls: tally.calls,
   undecodedEvents: tally.skips.count,
@@ -350,11 +356,19 @@ const streamCompletion = (
         const outputTokens = replyTokens(tally);
         const cost = await costFor(
           facts,
-          model,
+          tally.resolvedModel ?? model,
           completion.inputTokens,
           outputTokens
         );
-        send(frames.close(finishReasonOf(tally), outputTokens, usage, cost));
+        send(
+          frames.close({
+            cost,
+            credits: usage,
+            finishReason: finishReasonOf(tally),
+            outputTokens,
+            resolvedModel: tally.resolvedModel,
+          })
+        );
         log.set({
           ...tallyFields(tally),
           clientAborted: !out.isOpen(),
@@ -422,7 +436,7 @@ const bufferedCompletion = async (completion: Completion): Promise<Attempt> => {
   const outputTokens = replyTokens(tally);
   const cost = await costFor(
     facts,
-    model,
+    tally.resolvedModel ?? model,
     completion.inputTokens,
     outputTokens
   );
@@ -442,6 +456,7 @@ const bufferedCompletion = async (completion: Completion): Promise<Attempt> => {
       finishReason: finishReasonOf(tally),
       inputTokens: completion.inputTokens,
       outputTokens,
+      resolvedModel: tally.resolvedModel,
       text,
     }),
     retry: false,
