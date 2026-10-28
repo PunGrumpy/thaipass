@@ -9,6 +9,7 @@ thaipass is a proxy with OpenAI-compatible and Anthropic-compatible endpoints in
 - **Three protocols**: `/v1/chat/completions`, `/v1/responses`, and `/v1/messages`
 - **Live catalog**: every model your account can reach, checked on each request
 - **Credits in every reply**: the balance before and after, plus a dollar estimate
+- **Credit history**: a dashboard chart of what is left, how fast it burns, and when it runs out
 - **Media**: image, video, and music generation
 - **Learning points**: earns the monthly learning management system (LMS) points from the dashboard, a command, or a scheduler
 - **AI SDK provider**: the `thaipass` package calls AI Pass with no HTTP hop
@@ -60,9 +61,19 @@ T3 Code needs a Codex home of its own and can show your credits in its Limits vi
 
 A deployment with `THAIPASS_TOKEN_KEY` also issues scoped `tp_v1_…` tokens, so an app never holds the raw cookie. Run `bun run login` to get one.
 
+## Deploy your own
+
+Each person runs their own thaipass: one proxy and one dashboard, for one AI Pass account. The button creates the proxy project from this repo with its Root Directory set to `apps/proxy`.
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FPunGrumpy%2Fthaipass&root-directory=apps%2Fproxy&project-name=thaipass-proxy&repository-name=thaipass)
+
+Then turn on the option to include source files outside the Root Directory, and add the dashboard as a second project with Root Directory `apps/dashboard`. [Deploy to Vercel](docs/guide.md#deploy-to-vercel) lists the settings and variables.
+
+The credit history needs one more step, and everything else works without it. In the proxy project, open **Storage**, create an **Upstash for Redis** store from the Marketplace (the free plan is enough), connect it to the project for every environment, and redeploy. It stores balances and a hash of your AI Pass user id, never your cookie. See [Credit history](docs/guide.md#credit-history).
+
 ## Documentation
 
-The [guide](docs/guide.md) covers each client, login with thaipass, attachments, media, tool calling, credits, the LMS learner, deployment to Vercel, and troubleshooting by status code. A running proxy serves its OpenAPI reference at `/`.
+The [guide](docs/guide.md) covers each client, login with thaipass, attachments, media, tool calling, credits, the credit history, the LMS learner, deployment to Vercel, and troubleshooting by status code. A running proxy serves its OpenAPI reference at `/`.
 
 ## Development
 
