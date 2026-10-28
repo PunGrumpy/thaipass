@@ -2,6 +2,7 @@ import { chatModelProblem, fetchCatalog } from "@thaipass/core/aipass/catalog";
 import type { Catalog } from "@thaipass/core/aipass/catalog";
 import { deleteConversation, sendMessage } from "@thaipass/core/aipass/client";
 import type { SendResult } from "@thaipass/core/aipass/client";
+import type { SpendTag } from "@thaipass/core/aipass/history";
 import { fetchIdentity } from "@thaipass/core/aipass/identity";
 import type { Identity } from "@thaipass/core/aipass/identity";
 import { InlineError } from "@thaipass/core/aipass/inline";
@@ -45,6 +46,8 @@ import { toAipassMessages } from "@thaipass/core/translate";
 import type { Conversation } from "@thaipass/core/translate";
 import type { RequestLogger } from "evlog";
 
+import { appName } from "./lib/client";
+import { history } from "./lib/history";
 import type { DeferredEmit } from "./lib/logger";
 
 /**
@@ -165,11 +168,18 @@ interface UpstreamFacts {
   readonly prices: Promise<PriceTable | null>;
 }
 
+/**
+ * The settled read is also a point on the credit history. It is awaited here,
+ * before the caller emits its log and closes the stream, because a Bun function
+ * has no `waitUntil` to finish it afterwards. `history.record` is bounded and
+ * never rejects, so a store outage costs the turn nothing it can see.
+ */
 const recordUpstream = async (
   facts: UpstreamFacts,
   model: string,
   log: RequestLogger,
-  settled: Credits | null = null
+  settled: Credits | null = null,
+  spend?: SpendTag
 ): Promise<void> => {
   const [before, catalog, identity] = await Promise.all([
     facts.credits,
@@ -186,6 +196,9 @@ const recordUpstream = async (
   const entry = catalog?.get(model);
   if (entry) {
     log.set({ modelFree: entry.free, modelReady: entry.ready });
+  }
+  if (settled) {
+    await history.record(() => facts.identity, { credits: settled, spend });
   }
 };
 
@@ -285,6 +298,7 @@ const upstreamError = async (
 };
 
 interface Completion {
+  readonly app: string | null;
   readonly conversationId: string;
   readonly cookie: string;
   readonly facts: UpstreamFacts;
@@ -294,6 +308,20 @@ interface Completion {
   readonly reader: ReplyReader;
   readonly wire: Wire;
 }
+
+/** What the call spent, when both of its balance reads came back. */
+const spendOf = (
+  completion: Completion,
+  tally: ReplyTally,
+  spent: number | undefined
+): SpendTag | undefined =>
+  spent === undefined
+    ? undefined
+    : {
+        app: completion.app,
+        credits: spent,
+        model: tally.resolvedModel ?? completion.model,
+      };
 
 const tallyFields = (tally: ReplyTally) => ({
   deltas: tally.deltas,
@@ -376,7 +404,13 @@ const streamCompletion = (
           creditsSpent: usage?.spent,
           status: out.isOpen() ? 200 : CLIENT_CLOSED_STATUS,
         });
-        await recordUpstream(facts, model, log, after);
+        await recordUpstream(
+          facts,
+          model,
+          log,
+          after,
+          spendOf(completion, tally, usage?.spent)
+        );
         log.emit();
         out.close();
       }
@@ -441,7 +475,13 @@ const bufferedCompletion = async (completion: Completion): Promise<Attempt> => {
     outputTokens
   );
   log.set({ costUsd: cost, creditsSpent: usage?.spent });
-  await recordUpstream(facts, model, log, after);
+  await recordUpstream(
+    facts,
+    model,
+    log,
+    after,
+    spendOf(completion, tally, usage?.spent)
+  );
   if (isAbandonedToolCall(tally)) {
     return {
       response: failUpstream(wire, log, ABANDONED, ABANDONED),
@@ -464,6 +504,7 @@ const bufferedCompletion = async (completion: Completion): Promise<Attempt> => {
 };
 
 interface Send {
+  readonly app: string | null;
   readonly conversation: Conversation;
   readonly cookie: string;
   readonly facts: UpstreamFacts;
@@ -519,6 +560,7 @@ const openAttempt = async (send: Send): Promise<Completion | Response> => {
   }
 
   return {
+    app: send.app,
     conversationId,
     cookie,
     facts,
@@ -631,6 +673,7 @@ const playTurn = async (
   }
 
   const send: Send = {
+    app: appName(request) ?? null,
     conversation,
     cookie,
     facts,

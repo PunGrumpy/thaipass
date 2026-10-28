@@ -1,3 +1,4 @@
+import { fetchIdentity } from "@thaipass/core/aipass/identity";
 import {
   fetchCredits,
   creditBalanceSchema,
@@ -9,6 +10,7 @@ import {
 } from "@thaipass/core/aipass/session";
 import { Elysia, status } from "elysia";
 
+import { history } from "../lib/history";
 import { requestLogger } from "../lib/logger";
 import { json } from "../lib/openapi";
 import { apiError, apiErrorSchema } from "../openai/errors";
@@ -46,13 +48,18 @@ export const usageRoutes = new Elysia()
         return status(401, apiError(lookup.reason));
       }
       const { cookie } = lookup;
-      log.set({ clientId: clientIdFromCookie(cookie) });
+      const clientId = clientIdFromCookie(cookie);
+      log.set({ clientId });
       const credits = await fetchCredits(cookie, request.signal);
       if (!credits) {
         log.set({ status: 502 });
         return status(502, apiError(NO_BALANCE));
       }
       log.set({ ...credits });
+      await history.record(
+        () => fetchIdentity(clientId, cookie, request.signal),
+        { credits }
+      );
       return toCreditBalance(credits);
     }
   );

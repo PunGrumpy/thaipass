@@ -7,6 +7,7 @@ import {
 import { Elysia, status } from "elysia";
 import { z } from "zod";
 
+import { history } from "../lib/history";
 import { requestLogger } from "../lib/logger";
 import { json } from "../lib/openapi";
 import { apiError, apiErrorSchema } from "../openai/errors";
@@ -139,17 +140,22 @@ export const managementRoutes = new Elysia()
         return status(401, apiError(lookup.reason));
       }
       const { cookie } = lookup;
-      log.set({ clientId: clientIdFromCookie(cookie), hubUrl: body.url });
+      const clientId = clientIdFromCookie(cookie);
+      log.set({ clientId, hubUrl: body.url });
       if (body.method !== "GET" || !isUsageUrl(body.url)) {
         return refused(NOT_SERVED, `the proxy does not serve ${body.url}`);
       }
       const credits = await fetchCredits(cookie, request.signal);
       const window = credits ? creditWindow(credits) : null;
-      if (window?.usedPercent === undefined) {
+      if (!credits || window?.usedPercent === undefined) {
         log.set({ hubStatus: NO_BALANCE_STATUS });
         return refused(NO_BALANCE_STATUS, NO_BALANCE);
       }
       log.set({ ...credits });
+      await history.record(
+        () => fetchIdentity(clientId, cookie, request.signal),
+        { credits }
+      );
       return {
         body: JSON.stringify({
           plan_type: PLAN_TYPE,
