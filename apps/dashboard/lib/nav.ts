@@ -4,6 +4,7 @@ import type { ComponentProps, ComponentType } from "react";
 import { useMemo } from "react";
 
 import {
+  CreditsIcon,
   IntegrationsIcon,
   LearningIcon,
   ModelsIcon,
@@ -14,6 +15,7 @@ import {
 
 export type NavItemId =
   | "overview"
+  | "credits"
   | "playground"
   | "models"
   | "learning"
@@ -47,6 +49,13 @@ export const getNavSections = (
         icon: OverviewIcon,
         id: "overview",
         title: dictionary.navigation.items.overview.title,
+      },
+      {
+        description: dictionary.navigation.items.credits.description,
+        href: `/${locale}/credits`,
+        icon: CreditsIcon,
+        id: "credits",
+        title: dictionary.navigation.items.credits.title,
       },
       {
         description: dictionary.navigation.items.playground.description,

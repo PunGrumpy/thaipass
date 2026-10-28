@@ -39,6 +39,29 @@ export const OverviewIcon = ({
   </svg>
 );
 
+export const CreditsIcon = ({ className, ...props }: ComponentProps<"svg">) => (
+  <svg
+    aria-hidden="true"
+    className={cn("size-4", className)}
+    viewBox="0 0 24 24"
+    {...props}
+    fill="none"
+  >
+    <path
+      d="M3 18L9 12L13 15L21 6V18C21 18.5523 20.5523 19 20 19H4C3.44772 19 3 18.5523 3 18Z"
+      fill="currentColor"
+      fillOpacity="0.45"
+    />
+    <path
+      d="M3 17L9 11L13 14L21 5"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 export const PlaygroundIcon = ({
   className,
   ...props

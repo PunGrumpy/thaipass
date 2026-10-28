@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import {
   formatClock,
+  formatCredits,
   formatDuration,
   formatPercent,
   formatPlural,
@@ -60,5 +61,13 @@ describe("existing formatters", () => {
   it("formats plural", () => {
     expect(formatPlural(1, "model")).toBe("1 model");
     expect(formatPlural(2, "model")).toBe("2 models");
+  });
+});
+
+describe("formatCredits", () => {
+  it("keeps a decimal under a hundred and drops it above", () => {
+    expect(formatCredits(12.345, "en")).toBe("12.3");
+    expect(formatCredits(1234.56, "en")).toBe("1,235");
+    expect(formatCredits(0, "en")).toBe("0");
   });
 });

@@ -1,3 +1,9 @@
+import {
+  decodeHistory,
+  historyResponseSchema,
+} from "@thaipass/core/aipass/history";
+import type { CreditHistory } from "@thaipass/core/aipass/history";
+
 export interface ProxyHealth {
   models: number;
   ok: boolean;
@@ -220,6 +226,29 @@ export const fetchCredits = async (
   }
   // SAFETY: GET /v1/usage returns the CreditBalance schema on 200; every other
   return (await response.json()) as CreditBalance;
+};
+
+/**
+ * The history row is parsed here, at the boundary, so no wire tuple reaches a
+ * component: callers get a Timeline.
+ */
+export const fetchCreditHistory = async (
+  proxyUrl: string,
+  cookie: string,
+  signal?: AbortSignal
+): Promise<CreditHistory> => {
+  const response = await gatewayFetch(
+    `${normalizeProxyUrl(proxyUrl)}/v1/usage/history`,
+    {
+      cache: "no-store",
+      headers: authHeaders(cookie),
+      signal,
+    }
+  );
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return decodeHistory(historyResponseSchema.parse(await response.json()));
 };
 
 export const fetchCatalog = async (
