@@ -21,7 +21,7 @@ const header = (request: Request, name: string): string | undefined =>
  * account shares a cookie, so this is the only field that tells two apps
  * apart when both hold yours.
  */
-const appName = (request: Request): string | undefined => {
+export const appName = (request: Request): string | undefined => {
   const name = header(request, "x-thaipass-app")?.trim();
   if (name === undefined || name.length === 0) {
     return;

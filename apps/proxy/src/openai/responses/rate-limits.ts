@@ -1,9 +1,11 @@
+import { DEFAULT_PERIOD_MS } from "@thaipass/core/aipass/history";
 import type { Credits } from "@thaipass/core/aipass/quotas";
 
 const FULL_PERCENT = 100;
 const MS_PER_SECOND = 1000;
-/** Upstream sends when the period ends but not how long it is. */
-export const PERIOD_MINUTES = 1440;
+const MS_PER_MINUTE = 60_000;
+/** Upstream sends when the period ends but not how long it is; the credit history assumes the same day. */
+export const PERIOD_MINUTES = DEFAULT_PERIOD_MS / MS_PER_MINUTE;
 
 export interface CreditWindow {
   readonly resetAt?: number;

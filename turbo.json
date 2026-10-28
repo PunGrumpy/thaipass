@@ -19,12 +19,12 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "env": ["AIPASS_*", "POSTHOG_*", "VERCEL"]
+      "env": ["AIPASS_*", "POSTHOG_*", "KV_*", "UPSTASH_*", "VERCEL"]
     },
     "start": {
       "cache": false,
       "persistent": true,
-      "env": ["AIPASS_*", "POSTHOG_*", "VERCEL"]
+      "env": ["AIPASS_*", "POSTHOG_*", "KV_*", "UPSTASH_*", "VERCEL"]
     }
   }
 }

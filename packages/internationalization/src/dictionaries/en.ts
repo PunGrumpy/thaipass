@@ -87,6 +87,55 @@ export const en = {
       system: "System",
     },
   },
+  credits: {
+    burn: "Burn, last %sh",
+    byApp: "Spend by app",
+    byModel: "Spend by model",
+    chartLabel: "Remaining credits over time, recorded and projected",
+    description:
+      "What the account has left, how fast it is going, and when it runs out, built from every balance this gateway has read.",
+    empty: "Out of credits",
+    emptyAt: "Empty at",
+    errorHint:
+      "Check that the gateway is reachable and the session cookie is current, then refresh.",
+    errorTitle: "Could not read the credit history",
+    idle: "No recent spend",
+    inDuration: "in %s",
+    nextReset: "Next reset",
+    noApp: "No app name",
+    notBeforeReset: "Not before reset",
+    now: "Now",
+    outside: "Outside this gateway",
+    perHour: "%s/h",
+    projected: "Projected",
+    recorded: "Recorded",
+    refill: "+%s",
+    remaining: "Remaining",
+    remainingOf: "%s of %s",
+    sections: {
+      chart: "Remaining credits",
+      spend: "Where it went",
+    },
+    spendNote:
+      "Approximate. Requests that overlap share the credits they spent, and spend outside this gateway has its own row.",
+    store: {
+      downBody:
+        "The live balance below is current, but the recorded history could not be read right now. It will come back on its own.",
+      downTitle: "The history store did not answer",
+      offBody:
+        "The live balance below is current. To record history and chart it, give the proxy a Redis store.",
+      offStepConnect:
+        "Connect it to the proxy project for every environment. That adds KV_REST_API_URL and KV_REST_API_TOKEN.",
+      offStepCreate:
+        "Open the proxy project on Vercel, then Storage, Create, Marketplace, Upstash for Redis (the free plan is enough).",
+      offStepRedeploy:
+        "Redeploy the proxy, then come back. Readings are recorded as requests go through it.",
+      offTitle: "History is not being recorded",
+    },
+    title: "Credits",
+    unknown: "Not enough data yet",
+    weekNote: "Last 7 days",
+  },
   integrations: {
     clients: {
       credential: "Credential",
@@ -365,6 +414,10 @@ export const en = {
     apiReference: "API reference",
     github: "GitHub",
     items: {
+      credits: {
+        description: "Credits left, burn rate, and when they run out",
+        title: "Credits",
+      },
       integrations: {
         description: "Drop-in config for Claude Code, Cursor, SDKs, and cURL",
         title: "Integrations",

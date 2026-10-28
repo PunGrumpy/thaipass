@@ -220,6 +220,7 @@ Every route the proxy serves:
 | `POST /v1/audio/generations` | One music clip, buffered | yes |
 | `GET /v1/models` | The account's model catalog | yes |
 | `GET /v1/usage` | The account's credit balance | yes |
+| `GET /v1/usage/history` | The balance over the last 7 days, plus the live one | yes |
 | `GET /v1/lms/exp` | The account's learning EXP | yes |
 | `GET /v1/lms/courses` | The account's course catalogue | yes |
 | `POST /v1/lms/learn` | Learns lessons until a target EXP | yes |
@@ -402,6 +403,42 @@ Token counts are an estimate, not a tokeniser's output. The proxy counts about f
 curl -s localhost:3001/v1/usage -H "authorization: Bearer $AIPASS_COOKIE"
 ```
 
+## Credit history
+
+The dashboard's **Credits** page charts what the account has left over the last seven days. It draws the recorded balance as a solid line and a dashed projection to the future, steps up at each reset, and shows the burn over the last 1, 3 or 6 hours, when the credits run out (or "not before reset"), the next reset and what it adds back, and an approximate split of spend by model and by app.
+
+AI Pass reports only the balance right now, so the history has to be recorded. The proxy records a reading each time a request already read the balance: at the end of every completion, on `GET /v1/usage`, on each T3 Code usage poll, and on every read of `GET /v1/usage/history`. There is no scheduler, because a scheduler would have to hold your cookie. The history is therefore denser while you are working and flat while you are not, which is what the balance does too. Spend that does not pass through the proxy, such as using the AI Pass website, shows up as a step at the next reading and lands in the page's "outside this gateway" row.
+
+### Turn it on
+
+The proxy keeps readings in a Redis store you own and nothing else.
+
+1. In Vercel, open the **proxy** project, then **Storage**, **Create**, **Marketplace**, **Upstash for Redis**. The free plan is enough.
+2. Connect it to the proxy project for every environment. That adds `KV_REST_API_URL` and `KV_REST_API_TOKEN`. A store you made by hand can set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` instead.
+3. Redeploy the proxy, because variables apply only to new deployments.
+4. Open **Credits** in the dashboard. Each poll records a reading, and each request through the proxy adds more.
+
+Without a store the proxy works as before. The page then shows the live balance and a notice with these steps, and `GET /v1/usage/history` answers `"store": "off"` with no samples. If the store is set but does not answer, the answer is `"store": "down"` and the live balance is still returned. A store problem never fails a request: every call to it gives up after two seconds.
+
+### What is stored
+
+Each reading holds the time, the credits used and the limit, when the period resets, and, for a completion, the model, the `x-thaipass-app` name and the credits that call spent. It is filed under a key made from a hash of your AI Pass user id, so a new session, or the LMS cookie of the same account, lands in the same series. No cookie, `tp_v1_` token, email or name is written. The proxy's history code is handed an identity, never a credential, so it has nothing else to write.
+
+Readings are kept for 14 days and at most 10,000 per account, and the key expires if the account goes quiet. The store's own token is a credential for your Redis. It can read and write your readings and nothing at AI Pass, and it lives only in the proxy project's environment.
+
+### What it costs
+
+A completion writes one reading, which is four Redis commands. A repeated balance is skipped, so an open page adds about one read a minute and writes only when the balance moves. A heavy day of 1,000 completions with the page open for eight hours is about 4,500 commands, around 135,000 a month. Upstash's free plan allowed 500,000 commands a month when this was written. Check its pricing page for the current limit.
+
+The page reads the 7 days thinned on the server: every reading from the last six hours, then one level per 15 minutes, with every reset kept.
+
+### Accuracy
+
+- **Burn** comes from how the balance changed inside the current period, never from adding up what each reply says it spent, because replies that overlap each count the other's spend.
+- **Empty at** assumes the burn of the window you picked continues. It says "no recent spend" when the balance did not move and "not enough data yet" when the window holds too little to say.
+- **Spend by model and app** is approximate. When overlapping replies claim more than the balance moved, the claims are scaled down to it, so the total is exact and the split is not.
+- The period is assumed to be a day when a projection has to reach past the next reset. AI Pass does not say how long it is.
+
 ## Earn LMS points
 
 AI Pass runs a learning site at `/lms` that pays EXP per completed lesson, and the membership tier wants a monthly minimum. The proxy can do the learning for you, from the dashboard, from a command on your machine, or from a scheduler through the API.
@@ -512,6 +549,8 @@ Set the Vercel project's Root Directory to `apps/proxy` and turn on the option t
 The dashboard is a second Vercel project with Root Directory `apps/dashboard`. Give it `NEXT_PUBLIC_PROXY_URL` (the gateway it talks to) and `NEXT_PUBLIC_WEB_URL` (its own address, which the gateway names as the login screen). A dashboard whose gateway is not on loopback pins it: the origin field in Settings is read-only, so a reader cannot point your deployment at a gateway you do not run and take its traffic, and its logs, with them. `NEXT_PUBLIC_PROXY_LOCKED=0` unpins it, `1` pins a local one.
 
 Two settings keep that tracing honest. The root `bunfig.toml` installs hoisted, so the traced files are real directories rather than links into a store outside the Root Directory. The install command deletes every `node_modules` first, because Vercel's build cache keeps the old isolated layout's links beside the hoisted one and the tracer follows them into a store the function does not carry. Keep Deployment Protection on. The deployment stores no credential, but it relays to AI Pass for anyone holding a valid cookie.
+
+The proxy can also keep a credit history in a Redis store of your own. It is optional, and [Credit history](#credit-history) has the steps.
 
 On Vercel the function duration bounds a stream, not the proxy's 240s idle timeout, so a slow model can be cut off mid-reply. Video will not survive there at all, and the LMS learner pauses itself at 270 seconds. See [Video](#video) and [On a schedule](#on-a-schedule).
 

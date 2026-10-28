@@ -83,3 +83,18 @@ export const pluralize = (
   forms: { one: string; other: string }
 ): string =>
   fill(count === 1 ? forms.one : forms.other, count.toLocaleString());
+
+const WHOLE_CREDITS_FROM = 100;
+
+export const formatCredits = (value: number, locale?: string): string =>
+  value.toLocaleString(locale, {
+    maximumFractionDigits: Math.abs(value) >= WHOLE_CREDITS_FROM ? 0 : 1,
+  });
+
+export const formatMoment = (at: number, locale?: string): string =>
+  new Date(at).toLocaleString(locale, {
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+  });

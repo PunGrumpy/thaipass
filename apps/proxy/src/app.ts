@@ -10,6 +10,7 @@ import "./lib/settings";
 import { apiError } from "./openai/errors";
 import { audioRoutes } from "./routes/audio";
 import { chatRoutes } from "./routes/chat";
+import { creditHistoryRoutes } from "./routes/credit-history";
 import { docsRoutes } from "./routes/docs";
 import { healthRoutes } from "./routes/health";
 import { imageRoutes } from "./routes/images";
@@ -99,6 +100,7 @@ export const app = new Elysia()
   .use(modelRoutes)
   .use(healthRoutes)
   .use(usageRoutes)
+  .use(creditHistoryRoutes())
   .use(managementRoutes)
   .use(lmsRoutes)
   .use(oauthRoutes)

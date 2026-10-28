@@ -10,6 +10,8 @@ export const CONFIRM_PATH = "/actions/upload-file/confirm";
 export const DELETE_PATH = "/actions/update-conversation.data";
 export const SEND_PREFIX = "/actions/send-message/";
 export const QUOTA_PATH = "/loaders/get-usage-quota";
+export const TIER_PATH = "/lms/api/v1/session/session-tier";
+export const SESSION_PATH = "/lms/api/v1/session/";
 const QUOTA_DECIMALS = 2;
 const RESET_AT = "2026-09-04T00:00:00.000Z";
 
@@ -42,7 +44,7 @@ const pathOf = (input: string | URL | Request): string => {
 
 export const stubUpstream = (
   respond: () => Response,
-  extra?: (path: string) => Response | undefined
+  extra?: (path: string, init?: RequestInit) => Response | undefined
 ): Upstream => {
   const realFetch = globalThis.fetch;
   const calls: string[] = [];
@@ -65,7 +67,7 @@ export const stubUpstream = (
     if (path.startsWith(SEND_PREFIX)) {
       return Promise.resolve(respond());
     }
-    const routed = extra?.(path);
+    const routed = extra?.(path, init);
     if (routed) {
       return Promise.resolve(routed);
     }
@@ -183,3 +185,39 @@ export const quotaResponse = (used: readonly number[], limit: number) => {
     });
   };
 };
+
+/** Answers the identity loaders as the account `userId`, so a test can key a series by it. */
+export const identityResponse =
+  (userId: string) =>
+  (path: string): Response | undefined => {
+    if (path === TIER_PATH) {
+      return Response.json({
+        data: {
+          member: { currentTierExp: 120, tierName: "Explorer" },
+          user: { email: "reader@example.com", id: userId, name: "Reader" },
+        },
+      });
+    }
+    if (path === SESSION_PATH) {
+      return Response.json({ data: { session: {} } });
+    }
+    return undefined;
+  };
+
+/** The first fixture that answers wins, so a test can serve quota, identity and a store at once. */
+export const routes =
+  (
+    ...fixtures: readonly ((
+      path: string,
+      init?: RequestInit
+    ) => Response | undefined)[]
+  ) =>
+  (path: string, init?: RequestInit): Response | undefined => {
+    for (const fixture of fixtures) {
+      const answer = fixture(path, init);
+      if (answer) {
+        return answer;
+      }
+    }
+    return undefined;
+  };
