@@ -15,7 +15,7 @@ import { z } from "zod";
 import { requestLogger } from "../lib/logger";
 import { json } from "../lib/openapi";
 import { apiError, apiErrorSchema } from "../openai/errors";
-import { WORKSPACE_MODELS } from "../workspace/models";
+import { isWorkspaceModel } from "../workspace/models";
 
 const NO_CATALOG = "AI Pass reported no model catalog";
 
@@ -68,22 +68,6 @@ export const modelListSchema = z.object({
 
 export type ModelList = z.infer<typeof modelListSchema>;
 
-type ModelEntry = ModelList["data"][number];
-
-/** Served by the Gemini Enterprise workspace, so no AI Pass catalog or price knows them. */
-const workspaceEntries = (): ModelEntry[] =>
-  WORKSPACE_MODELS.map((id) => ({
-    free: true,
-    id,
-    kind: "chat" as const,
-    object: "model" as const,
-    options: null,
-    owned_by: "aipass" as const,
-    pricing: null,
-    ready: true,
-    thinking: null,
-  }));
-
 /** SAFETY: the predicate is the membership test, so the widening is what it checks. */
 const isVideo = (id: string): id is VideoModel =>
   (VIDEO_MODELS as readonly string[]).includes(id);
@@ -134,27 +118,28 @@ export const modelRoutes = new Elysia()
         log.set({ catalogFailure: listed.failure ?? "unknown", status: 502 });
         return status(502, apiError(noCatalogMessage(listed.failure)));
       }
-      log.set({ modelCount: catalog.size + WORKSPACE_MODELS.length });
+      // Workspace models answer chat but refuse tools, so an agent that picks from this list would stall on them.
+      const shown = [...catalog].filter(
+        ([modelId]) => !isWorkspaceModel(modelId)
+      );
+      log.set({ modelCount: shown.length });
       const listing: ModelList = {
-        data: [
-          ...[...catalog].map(([modelId, entry]) => {
-            const price = prices ? priceFor(modelId, prices) : undefined;
-            return {
-              free: entry.free,
-              id: modelId,
-              kind: kindOf(modelId),
-              object: "model" as const,
-              options: optionsOf(modelId),
-              owned_by: "aipass" as const,
-              pricing: price
-                ? { completion: price.completion, prompt: price.prompt }
-                : null,
-              ready: entry.ready,
-              thinking: entry.thinking,
-            };
-          }),
-          ...workspaceEntries(),
-        ],
+        data: shown.map(([modelId, entry]) => {
+          const price = prices ? priceFor(modelId, prices) : undefined;
+          return {
+            free: entry.free,
+            id: modelId,
+            kind: kindOf(modelId),
+            object: "model" as const,
+            options: optionsOf(modelId),
+            owned_by: "aipass" as const,
+            pricing: price
+              ? { completion: price.completion, prompt: price.prompt }
+              : null,
+            ready: entry.ready,
+            thinking: entry.thinking,
+          };
+        }),
         object: "list" as const,
       };
       return listing;

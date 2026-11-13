@@ -551,6 +551,8 @@ The proxy stops at the first failed call instead of trying the next course. An u
 
 AI Pass accounts with the Gemini Enterprise entitlement can use `gemini-4-argon`. AI Pass's chat API does not serve it. It lives in a Google workspace behind Google sign-in, and only a real browser can finish that sign-in. The proxy runs no browser, so each caller brings one.
 
+`GET /v1/models` does not list it, because it refuses tools and would stall an agent that picks from that list. Name it directly.
+
 ### Use it
 
 Send a [Browserless](https://www.browserless.io) key in `x-browser-token` next to your usual credential. The model then answers on the same three chat routes as every other model:
