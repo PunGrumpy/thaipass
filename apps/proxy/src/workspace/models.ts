@@ -2,7 +2,7 @@
  * Models served by Gemini Enterprise's Google workspace rather than AI Pass's
  * chat API. This list is the one place that decides a model goes there.
  */
-export const WORKSPACE_MODELS = ["gemini-4-argon"] as const;
+export const WORKSPACE_MODELS = ["gemini-4-argon", "gemini-4-carbon"] as const;
 
 export type WorkspaceModel = (typeof WORKSPACE_MODELS)[number];
 

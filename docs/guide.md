@@ -233,7 +233,7 @@ Every route the proxy serves:
 | `GET /health` | Liveness | no |
 | `GET /` | OpenAPI docs rendered by Scalar, JSON at `/openapi.json` | no |
 
-The three chat routes, `/v1/chat/completions`, `/v1/responses` and `/v1/messages`, also read an optional `x-browser-token` header. Only `gemini-4-argon` uses it. See [Gemini Enterprise](#gemini-enterprise).
+The three chat routes, `/v1/chat/completions`, `/v1/responses` and `/v1/messages`, also read an optional `x-browser-token` header. Only the Gemini Enterprise models, `gemini-4-argon` and `gemini-4-carbon`, use it. See [Gemini Enterprise](#gemini-enterprise).
 
 ## Settings
 
@@ -245,7 +245,7 @@ Every setting has a default, so the proxy runs with no `.env`:
 | `AIPASS_HOST` | `127.0.0.1` | Bind address, local only |
 | `AIPASS_PORT` | `3001` | Port, local only |
 | `AIPASS_PRICES` | OpenRouter's model list | Where per-token prices come from, `off` for none |
-| `THAIPASS_BROWSER_WS` | none | A Browserless key, or a `ws://` or `wss://` endpoint, for `gemini-4-argon`, used when a request sends no `x-browser-token`. See [Gemini Enterprise](#gemini-enterprise) |
+| `THAIPASS_BROWSER_WS` | none | A Browserless key, or a `ws://` or `wss://` endpoint, for the Gemini Enterprise models, used when a request sends no `x-browser-token`. See [Gemini Enterprise](#gemini-enterprise) |
 | `THAIPASS_TOKEN_KEY` | none | 32 bytes of base64, from `bun run login keygen`. Without it the gateway issues no tokens and takes only cookies. See [Login with thaipass](#login-with-thaipass) |
 | `POSTHOG_API_KEY` | none | Project token (`phc_…`), enables PostHog |
 | `POSTHOG_HOST` | `https://us.i.posthog.com` | PostHog ingestion host |
@@ -549,11 +549,11 @@ The proxy stops at the first failed call instead of trying the next course. An u
 
 ## Gemini Enterprise
 
-AI Pass accounts with the Gemini Enterprise entitlement can use `gemini-4-argon`. AI Pass's chat API does not serve it. It lives in a Google workspace behind Google sign-in, and only a real browser can finish that sign-in. The proxy runs no browser, so each caller brings one.
+AI Pass accounts with the Gemini Enterprise entitlement can use `gemini-4-argon` and `gemini-4-carbon`. AI Pass's chat API does not serve them. They live in a Google workspace behind Google sign-in, and only a real browser can finish that sign-in. The proxy runs no browser, so each caller brings one.
 
-`GET /v1/models` does not list it, because it refuses tools and would stall an agent that picks from that list. Name it directly.
+`GET /v1/models` does not list them, because they refuse tools and would stall an agent that picks from that list. Name them directly.
 
-### Use it
+### Use them
 
 Send a [Browserless](https://www.browserless.io) key in `x-browser-token` next to your usual credential. The model then answers on the same three chat routes as every other model:
 
@@ -568,7 +568,7 @@ curl http://127.0.0.1:3001/v1/chat/completions \
 A value that starts with `wss://` is used as the browser endpoint as it is, so a Browserless on another region or a browser you host works too. A bare key means `wss://production-sfo.browserless.io`. The header never accepts a plain `ws://` endpoint, so a caller cannot point a shared host at its own localhost. The host's `THAIPASS_BROWSER_WS` can be `ws://`, for a local Chrome.
 
 - **Claude Code**: add `ANTHROPIC_CUSTOM_HEADERS="x-browser-token: your_key"` and set `ANTHROPIC_MODEL=gemini-4-argon`.
-- **Codex and T3 Code**: add `http_headers = { "x-browser-token" = "your_key" }` to the `[model_providers.thaipass]` block, and pick `gemini-4-argon` as the model.
+- **Codex and T3 Code**: add `http_headers = { "x-browser-token" = "your_key" }` to the `[model_providers.thaipass]` block, and pick `gemini-4-argon` or `gemini-4-carbon` as the model.
 
 The proxy's host can also set `THAIPASS_BROWSER_WS` to a key or endpoint, which applies to a caller who sends no header. Without either, the request fails with `400`.
 
