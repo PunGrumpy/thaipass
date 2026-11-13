@@ -224,12 +224,16 @@ Every route the proxy serves:
 | `GET /v1/lms/exp` | The account's learning EXP | yes |
 | `GET /v1/lms/courses` | The account's course catalogue | yes |
 | `POST /v1/lms/learn` | Learns lessons until a target EXP | yes |
+| `GET /v1/workspace/status` | Gemini Enterprise entitlement status and console URL | yes |
+| `GET /v1/workspace/launch` | Resolves one-click SSO redirect URL to Google Cloud Vertex AI Search | yes |
 | `POST /oauth/code` | Issues an authorization code, from the dashboard | yes |
 | `POST /oauth/token` | Exchanges a code for a thaipass token | no |
 | `GET /oauth/userinfo` | The account behind a credential | yes |
 | `GET /oauth/metadata` | Where the login endpoints are | no |
 | `GET /health` | Liveness | no |
 | `GET /` | OpenAPI docs rendered by Scalar, JSON at `/openapi.json` | no |
+
+The three chat routes, `/v1/chat/completions`, `/v1/responses` and `/v1/messages`, also read an optional `x-browser-token` header. Only `gemini-4-argon` uses it. See [Gemini Enterprise](#gemini-enterprise).
 
 ## Settings
 
@@ -241,6 +245,7 @@ Every setting has a default, so the proxy runs with no `.env`:
 | `AIPASS_HOST` | `127.0.0.1` | Bind address, local only |
 | `AIPASS_PORT` | `3001` | Port, local only |
 | `AIPASS_PRICES` | OpenRouter's model list | Where per-token prices come from, `off` for none |
+| `THAIPASS_BROWSER_WS` | none | A Browserless key, or a `ws://` or `wss://` endpoint, for `gemini-4-argon`, used when a request sends no `x-browser-token`. See [Gemini Enterprise](#gemini-enterprise) |
 | `THAIPASS_TOKEN_KEY` | none | 32 bytes of base64, from `bun run login keygen`. Without it the gateway issues no tokens and takes only cookies. See [Login with thaipass](#login-with-thaipass) |
 | `POSTHOG_API_KEY` | none | Project token (`phc_…`), enables PostHog |
 | `POSTHOG_HOST` | `https://us.i.posthog.com` | PostHog ingestion host |
@@ -541,6 +546,57 @@ Three things to know before relying on it:
 - **Keep the pace at 1.** The player blocks seeking on a first watch and never lets a stamp advance more than ten seconds, so a run takes as long as the videos do.
 
 The proxy stops at the first failed call instead of trying the next course. An undocumented backend that refused once will refuse again, and the programme awards these points for learning a person is meant to do. This is your account and your call. The proxy sends nothing a browser watching the video would not.
+
+## Gemini Enterprise
+
+AI Pass accounts with the Gemini Enterprise entitlement can use `gemini-4-argon`. AI Pass's chat API does not serve it. It lives in a Google workspace behind Google sign-in, and only a real browser can finish that sign-in. The proxy runs no browser, so each caller brings one.
+
+`GET /v1/models` does not list it, because it refuses tools and would stall an agent that picks from that list. Name it directly.
+
+### Use it
+
+Send a [Browserless](https://www.browserless.io) key in `x-browser-token` next to your usual credential. The model then answers on the same three chat routes as every other model:
+
+```bash
+curl http://127.0.0.1:3001/v1/chat/completions \
+  -H "Authorization: Bearer $AIPASS_COOKIE" \
+  -H "x-browser-token: $BROWSERLESS_KEY" \
+  -H "content-type: application/json" \
+  -d '{"model":"gemini-4-argon","messages":[{"role":"user","content":"hi"}]}'
+```
+
+A value that starts with `wss://` is used as the browser endpoint as it is, so a Browserless on another region or a browser you host works too. A bare key means `wss://production-sfo.browserless.io`. The header never accepts a plain `ws://` endpoint, so a caller cannot point a shared host at its own localhost. The host's `THAIPASS_BROWSER_WS` can be `ws://`, for a local Chrome.
+
+- **Claude Code**: add `ANTHROPIC_CUSTOM_HEADERS="x-browser-token: your_key"` and set `ANTHROPIC_MODEL=gemini-4-argon`.
+- **Codex and T3 Code**: add `http_headers = { "x-browser-token" = "your_key" }` to the `[model_providers.thaipass]` block, and pick `gemini-4-argon` as the model.
+
+The proxy's host can also set `THAIPASS_BROWSER_WS` to a key or endpoint, which applies to a caller who sends no header. Without either, the request fails with `400`.
+
+### What to expect
+
+- **The first call takes about 5 seconds.** The proxy signs in through your browser once, then closes it. The session is kept on a warm instance for 50 minutes, so later calls skip the sign-in. A cold start or a new instance signs in again.
+- **A `401` that names Gemini Enterprise** means the workspace refused a fresh sign-in. The account may lack the entitlement; `GET /v1/workspace/status` shows it.
+- **Tools do not work.** The proxy offers them through the prompt as it does for other models, but the Gemini Enterprise assistant refuses any tool outside its own. Use it for chat, not as the model behind an agent loop in Claude Code or Codex.
+- **No attachments.** A request with a file or image gets `400`.
+- **The reply comes from the Gemini Enterprise assistant**, so it answers as that persona, not as a bare model.
+- **No AI Pass credits are spent**, so the usage figures report no spend.
+
+The browser sees the AI Pass session token while it signs in, and Browserless bills its own usage to its key. The proxy keeps neither the browser endpoint nor the token in its logs.
+
+### Status and launch
+
+```bash
+bun run workspace status        # Checks entitlement status
+bun run workspace open          # Opens Gemini Enterprise in your browser
+bun run workspace ask "hi" -b "$BROWSERLESS_KEY"   # Asks gemini-4-argon, or set THAIPASS_BROWSER_WS
+```
+
+The CLI reads the session cookie from `AIPASS_COOKIE`, `~/.codex-thaipass/auth.json`, or a stored `thaipass login`.
+
+Over HTTP:
+
+- `GET /v1/workspace/status` returns the entitlement and the console URL.
+- `GET /v1/workspace/launch` returns the sign-in URL that opens the console.
 
 ## Deploy to Vercel
 

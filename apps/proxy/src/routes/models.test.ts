@@ -101,6 +101,16 @@ test("leaves out a model the proxy knows but the catalog no longer lists", async
   ]);
 });
 
+test("hides the workspace models, which refuse tools", async () => {
+  upstream = stubUpstream(
+    sseResponse([]),
+    catalogOf([{ id: "glm-5.3" }, { id: "gemini-4-argon" }])
+  );
+  const response = await list(freshCookie());
+  const listing = modelListSchema.parse(await response.json());
+  expect(listing.data.map((model) => model.id)).toEqual(["glm-5.3"]);
+});
+
 test("answers 502 when the catalog cannot be read", async () => {
   upstream = stubUpstream(sseResponse([]));
   const response = await list(freshCookie());

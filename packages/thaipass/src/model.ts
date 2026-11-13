@@ -22,6 +22,7 @@ import {
   isEdgeRefusal,
 } from "@thaipass/core/aipass/refusal";
 import { clientIdFromCookie } from "@thaipass/core/aipass/session";
+import { parseAipassSSE } from "@thaipass/core/aipass/stream";
 import { thinkingLevelSchema } from "@thaipass/core/aipass/thinking";
 import type { ThinkingLevel } from "@thaipass/core/aipass/thinking";
 import { config } from "@thaipass/core/lib/config";
@@ -163,7 +164,8 @@ const startTurn = async (
     prepared.sendOptions
   );
   const contentType = response.headers.get("content-type") ?? "";
-  if (response.ok && response.body && contentType.includes("event-stream")) {
+  const eventStream = response.body;
+  if (response.ok && eventStream && contentType.includes("event-stream")) {
     const warnings = [
       ...prompt.warnings,
       ...offered.warnings,
@@ -177,9 +179,9 @@ const startTurn = async (
       credits,
       inputTokens: prepared.inputTokens,
       reader: readReply({
-        body: response.body,
         cookie,
         signal: options.abortSignal,
+        source: (skips) => parseAipassSSE(eventStream, skips),
         tools,
       }),
       warnings,

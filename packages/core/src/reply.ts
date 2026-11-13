@@ -3,8 +3,7 @@ import type { SendOptions } from "./aipass/client";
 import { fromDataUri } from "./aipass/inline";
 import { resolveAsset } from "./aipass/media";
 import type { MediaAsset } from "./aipass/media";
-import { parseAipassSSE } from "./aipass/stream";
-import type { SSESkips } from "./aipass/stream";
+import type { SSESkips, StreamEvent } from "./aipass/stream";
 import { resolveThinking } from "./aipass/thinking";
 import type { ThinkingLevel } from "./aipass/thinking";
 import { addText, charTokens, estimateTokens, newCharCount } from "./tokens";
@@ -89,8 +88,13 @@ export interface ReplyReader {
 }
 
 export interface ReadReplyOptions {
-  readonly body: ReadableStream<Uint8Array>;
+  /** The cookie that resolves a file the reply links to. */
   readonly cookie: string;
+  /**
+   * Where the events come from. It is given the tally's skip counter so a
+   * source that decodes frames can report the ones it could not read.
+   */
+  readonly source: (skips: SSESkips) => AsyncIterable<StreamEvent>;
   readonly signal: AbortSignal | undefined;
   readonly tools: readonly ToolDefinition[];
   readonly startedAt?: number;
@@ -118,7 +122,7 @@ export const replyTokens = (tally: ReplyTally): number =>
  * caller handles one differently.
  */
 export const readReply = (options: ReadReplyOptions): ReplyReader => {
-  const { body, cookie, signal, tools } = options;
+  const { cookie, signal, source, tools } = options;
   const startedAt = options.startedAt ?? Date.now();
   const tally: ReplyTally = {
     calls: 0,
@@ -152,7 +156,7 @@ export const readReply = (options: ReadReplyOptions): ReplyReader => {
   };
 
   const events = async function* events(): AsyncGenerator<ReplyEvent> {
-    for await (const event of parseAipassSSE(body, tally.skips)) {
+    for await (const event of source(tally.skips)) {
       if (event.kind === "delta") {
         tally.msToFirstChunk ??= Date.now() - startedAt;
         tally.deltas += 1;

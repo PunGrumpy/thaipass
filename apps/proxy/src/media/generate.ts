@@ -2,6 +2,7 @@ import { deleteConversation, sendMessage } from "@thaipass/core/aipass/client";
 import type { MediaAsset } from "@thaipass/core/aipass/media";
 import { fetchCredits, settleCredits } from "@thaipass/core/aipass/quotas";
 import type { CreditUsage } from "@thaipass/core/aipass/quotas";
+import { parseAipassSSE } from "@thaipass/core/aipass/stream";
 import { readReply } from "@thaipass/core/reply";
 import { toAipassMessages } from "@thaipass/core/translate";
 
@@ -69,7 +70,13 @@ export const generateMedia = async (
 
   const assets: MediaAsset[] = [];
   let text = "";
-  const reader = readReply({ body: response.body, cookie, signal, tools: [] });
+  const { body } = response;
+  const reader = readReply({
+    cookie,
+    signal,
+    source: (skips) => parseAipassSSE(body, skips),
+    tools: [],
+  });
   try {
     for await (const event of reader.events) {
       if (event.kind === "text") {

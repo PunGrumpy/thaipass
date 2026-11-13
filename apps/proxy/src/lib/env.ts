@@ -34,6 +34,8 @@ export const env = createEnv({
     KV_REST_API_URL: z.url().optional(),
     POSTHOG_API_KEY: z.string().startsWith("phc_").optional(),
     POSTHOG_HOST: z.url().optional().default("https://us.i.posthog.com"),
+    /** A Browserless key or a ws(s):// endpoint, for a caller who sends no x-browser-token. */
+    THAIPASS_BROWSER_WS: z.string().optional(),
     /** 32 bytes of base64. Without it the gateway issues no thaipass tokens. */
     THAIPASS_TOKEN_KEY: z.string().optional(),
     /** The same store under the names @upstash/redis and a hand-made database use. */

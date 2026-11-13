@@ -24,7 +24,10 @@ import {
 import {
   clientIdFromCookie,
   cookieFromRequest,
+  sessionTokenOf,
 } from "@thaipass/core/aipass/session";
+import { parseAipassSSE } from "@thaipass/core/aipass/stream";
+import type { StreamEvent } from "@thaipass/core/aipass/stream";
 import type { ThinkingLevel } from "@thaipass/core/aipass/thinking";
 import { UploadError } from "@thaipass/core/aipass/upload";
 import { guardController } from "@thaipass/core/lib/stream";
@@ -49,9 +52,14 @@ import type { RequestLogger } from "evlog";
 import { appName } from "./lib/client";
 import { history } from "./lib/history";
 import type { DeferredEmit } from "./lib/logger";
+import { WorkspaceAuthError } from "./workspace/assist";
+import { browserEndpoint } from "./workspace/browser";
+import { isWorkspaceModel } from "./workspace/models";
+import { openAssist } from "./workspace/sessions";
 
 /**
- * One turn against AI Pass. The turn is the same whichever protocol asked for
+ * One turn against AI Pass, or against the Gemini Enterprise workspace for a
+ * model only that serves. The turn is the same whichever protocol asked for
  * it; a `Wire` decides only the shape of the bytes going back.
  */
 
@@ -299,13 +307,14 @@ const upstreamError = async (
 
 interface Completion {
   readonly app: string | null;
-  readonly conversationId: string;
   readonly cookie: string;
   readonly facts: UpstreamFacts;
   readonly inputTokens: number;
   readonly log: RequestLogger;
   readonly model: string;
   readonly reader: ReplyReader;
+  /** Lets go of what the turn held upstream, once the reply has been read. */
+  readonly release: () => Promise<void>;
   readonly wire: Wire;
 }
 
@@ -342,8 +351,7 @@ const streamCompletion = (
   completion: Completion,
   deferEmit: DeferredEmit
 ): Response => {
-  const { conversationId, cookie, facts, log, model, reader, wire } =
-    completion;
+  const { cookie, facts, log, model, reader, release, wire } = completion;
   const { tally } = reader;
   deferEmit.value = true;
   let guarded: GuardedController<Uint8Array> | undefined;
@@ -379,7 +387,7 @@ const streamCompletion = (
       } finally {
         const [{ after, usage }] = await Promise.all([
           settleCredits(cookie, facts.credits),
-          deleteConversation(cookie, conversationId),
+          release(),
         ]);
         const outputTokens = replyTokens(tally);
         const cost = await costFor(
@@ -432,8 +440,7 @@ interface Attempt {
 }
 
 const bufferedCompletion = async (completion: Completion): Promise<Attempt> => {
-  const { conversationId, cookie, facts, log, model, reader, wire } =
-    completion;
+  const { cookie, facts, log, model, reader, release, wire } = completion;
   const { tally } = reader;
   const calls: ToolCall[] = [];
   let text = "";
@@ -463,7 +470,7 @@ const bufferedCompletion = async (completion: Completion): Promise<Attempt> => {
       retry: false,
     };
   } finally {
-    await deleteConversation(cookie, conversationId);
+    await release();
     log.set(tallyFields(tally));
   }
   const { after, usage } = await settleCredits(cookie, facts.credits);
@@ -561,28 +568,161 @@ const openAttempt = async (send: Send): Promise<Completion | Response> => {
 
   return {
     app: send.app,
-    conversationId,
     cookie,
     facts,
     inputTokens: prepared.inputTokens,
     log,
     model,
     reader: readReply({
-      body: upstreamBody,
       cookie,
       signal,
+      source: (skips) => parseAipassSSE(upstreamBody, skips),
       startedAt: send.startedAt,
       tools: conversation.tools,
     }),
+    release: () => deleteConversation(cookie, conversationId),
     wire,
   };
+};
+
+const NO_BROWSER = (model: string): string =>
+  `${model} is served through a browser you bring, since the host runs none. Send your Browserless key as "x-browser-token: <key>" next to your AI Pass credential.`;
+
+const NO_ENTITLEMENT =
+  "Gemini Enterprise refused the session. The AI Pass account may lack the Gemini Enterprise entitlement; GET /v1/workspace/status shows it.";
+
+const authFailure = (send: Send, error: WorkspaceAuthError): Response => {
+  const { log, wire } = send;
+  log.set({ status: 401, upstreamStatus: error.status });
+  log.error(error);
+  return wire.fail({ message: NO_ENTITLEMENT, status: 401 });
+};
+
+/**
+ * One trip to the Gemini Enterprise workspace. It answers text only, and holds
+ * nothing to clean up: the session behind it is reused across turns.
+ */
+const openWorkspace = async (
+  endpoint: string,
+  send: Send
+): Promise<Completion | Response> => {
+  const { conversation, cookie, facts, log, model, prepared, signal, wire } =
+    send;
+  if ((prepared.sendOptions.attachments?.length ?? 0) > 0) {
+    log.set({ status: 400 });
+    return wire.fail({
+      message: `${model} takes text only, so the request cannot carry attachments`,
+      status: 400,
+    });
+  }
+  const sessionToken = sessionTokenOf(cookie);
+  if (!sessionToken) {
+    log.set({ status: 401 });
+    return wire.fail({
+      message: "the credential carries no AI Pass session token",
+      status: 401,
+    });
+  }
+  let events: AsyncIterable<StreamEvent>;
+  try {
+    events = await openAssist({
+      endpoint,
+      model,
+      prompt: prepared.prompt,
+      sessionToken,
+      signal,
+    });
+  } catch (error) {
+    await recordUpstream(facts, model, log);
+    return error instanceof WorkspaceAuthError
+      ? authFailure(send, error)
+      : failUpstream(wire, log, error, `workspace failed: ${error}`);
+  }
+  log.set({ msToUpstream: Date.now() - send.startedAt });
+  return {
+    app: send.app,
+    cookie,
+    facts,
+    inputTokens: prepared.inputTokens,
+    log,
+    model,
+    reader: readReply({
+      cookie,
+      signal,
+      source: () => events,
+      startedAt: send.startedAt,
+      tools: conversation.tools,
+    }),
+    release: () => Promise.resolve(),
+    wire,
+  };
+};
+
+/**
+ * Where a turn goes. `backendFor` is the one place that decides, so the rest
+ * of the turn asks the backend rather than checking which model it is.
+ */
+interface Backend {
+  readonly name: "aipass" | "workspace";
+  /** What must hold before anything is prepared or sent; a Response says why it does not. */
+  readonly admit: () => Promise<Response | null>;
+  readonly open: (send: Send) => Promise<Completion | Response>;
+}
+
+const aipassBackend = (facts: UpstreamFacts, turn: TurnRequest): Backend => ({
+  admit: async () => {
+    const { log, model, wire } = turn;
+    /** The catalog decides the model, so it is read before anything is sent. */
+    const problem = chatModelProblem(model, await facts.catalog);
+    if (problem) {
+      log.set({ status: 400 });
+      return wire.fail({ message: problem, status: 400 });
+    }
+    const refused = creditsExhausted(
+      wire,
+      model,
+      await facts.catalog,
+      await facts.credits
+    );
+    if (refused) {
+      log.set({ creditsExhausted: true, status: RATE_LIMITED_STATUS });
+    }
+    return refused;
+  },
+  name: "aipass",
+  open: openAttempt,
+});
+
+const workspaceBackend = (endpoint: string): Backend => ({
+  admit: () => Promise.resolve(null),
+  name: "workspace",
+  open: (send) => openWorkspace(endpoint, send),
+});
+
+const backendFor = (
+  facts: UpstreamFacts,
+  turn: TurnRequest
+): Backend | Response => {
+  const { log, model, request, wire } = turn;
+  if (!isWorkspaceModel(model)) {
+    return aipassBackend(facts, turn);
+  }
+  const endpoint = browserEndpoint(request);
+  if (endpoint === null) {
+    log.set({ status: 400 });
+    return wire.fail({ message: NO_BROWSER(model), status: 400 });
+  }
+  return workspaceBackend(endpoint);
 };
 
 /**
  * A buffered turn can be tried again, because nothing has reached the caller
  * yet. Only a broken tool call earns a second go: every other failure repeats.
  */
-const bufferedTurn = async (send: Send): Promise<Response> => {
+const bufferedTurn = async (
+  send: Send,
+  backend: Backend
+): Promise<Response> => {
   const { log, signal } = send;
   let attempts = 0;
   // Each attempt decides whether there is another, so they cannot run together.
@@ -590,7 +730,7 @@ const bufferedTurn = async (send: Send): Promise<Response> => {
   for (;;) {
     attempts += 1;
     log.set({ attempts });
-    const opened = await openAttempt(send);
+    const opened = await backend.open(send);
     if (opened instanceof Response) {
       return opened;
     }
@@ -619,22 +759,14 @@ const playTurn = async (
     toolCount: conversation.tools.length,
   });
 
-  /** The catalog decides the model, so it is read before anything is sent. */
-  const problem = chatModelProblem(model, await facts.catalog);
-  if (problem) {
-    log.set({ status: 400 });
-    return wire.fail({ message: problem, status: 400 });
+  const backend = backendFor(facts, turn);
+  if (backend instanceof Response) {
+    return backend;
   }
-
-  const refused = creditsExhausted(
-    wire,
-    model,
-    await facts.catalog,
-    await facts.credits
-  );
-  if (refused) {
-    log.set({ creditsExhausted: true, status: RATE_LIMITED_STATUS });
-    return refused;
+  log.set({ backend: backend.name });
+  const refusal = await backend.admit();
+  if (refusal) {
+    return refusal;
   }
 
   /** A file the proxy cannot read fails the request rather than being dropped. */
@@ -686,12 +818,12 @@ const playTurn = async (
   };
   if (stream) {
     log.set({ attempts: 1 });
-    const opened = await openAttempt(send);
+    const opened = await backend.open(send);
     return opened instanceof Response
       ? opened
       : streamCompletion(opened, deferEmit);
   }
-  return await bufferedTurn(send);
+  return await bufferedTurn(send, backend);
 };
 
 /** Headers go out before the body, so they carry the balance from before the turn. */

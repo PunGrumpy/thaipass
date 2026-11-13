@@ -81,3 +81,10 @@ const CLIENT_ID_LENGTH = 16;
 
 export const clientIdFromCookie = (cookie: string): string =>
   createHash("sha256").update(cookie).digest("hex").slice(0, CLIENT_ID_LENGTH);
+
+const SESSION_TOKEN_VALUE =
+  /__Secure-ai_passport_auth\.session_token=(?<token>[^;\s]+)/u;
+
+/** The bare session token inside a cookie header, for a login that wants it on its own. */
+export const sessionTokenOf = (cookie: string): string | null =>
+  SESSION_TOKEN_VALUE.exec(cookie)?.groups?.token ?? null;

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 
+import { parseAipassSSE } from "./aipass/stream";
 import {
   finishReasonOf,
   isAbandonedToolCall,
@@ -24,9 +25,9 @@ const readAll = async (
   tools: readonly ToolDefinition[] = []
 ) => {
   const reader = readReply({
-    body: sseStream(frames),
     cookie: "session=abc",
     signal: undefined,
+    source: (skips) => parseAipassSSE(sseStream(frames), skips),
     tools,
   });
   const events: ReplyEvent[] = [];

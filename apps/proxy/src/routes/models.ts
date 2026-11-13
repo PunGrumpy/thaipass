@@ -15,6 +15,7 @@ import { z } from "zod";
 import { requestLogger } from "../lib/logger";
 import { json } from "../lib/openapi";
 import { apiError, apiErrorSchema } from "../openai/errors";
+import { isWorkspaceModel } from "../workspace/models";
 
 const NO_CATALOG = "AI Pass reported no model catalog";
 
@@ -117,9 +118,13 @@ export const modelRoutes = new Elysia()
         log.set({ catalogFailure: listed.failure ?? "unknown", status: 502 });
         return status(502, apiError(noCatalogMessage(listed.failure)));
       }
-      log.set({ modelCount: catalog.size });
+      // Workspace models answer chat but refuse tools, so an agent that picks from this list would stall on them.
+      const shown = [...catalog].filter(
+        ([modelId]) => !isWorkspaceModel(modelId)
+      );
+      log.set({ modelCount: shown.length });
       const listing: ModelList = {
-        data: [...catalog].map(([modelId, entry]) => {
+        data: shown.map(([modelId, entry]) => {
           const price = prices ? priceFor(modelId, prices) : undefined;
           return {
             free: entry.free,
