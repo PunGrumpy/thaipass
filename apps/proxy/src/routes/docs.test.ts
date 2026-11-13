@@ -88,6 +88,8 @@ test("documents every route the app serves", async () => {
     "/v1/usage",
     "/v1/usage/history",
     "/v1/videos",
+    "/v1/workspace/launch",
+    "/v1/workspace/status",
   ]);
 });
 

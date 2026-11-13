@@ -5,7 +5,7 @@ import { env } from "./env";
 const LOOPBACK = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/u;
 
 const ALLOWED_HEADERS =
-  "authorization, content-type, anthropic-version, x-thaipass-app";
+  "authorization, content-type, anthropic-version, x-thaipass-app, x-browser-token";
 const ALLOWED_METHODS = "GET, POST, DELETE, OPTIONS";
 const MAX_AGE = "86400";
 

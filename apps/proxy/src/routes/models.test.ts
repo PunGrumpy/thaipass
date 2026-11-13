@@ -77,6 +77,7 @@ test("lists what the account's catalog lists, in its order", async () => {
     "gemini-3.5-flash-lite",
     "seedance-2.0-fast",
     "gpt-image-2",
+    "gemini-4-argon",
   ]);
   const [claude, unknown, free, video, image] = listing.data;
   expect(claude?.thinking).toEqual(["low", "high", "max"]);
@@ -98,7 +99,25 @@ test("leaves out a model the proxy knows but the catalog no longer lists", async
   const listing = modelListSchema.parse(await response.json());
   expect(listing.data.map((model) => model.id)).toEqual([
     "gemini-3.5-flash-lite",
+    "gemini-4-argon",
   ]);
+});
+
+test("lists the workspace models as chat models with no price", async () => {
+  upstream = stubUpstream(sseResponse([]), catalogOf([{ id: "glm-5.3" }]));
+  const response = await list(freshCookie());
+  const listing = modelListSchema.parse(await response.json());
+  expect(listing.data.find((model) => model.id === "gemini-4-argon")).toEqual({
+    free: true,
+    id: "gemini-4-argon",
+    kind: "chat",
+    object: "model",
+    options: null,
+    owned_by: "aipass",
+    pricing: null,
+    ready: true,
+    thinking: null,
+  });
 });
 
 test("answers 502 when the catalog cannot be read", async () => {

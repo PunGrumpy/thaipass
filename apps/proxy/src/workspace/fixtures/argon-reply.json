@@ -1,0 +1,126 @@
+[
+  {
+    "streamAssistResponse": {
+      "keepalive": {}
+    }
+  },
+  {
+    "uToken": "<scrubbed>",
+    "streamAssistResponse": {
+      "answer": {
+        "state": "IN_PROGRESS",
+        "replies": [
+          {
+            "groundedContent": {
+              "content": {
+                "role": "model",
+                "text": "The product of 17 multiplied by 23 is **391**."
+              }
+            },
+            "createTime": "2026-11-13T15:34:29.606420675Z"
+          }
+        ],
+        "adkAuthor": "root_agent"
+      },
+      "sessionInfo": {
+        "session": "collections/default_collection/engines/thai-citizen-app-52/sessions/1",
+        "queryId": "1",
+        "turnId": "1"
+      },
+      "assistToken": "<scrubbed>"
+    }
+  },
+  {
+    "uToken": "<scrubbed>",
+    "streamAssistResponse": {
+      "answer": {
+        "state": "IN_PROGRESS",
+        "replies": [
+          {
+            "groundedContent": {
+              "content": {
+                "role": "model",
+                "text": "\n\nWould you like to solve another calculation or explore a quick mental math trick for multiplying two-digit numbers?\n\n"
+              }
+            },
+            "createTime": "2026-11-13T15:34:29.981835944Z"
+          }
+        ],
+        "adkAuthor": "root_agent"
+      },
+      "sessionInfo": {
+        "session": "collections/default_collection/engines/thai-citizen-app-52/sessions/1",
+        "queryId": "1",
+        "turnId": "1"
+      },
+      "assistToken": "<scrubbed>"
+    }
+  },
+  {
+    "uToken": "<scrubbed>",
+    "streamAssistResponse": {
+      "answer": {
+        "state": "IN_PROGRESS",
+        "replies": [
+          {
+            "groundedContent": {
+              "content": {
+                "role": "model",
+                "inlineData": {
+                  "mimeType": "application/json+suggestions",
+                  "data": "eyJyZWNvbW1lbmRlZFF1ZXN0aW9uc1Jlc3BvbnNlIjp7InF1ZXN0aW9ucyI6WyJTaG93IG1lIHRoZSBtZW50YWwgbWF0aCB0cmljayBmb3IgdGhpcyIsIldoYXQgaXMgMzkxIGRpdmlkZWQgYnkgMTc/IiwiR2l2ZSBtZSBhbm90aGVyIHR3by1kaWdpdCBtdWx0aXBsaWNhdGlvbiBwdXp6bGUiXX19"
+                }
+              }
+            },
+            "createTime": "2026-11-13T15:34:30.573717491Z"
+          }
+        ],
+        "adkAuthor": "root_agent"
+      },
+      "sessionInfo": {
+        "session": "collections/default_collection/engines/thai-citizen-app-52/sessions/1",
+        "queryId": "1",
+        "turnId": "1"
+      },
+      "assistToken": "<scrubbed>"
+    }
+  },
+  {
+    "uToken": "<scrubbed>",
+    "streamAssistResponse": {
+      "answer": {
+        "name": "collections/default_collection/engines/thai-citizen-app-52/sessions/1/assistAnswers/8760686436536500221",
+        "state": "SUCCEEDED",
+        "replies": [
+          {
+            "groundedContent": {},
+            "replyId": "1",
+            "createTime": "2026-11-13T15:34:29.981835944Z"
+          },
+          {
+            "groundedContent": {},
+            "replyId": "1",
+            "createTime": "2026-11-13T15:34:30.573717491Z"
+          }
+        ]
+      },
+      "sessionInfo": {
+        "session": "collections/default_collection/engines/thai-citizen-app-52/sessions/1",
+        "queryId": "1",
+        "turnId": "1"
+      },
+      "assistToken": "<scrubbed>",
+      "agentInfo": {
+        "coreAssistant": true
+      },
+      "modelInfo": {
+        "model": "gemini-4-argon",
+        "requestedModel": "gemini-4-argon",
+        "modelSelectionMode": "MODEL_SELECTION_MODE_EXPLICIT"
+      },
+      "dataSourceInfo": {
+        "selectionMode": "SELECTION_MODE_ALL"
+      }
+    }
+  }
+]

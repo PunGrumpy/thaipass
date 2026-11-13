@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 
 import { generateTokenKey, seal } from "../auth/seal";
-import { clientIdFromCookie, cookieFromRequest } from "./session";
+import {
+  clientIdFromCookie,
+  cookieFromRequest,
+  sessionTokenOf,
+} from "./session";
 
 const SESSION_COOKIE =
   "app_lang=th; __Secure-ai_passport_auth.session_token=abc.def";
@@ -116,4 +120,11 @@ test("refuses a token this deployment cannot open", () => {
   const result = lookup({ authorization: `Bearer ${token}` });
   expect(result.ok).toBe(false);
   expect(!result.ok && result.reason).toContain("another deployment");
+});
+
+test("reads the bare session token out of a cookie header", () => {
+  expect(
+    sessionTokenOf("a=1; __Secure-ai_passport_auth.session_token=abc.def; b=2")
+  ).toBe("abc.def");
+  expect(sessionTokenOf("a=1")).toBeNull();
 });

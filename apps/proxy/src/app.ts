@@ -22,6 +22,7 @@ import { oauthRoutes } from "./routes/oauth";
 import { responsesRoutes } from "./routes/responses";
 import { usageRoutes } from "./routes/usage";
 import { videoRoutes } from "./routes/videos";
+import { workspaceRoutes } from "./routes/workspace";
 
 const ANTHROPIC_PREFIX = "/v1/messages";
 
@@ -100,6 +101,7 @@ export const app = new Elysia()
   .use(modelRoutes)
   .use(healthRoutes)
   .use(usageRoutes)
+  .use(workspaceRoutes)
   .use(creditHistoryRoutes())
   .use(managementRoutes)
   .use(lmsRoutes)
