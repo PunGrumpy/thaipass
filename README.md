@@ -12,7 +12,7 @@ thaipass is a proxy with OpenAI-compatible and Anthropic-compatible endpoints in
 - **Credit history**: a dashboard chart of what is left, how fast it burns, and when it runs out
 - **Media**: image, video, and music generation
 - **Learning points**: earns the monthly learning management system (LMS) points from the dashboard, a command, or a scheduler
-- **Gemini Enterprise**: `gemini-4-argon` through your own Browserless key in `x-browser-token`, plus an entitlement check and console launch (`bun run workspace`)
+- **Gemini Enterprise**: `gemini-4-argon` and `gemini-4-carbon` through your own Browserless key in `x-browser-token`, plus an entitlement check and console launch (`bun run workspace`)
 - **AI SDK provider**: the `thaipass` package calls AI Pass with no HTTP hop
 
 <p>
