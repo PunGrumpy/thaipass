@@ -1,0 +1,13 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "thaipass-proxy",
+  "main": ".wrangler/worker/worker.js",
+  "compatibility_date": "2026-10-01",
+  // nodejs_compat serves node:crypto and fills process.env from vars and secrets.
+  "compatibility_flags": ["nodejs_compat"],
+  "build": {
+    "command": "bun scripts/build-worker.ts",
+    "watch_dir": ["src", "../../packages/core/src"],
+  },
+  "observability": { "enabled": true },
+}

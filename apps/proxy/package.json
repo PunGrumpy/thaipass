@@ -14,6 +14,9 @@
     "start": "bun run src/server.ts",
     "dev": "bun --watch src/server.ts",
     "build": "tsdown",
+    "build:worker": "bun scripts/build-worker.ts",
+    "deploy:worker": "wrangler deploy",
+    "dev:worker": "wrangler dev",
     "lms": "bun run src/lms/cli.ts",
     "workspace": "bun run src/workspace/cli.ts",
     "test": "bun test",
@@ -31,6 +34,7 @@
     "@thaipass/core": "workspace:*",
     "@types/bun": "1.4.1",
     "tsdown": "0.23.0",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "wrangler": "4.156.0"
   }
 }

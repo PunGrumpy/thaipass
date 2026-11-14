@@ -610,6 +610,21 @@ The proxy can also keep a credit history in a Redis store of your own. It is opt
 
 On Vercel the function duration bounds a stream, not the proxy's 240s idle timeout, so a slow model can be cut off mid-reply. Video will not survive there at all, and the LMS learner pauses itself at 270 seconds. See [Video](#video) and [On a schedule](#on-a-schedule).
 
+## Deploy to Cloudflare Workers
+
+The proxy also runs as a Worker, with the dashboard left on Vercel. Workers refuse code generated at runtime, so `scripts/build-worker.ts` has Elysia compile every route at build time and bundles everything into `.wrangler/worker/worker.js`. `wrangler.jsonc` runs that build itself, so from `apps/proxy`:
+
+```bash
+bunx wrangler login
+bunx wrangler secret put THAIPASS_TOKEN_KEY   # from `bun run login keygen`, if the gateway issues tokens
+bunx wrangler secret put AIPASS_CORS_ORIGIN   # the dashboard's origin
+bun run deploy:worker
+```
+
+Every variable in `.env.example` works the same way: set it as a secret or a `vars` entry, and `nodejs_compat` hands it to the proxy through `process.env`. Reuse the Upstash store for [Credit history](#credit-history) by copying `KV_REST_API_URL` and `KV_REST_API_TOKEN` from the Vercel project. Then point the dashboard's `NEXT_PUBLIC_PROXY_URL` at the `workers.dev` address or your own route and redeploy it.
+
+A Worker has no wall-clock limit while the caller stays connected, so streams, video, and the LMS learner run to the end. It does limit CPU time, which the proxy spends little of because it mostly waits on AI Pass. `bun run dev:worker` serves the Worker locally from `.dev.vars`.
+
 ## Logging
 
 Prompts and cookies never reach the logs. Each request emits one wide event with sizes, timings, upstream status, caller identity, the credit balance, the credits the reply spent, and its cost in dollars. Set `POSTHOG_API_KEY` to forward those events to PostHog as `aipass_proxy_request`.
@@ -714,6 +729,7 @@ Scripts from the root run in every package that has them:
 - `bun run test`: the Bun test suites
 - `bun run typecheck`: `tsc --noEmit`
 - `bun run build`: builds `thaipass` and the proxy's Vercel bundle into each package's `dist`
+- `bun run build:worker` (in `apps/proxy`): builds the Cloudflare Worker bundle
 - `bun run check`: Ultracite check
 - `bun run fix`: format and autofix
 
