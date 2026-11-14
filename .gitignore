@@ -9,3 +9,6 @@ dist/
 !.env.example
 .DS_Store
 .next-verify/
+.wrangler/
+.dev.vars*
+!.dev.vars.example

@@ -5,6 +5,7 @@ import { createPostHogDrain } from "evlog/posthog";
 
 import { clientFields } from "./client";
 import { env } from "./env";
+import { waitUntilFor } from "./wait-until";
 
 const posthog = env.POSTHOG_API_KEY
   ? createPostHogDrain({
@@ -45,6 +46,7 @@ export const requestLogger = new Elysia({ name: "request-logger" })
     const log = createRequestLogger({
       method: request.method,
       path: new URL(request.url).pathname,
+      waitUntil: waitUntilFor(request),
     });
     log.set({ status: 200, ...clientFields(request) });
     return { deferEmit: { value: false }, log };
