@@ -623,7 +623,7 @@ bun run deploy:worker
 
 Every variable in `.env.example` works the same way: set it as a secret or a `vars` entry, and `nodejs_compat` hands it to the proxy through `process.env`. Reuse the Upstash store for [Credit history](#credit-history) by copying `KV_REST_API_URL` and `KV_REST_API_TOKEN` from the Vercel project. Then point the dashboard's `NEXT_PUBLIC_PROXY_URL` at the `workers.dev` address or your own route and redeploy it.
 
-A Worker has no wall-clock limit while the caller stays connected, so streams, video, and the LMS learner run to the end. It does limit CPU time, which the proxy spends little of because it mostly waits on AI Pass. `bun run dev:worker` serves the Worker locally from `.dev.vars`.
+A Worker has no wall-clock limit while the caller stays connected, so a stream is never cut off mid-reply. It does count two things per request. CPU time stays low, because the proxy mostly waits on AI Pass. Subrequests, the `fetch` calls a request makes, are capped at 50 on Workers Free, setup calls included. A chat turn fits easily. Video polls every two seconds and the LMS learner makes several calls per lesson, so both need Workers Paid to run to the end. `bun run dev:worker` serves the Worker locally from `.dev.vars`.
 
 ## Logging
 
